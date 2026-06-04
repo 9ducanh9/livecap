@@ -113,12 +113,15 @@ class PcmProcessor extends AudioWorkletProcessor {
     return true; // keep processor alive
   }
 
-  /** Copy the accumulated samples into a new ArrayBuffer and transfer it. */
+  /** Copy the accumulated samples into explicit little-endian PCM bytes. */
   private _flush(): void {
     // Allocate a fresh ArrayBuffer so we can transfer (zero-copy) ownership.
-    const transferBuffer = new ArrayBuffer(CHUNK_SAMPLES * 2); // 2 bytes per Int16
-    const view = new Int16Array(transferBuffer);
-    view.set(this._buffer.subarray(0, this._writePos));
+    const transferBuffer = new ArrayBuffer(this._writePos * 2);
+    const view = new DataView(transferBuffer);
+
+    for (let i = 0; i < this._writePos; i += 1) {
+      view.setInt16(i * 2, this._buffer[i], true);
+    }
 
     this._writePos = 0;
     this._buffer.fill(0);

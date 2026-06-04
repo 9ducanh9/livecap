@@ -520,11 +520,12 @@ class TestRealTimeStreaming:
             assert kwargs["language_code"] == "en-US"
             assert kwargs["media_sample_rate_hz"] == 16000
             assert kwargs["media_encoding"] == "pcm"
-            assert kwargs["show_speaker_label"] is True
             assert "identify_multiple_languages" not in kwargs
             assert "language_options" not in kwargs
             assert "preferred_language" not in kwargs
+            assert "show_speaker_label" not in kwargs
             assert "max_speaker_labels" not in kwargs
+            assert "number_of_channels" not in kwargs
 
         asyncio.run(run_test())
 

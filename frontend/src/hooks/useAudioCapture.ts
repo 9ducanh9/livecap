@@ -97,7 +97,7 @@ export function useAudioCapture(
       });
       debugLog('microphone-started', {
         trackCount: stream.getAudioTracks().length,
-        sampleRate: AUDIO_SAMPLE_RATE,
+        requestedSampleRate: AUDIO_SAMPLE_RATE,
       });
     } catch (err) {
       // NotAllowedError / PermissionDeniedError → user denied (Requirement 1.3).
@@ -133,6 +133,10 @@ export function useAudioCapture(
     }
 
     audioContextRef.current = audioCtx;
+    debugLog('audio-context-created', {
+      frontendSampleRate: audioCtx.sampleRate,
+      targetSampleRate: AUDIO_SAMPLE_RATE,
+    });
 
     // 3. Load the PCM processor worklet module.
     //    Vite resolves the URL at build time. The worklet registers itself
@@ -162,7 +166,9 @@ export function useAudioCapture(
     workletNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
       if (event.data instanceof ArrayBuffer) {
         debugLog('audio-chunk-produced', {
-          byteLength: event.data.byteLength,
+          frontendSampleRate: audioCtx.sampleRate,
+          resampledChunkLength: event.data.byteLength / 2,
+          pcmByteLength: event.data.byteLength,
           rms: computePcm16Rms(event.data),
         });
         onChunkRef.current(event.data);

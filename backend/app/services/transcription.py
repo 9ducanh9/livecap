@@ -5,8 +5,6 @@ Streaming session configured for:
 
 * Media encoding: PCM, 16 kHz, mono
 * Fixed language code from configuration (default: ``vi-VN``)
-* Speaker labels enabled through the Python SDK's supported
-  ``show_speaker_label`` option
 
 The service feeds audio chunks to the stream as they arrive and processes
 the resulting transcription events, emitting:
@@ -59,8 +57,6 @@ from app.services.logging_service import get_logger, log_integration_error
 # Sample rate and encoding required by the Expected_Audio_Format.
 _SAMPLE_RATE_HZ = 16_000
 _MEDIA_ENCODING = "pcm"
-_NUMBER_OF_CHANNELS = 1
-
 # Mapping from Transcribe language codes to the MVP's internal short codes.
 _LANG_MAP: dict[str, str] = {
     "vi-VN": "vi",
@@ -151,8 +147,6 @@ class TranscriptionService:
                 language_code=self._settings.transcribe_language_code,
                 media_sample_rate_hz=_SAMPLE_RATE_HZ,
                 media_encoding=_MEDIA_ENCODING,
-                show_speaker_label=True,
-                number_of_channels=_NUMBER_OF_CHANNELS,
             )
         except Exception as exc:
             log_integration_error(
@@ -267,8 +261,6 @@ class TranscriptionService:
                 language_code=self._settings.transcribe_language_code,
                 media_sample_rate_hz=_SAMPLE_RATE_HZ,
                 media_encoding=_MEDIA_ENCODING,
-                show_speaker_label=True,
-                number_of_channels=_NUMBER_OF_CHANNELS,
             )
         except Exception as exc:
             log_integration_error(

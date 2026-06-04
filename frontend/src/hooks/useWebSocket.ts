@@ -359,7 +359,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     }
     try {
       ws.send(chunk);
-      debugLog('websocket-send-audio', { byteLength: chunk.byteLength });
+      debugLog('websocket-send-audio', {
+        websocketSendByteLength: chunk.byteLength,
+      });
     } catch (err) {
       console.error('[useWebSocket] Failed to send audio chunk:', err);
     }
