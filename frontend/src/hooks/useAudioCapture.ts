@@ -23,6 +23,18 @@ import { useCallback, useRef, useState } from 'react';
 /** The sample rate required by the backend's Expected_Audio_Format. */
 const AUDIO_SAMPLE_RATE = 16_000;
 
+/** Normalized RMS below this value is treated as silence/background noise. */
+const SILENCE_RMS_THRESHOLD = readNumberEnv('VITE_SILENCE_RMS_THRESHOLD', 0.015);
+
+/** Voice must remain above threshold for this long before chunks are sent. */
+const MIN_VOICE_DURATION_MS = readNumberEnv('VITE_MIN_VOICE_DURATION_MS', 150);
+
+/** After speech drops below threshold, keep sending briefly to avoid clipping. */
+const SILENCE_TIMEOUT_MS = readNumberEnv('VITE_SILENCE_TIMEOUT_MS', 600);
+
+/** Enable verbose silence-gate logs with VITE_AUDIO_DEBUG=true. */
+const DEBUG = import.meta.env.VITE_AUDIO_DEBUG === 'true';
+
 // ---------------------------------------------------------------------------
 // Public interface
 // ---------------------------------------------------------------------------
@@ -67,6 +79,68 @@ export function useAudioCapture(
   const audioContextRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
 
+  // Silence gate state. Refs keep this per-chunk path independent from React
+  // renders because the worklet emits audio about every 100 ms.
+  const voiceActiveRef = useRef(false);
+  const voiceDurationMsRef = useRef(0);
+  const silenceDurationMsRef = useRef(0);
+  const pendingVoiceChunksRef = useRef<ArrayBuffer[]>([]);
+
+  const resetSilenceGate = useCallback(() => {
+    voiceActiveRef.current = false;
+    voiceDurationMsRef.current = 0;
+    silenceDurationMsRef.current = 0;
+    pendingVoiceChunksRef.current = [];
+  }, []);
+
+  const flushPendingVoiceChunks = useCallback(() => {
+    const pending = pendingVoiceChunksRef.current;
+    pendingVoiceChunksRef.current = [];
+    pending.forEach((chunk) => onChunkRef.current(chunk));
+  }, []);
+
+  const handleAudioChunk = useCallback((chunk: ArrayBuffer) => {
+    const rms = computePcm16Rms(chunk);
+    const chunkDurationMs = getPcm16ChunkDurationMs(chunk);
+    const isVoice = rms >= SILENCE_RMS_THRESHOLD;
+
+    if (isVoice) {
+      silenceDurationMsRef.current = 0;
+      voiceDurationMsRef.current += chunkDurationMs;
+
+      if (voiceActiveRef.current) {
+        onChunkRef.current(chunk);
+        return;
+      }
+
+      pendingVoiceChunksRef.current.push(chunk);
+
+      if (voiceDurationMsRef.current >= MIN_VOICE_DURATION_MS) {
+        voiceActiveRef.current = true;
+        debugLog('voice-start', { rms, voiceDurationMs: voiceDurationMsRef.current });
+        flushPendingVoiceChunks();
+      }
+      return;
+    }
+
+    voiceDurationMsRef.current = 0;
+    pendingVoiceChunksRef.current = [];
+
+    if (!voiceActiveRef.current) {
+      return;
+    }
+
+    silenceDurationMsRef.current += chunkDurationMs;
+    if (silenceDurationMsRef.current <= SILENCE_TIMEOUT_MS) {
+      onChunkRef.current(chunk);
+      return;
+    }
+
+    debugLog('voice-stop', { rms, silenceDurationMs: silenceDurationMsRef.current });
+    voiceActiveRef.current = false;
+    silenceDurationMsRef.current = 0;
+  }, [flushPendingVoiceChunks]);
+
   // ------------------------------------------------------------------
   // startCapture — build the capture pipeline
   // ------------------------------------------------------------------
@@ -83,9 +157,13 @@ export function useAudioCapture(
     //    sampleRate hint; the PCM worklet handles downsampling internally.
     let stream: MediaStream;
     try {
+      resetSilenceGate();
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: AUDIO_SAMPLE_RATE,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
           channelCount: 1,
         },
       });
@@ -151,7 +229,7 @@ export function useAudioCapture(
     //    (Requirement 2.3).
     workletNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
       if (event.data instanceof ArrayBuffer) {
-        onChunkRef.current(event.data);
+        handleAudioChunk(event.data);
       }
     };
 
@@ -165,7 +243,7 @@ export function useAudioCapture(
     }
 
     setIsCapturing(true);
-  }, []);
+  }, [handleAudioChunk, resetSilenceGate]);
 
   // ------------------------------------------------------------------
   // stopCapture — tear down the pipeline and release the microphone
@@ -192,8 +270,9 @@ export function useAudioCapture(
       mediaStreamRef.current = null;
     }
 
+    resetSilenceGate();
     setIsCapturing(false);
-  }, []);
+  }, [resetSilenceGate]);
 
   return {
     isCapturing,
@@ -210,4 +289,35 @@ export function useAudioCapture(
 /** Stop every track on a MediaStream to release the hardware resource. */
 function releaseStream(stream: MediaStream): void {
   stream.getTracks().forEach((track) => track.stop());
+}
+
+function computePcm16Rms(chunk: ArrayBuffer): number {
+  const samples = new Int16Array(chunk);
+  if (samples.length === 0) return 0;
+
+  let sumSquares = 0;
+  for (let i = 0; i < samples.length; i += 1) {
+    const normalized = samples[i] / 32768;
+    sumSquares += normalized * normalized;
+  }
+
+  return Math.sqrt(sumSquares / samples.length);
+}
+
+function getPcm16ChunkDurationMs(chunk: ArrayBuffer): number {
+  const sampleCount = chunk.byteLength / 2;
+  return (sampleCount / AUDIO_SAMPLE_RATE) * 1000;
+}
+
+function readNumberEnv(name: string, fallback: number): number {
+  const raw = import.meta.env[name];
+  if (typeof raw !== 'string' || raw.trim() === '') return fallback;
+
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function debugLog(message: string, data: Record<string, number>): void {
+  if (!DEBUG) return;
+  console.debug(`[useAudioCapture] ${message}`, data);
 }
