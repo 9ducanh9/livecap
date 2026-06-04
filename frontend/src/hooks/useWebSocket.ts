@@ -24,6 +24,8 @@ import type {
   SessionStartMessage,
 } from '../types/index';
 
+const DEBUG = import.meta.env.VITE_AUDIO_DEBUG === 'true';
+
 // ---------------------------------------------------------------------------
 // Public interface
 // ---------------------------------------------------------------------------
@@ -357,6 +359,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     }
     try {
       ws.send(chunk);
+      debugLog('websocket-send-audio', { byteLength: chunk.byteLength });
     } catch (err) {
       console.error('[useWebSocket] Failed to send audio chunk:', err);
     }
@@ -389,3 +392,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 // Re-export AppState for convenience — consumers can import it from here.
 // ---------------------------------------------------------------------------
 export type { AppState };
+
+function debugLog(message: string, data: Record<string, number>): void {
+  if (!DEBUG) return;
+  console.debug(`[useWebSocket] ${message}`, data);
+}

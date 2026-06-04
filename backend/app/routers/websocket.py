@@ -172,6 +172,15 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                 if "bytes" in raw and raw["bytes"] is not None:
                     # Binary frame — audio chunk.
                     data: bytes = raw["bytes"]
+                    if settings.audio_pipeline_debug:
+                        _logger.info(
+                            "audio_pipeline_websocket_received",
+                            extra={
+                                "event": "audio_pipeline_websocket_received",
+                                "session_id": session_id,
+                                "byte_length": len(data),
+                            },
+                        )
                     valid, reason = validate_audio_chunk(data)
                     if not valid:
                         # Reject malformed audio (Requirement 2.8).
@@ -188,6 +197,16 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                         break
 
                     await audio_queue.put(data)
+                    if settings.audio_pipeline_debug:
+                        _logger.info(
+                            "audio_pipeline_audio_queued",
+                            extra={
+                                "event": "audio_pipeline_audio_queued",
+                                "session_id": session_id,
+                                "byte_length": len(data),
+                                "queue_size": audio_queue.qsize(),
+                            },
+                        )
 
                 elif "text" in raw and raw["text"] is not None:
                     # Text frame — expect JSON control message.

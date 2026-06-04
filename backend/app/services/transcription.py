@@ -178,6 +178,15 @@ class TranscriptionService:
                     if chunk is None:
                         # End-of-stream sentinel received.
                         break
+                    if self._settings.audio_pipeline_debug:
+                        self._logger.info(
+                            "audio_pipeline_send_audio_event",
+                            extra={
+                                "event": "audio_pipeline_send_audio_event",
+                                "session_id": self._session_id,
+                                "byte_length": len(chunk),
+                            },
+                        )
                     await stream.input_stream.send_audio_event(audio_chunk=chunk)
             except Exception as exc:
                 log_integration_error(
@@ -283,6 +292,15 @@ class TranscriptionService:
                     chunk = await audio_queue.get()
                     if chunk is None:
                         break
+                    if self._settings.audio_pipeline_debug:
+                        self._logger.info(
+                            "audio_pipeline_send_audio_event",
+                            extra={
+                                "event": "audio_pipeline_send_audio_event",
+                                "session_id": self._session_id,
+                                "byte_length": len(chunk),
+                            },
+                        )
                     await stream.input_stream.send_audio_event(audio_chunk=chunk)
             except Exception as exc:
                 log_integration_error(

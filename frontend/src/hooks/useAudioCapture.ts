@@ -96,7 +96,10 @@ export function useAudioCapture(
   const flushPendingVoiceChunks = useCallback(() => {
     const pending = pendingVoiceChunksRef.current;
     pendingVoiceChunksRef.current = [];
-    pending.forEach((chunk) => onChunkRef.current(chunk));
+    pending.forEach((chunk) => {
+      debugLog('audio-chunk-forwarded', { byteLength: chunk.byteLength });
+      onChunkRef.current(chunk);
+    });
   }, []);
 
   const handleAudioChunk = useCallback((chunk: ArrayBuffer) => {
@@ -109,11 +112,17 @@ export function useAudioCapture(
       voiceDurationMsRef.current += chunkDurationMs;
 
       if (voiceActiveRef.current) {
+        debugLog('audio-chunk-forwarded', { byteLength: chunk.byteLength, rms });
         onChunkRef.current(chunk);
         return;
       }
 
       pendingVoiceChunksRef.current.push(chunk);
+      debugLog('audio-chunk-pending-voice', {
+        byteLength: chunk.byteLength,
+        rms,
+        voiceDurationMs: voiceDurationMsRef.current,
+      });
 
       if (voiceDurationMsRef.current >= MIN_VOICE_DURATION_MS) {
         voiceActiveRef.current = true;
@@ -127,11 +136,17 @@ export function useAudioCapture(
     pendingVoiceChunksRef.current = [];
 
     if (!voiceActiveRef.current) {
+      debugLog('audio-chunk-dropped-silence', { byteLength: chunk.byteLength, rms });
       return;
     }
 
     silenceDurationMsRef.current += chunkDurationMs;
     if (silenceDurationMsRef.current <= SILENCE_TIMEOUT_MS) {
+      debugLog('audio-chunk-forwarded-hangover', {
+        byteLength: chunk.byteLength,
+        rms,
+        silenceDurationMs: silenceDurationMsRef.current,
+      });
       onChunkRef.current(chunk);
       return;
     }
@@ -166,6 +181,10 @@ export function useAudioCapture(
           autoGainControl: true,
           channelCount: 1,
         },
+      });
+      debugLog('microphone-started', {
+        trackCount: stream.getAudioTracks().length,
+        sampleRate: AUDIO_SAMPLE_RATE,
       });
     } catch (err) {
       // NotAllowedError / PermissionDeniedError → user denied (Requirement 1.3).
@@ -229,6 +248,10 @@ export function useAudioCapture(
     //    (Requirement 2.3).
     workletNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
       if (event.data instanceof ArrayBuffer) {
+        debugLog('audio-chunk-produced', {
+          byteLength: event.data.byteLength,
+          rms: computePcm16Rms(event.data),
+        });
         handleAudioChunk(event.data);
       }
     };
