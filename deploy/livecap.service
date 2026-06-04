@@ -1,0 +1,99 @@
+# =============================================================================
+# LiveCap — systemd service unit
+# =============================================================================
+#
+# This file belongs at /etc/systemd/system/livecap.service on the EC2 instance.
+#
+# Quick-start:
+#   sudo cp deploy/livecap.service /etc/systemd/system/livecap.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable livecap
+#   sudo systemctl start livecap
+#   sudo systemctl status livecap
+#
+# View live logs:
+#   sudo journalctl -u livecap -f
+#
+# Customise before enabling:
+#   - ADJUST User/Group if your OS user is not "ec2-user"
+#     (Ubuntu uses "ubuntu"; Debian uses "debian"; RHEL uses "ec2-user").
+#   - ADJUST WorkingDirectory and ExecStart paths if you cloned the repository
+#     to a location other than /home/ec2-user/livecap.
+#   - ADJUST the EnvironmentFile path to match WorkingDirectory.
+#
+# =============================================================================
+
+[Unit]
+Description=LiveCap — FastAPI real-time caption and translation backend
+Documentation=https://github.com/your-org/livecap
+# Start only after the network stack is fully up (needed for outbound AWS API calls).
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# ---------------------------------------------------------------------------
+# Identity
+# ---------------------------------------------------------------------------
+# ADJUST: change to "ubuntu" on Ubuntu/Debian, or the actual non-root OS user
+# that owns the repository clone.
+User=ec2-user
+Group=ec2-user
+
+# ---------------------------------------------------------------------------
+# Working directory
+# ---------------------------------------------------------------------------
+# ADJUST: change to match where you cloned the repository.
+# Example alternative: /home/ubuntu/livecap/backend
+WorkingDirectory=/home/ec2-user/livecap/backend
+
+# ---------------------------------------------------------------------------
+# Environment
+# ---------------------------------------------------------------------------
+# Load runtime configuration (AWS_REGION, S3_BUCKET, ALLOWED_ORIGIN, etc.)
+# from the .env file.  See backend/.env.example for the full variable list.
+# ADJUST: update the path if WorkingDirectory differs.
+EnvironmentFile=/home/ec2-user/livecap/backend/.env
+
+# ---------------------------------------------------------------------------
+# Process management
+# ---------------------------------------------------------------------------
+Type=simple
+
+# ADJUST: update the uvicorn path if Python was installed system-wide
+# (e.g. /usr/local/bin/uvicorn) or inside a virtualenv
+# (e.g. /home/ec2-user/livecap/.venv/bin/uvicorn).
+#
+# --host 127.0.0.1  — bind only to loopback; Nginx handles the public interface
+# --port 8000       — must match the proxy_pass port in nginx.conf
+# --workers 1       — single worker for MVP; increase with caution (WebSocket
+#                     sessions are stateful and not shared across workers)
+ExecStart=/home/ec2-user/.local/bin/uvicorn app.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 1
+
+# Restart the process automatically if it exits unexpectedly (e.g. an
+# unhandled exception or OOM kill), but not on clean exits or explicit stops.
+Restart=on-failure
+RestartSec=5s
+
+# Give the process up to 30 seconds to handle in-flight WebSocket sessions
+# before systemd sends SIGKILL on stop/restart.
+TimeoutStopSec=30
+
+# ---------------------------------------------------------------------------
+# Resource limits (optional hardening)
+# ---------------------------------------------------------------------------
+# Prevent the process from gaining new privileges via setuid/setgid binaries.
+NoNewPrivileges=true
+
+# Restrict the file-system view available to the process (read-only /usr and /etc).
+# Comment out ProtectSystem if the app needs to write outside its working directory.
+ProtectSystem=full
+
+# Allow writes only under the runtime directory; the app writes logs to CloudWatch,
+# so no local file writes are needed at runtime.
+# PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
