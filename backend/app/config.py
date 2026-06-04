@@ -29,6 +29,7 @@ DEFAULT_DOWNLOAD_LINK_EXPIRATION = 86_400
 # 30 minutes, in seconds.
 DEFAULT_SESSION_TIMEOUT = 1_800
 DEFAULT_MAX_SPEAKERS = 5
+DEFAULT_TRANSCRIBE_LANGUAGE_CODE = "vi-VN"
 DEFAULT_ALLOWED_ORIGIN = "http://localhost:5173"
 DEFAULT_CLOUDWATCH_LOG_GROUP = "livecap"
 
@@ -68,6 +69,7 @@ class Settings:
         download_link_expiration: Lifetime (seconds) of presigned download links.
         session_timeout: Maximum session duration (seconds) before timeout.
         max_speakers: Maximum number of speakers for Transcribe diarization.
+        transcribe_language_code: Fixed Transcribe Streaming language code.
         allowed_origin: The single frontend origin permitted by CORS.
         cloudwatch_log_group: CloudWatch log group for the Logging_Service.
     """
@@ -77,6 +79,7 @@ class Settings:
     download_link_expiration: int = DEFAULT_DOWNLOAD_LINK_EXPIRATION
     session_timeout: int = DEFAULT_SESSION_TIMEOUT
     max_speakers: int = DEFAULT_MAX_SPEAKERS
+    transcribe_language_code: str = DEFAULT_TRANSCRIBE_LANGUAGE_CODE
     allowed_origin: str = DEFAULT_ALLOWED_ORIGIN
     cloudwatch_log_group: str = DEFAULT_CLOUDWATCH_LOG_GROUP
 
@@ -92,6 +95,9 @@ class Settings:
             ),
             session_timeout=_get_int("SESSION_TIMEOUT", DEFAULT_SESSION_TIMEOUT),
             max_speakers=_get_int("MAX_SPEAKERS", DEFAULT_MAX_SPEAKERS),
+            transcribe_language_code=_get_str(
+                "TRANSCRIBE_LANGUAGE_CODE", DEFAULT_TRANSCRIBE_LANGUAGE_CODE
+            ),
             allowed_origin=_get_str("ALLOWED_ORIGIN", DEFAULT_ALLOWED_ORIGIN),
             cloudwatch_log_group=_get_str(
                 "CLOUDWATCH_LOG_GROUP", DEFAULT_CLOUDWATCH_LOG_GROUP

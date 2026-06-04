@@ -42,6 +42,7 @@ def make_settings(**overrides) -> Settings:
         download_link_expiration=86400,
         session_timeout=1800,
         max_speakers=5,
+        transcribe_language_code="vi-VN",
         allowed_origin="http://localhost:5173",
         cloudwatch_log_group="livecap",
     )
@@ -137,6 +138,14 @@ class TestSpokenLanguageResolution:
         """An unrecognised language code falls back to 'vi'."""
         service = make_service()
         assert service._resolve_spoken_language("fr-FR") == "vi"
+
+    def test_missing_language_uses_configured_language(self):
+        """When Transcribe omits per-result language, use the configured code."""
+        service = TranscriptionService(
+            session_id="test-session",
+            settings=make_settings(transcribe_language_code="en-US"),
+        )
+        assert service._resolve_spoken_language(None) == "en"
 
 
 # ---------------------------------------------------------------------------
@@ -469,6 +478,55 @@ class TestRealTimeStreaming:
         assert len(yielded) == 2
         assert isinstance(yielded[0], PartialSegmentMessage)
         assert isinstance(yielded[1], FinalizedSegmentMessage)
+
+    def test_start_stream_uses_supported_fixed_language_args(self):
+        """The installed SDK does not support multi-language detection kwargs."""
+
+        async def run_test():
+            audio_q: asyncio.Queue[bytes | None] = asyncio.Queue()
+            await audio_q.put(None)
+
+            service = TranscriptionService(
+                session_id="test-session",
+                settings=make_settings(transcribe_language_code="en-US"),
+            )
+
+            mock_input_stream = AsyncMock()
+            mock_output_stream = MagicMock()
+
+            mock_stream = MagicMock()
+            mock_stream.input_stream = mock_input_stream
+            mock_stream.output_stream = mock_output_stream
+
+            mock_client = MagicMock()
+            mock_client.start_stream_transcription = AsyncMock(return_value=mock_stream)
+
+            from app.services.transcription import _SegmentHandler
+
+            async def patched_handle(_self_h):
+                return None
+
+            with (
+                patch(
+                    "app.services.transcription.TranscribeStreamingClient",
+                    return_value=mock_client,
+                ),
+                patch.object(_SegmentHandler, "handle_events", patched_handle),
+            ):
+                async for _ in service.transcribe(audio_q):
+                    pass
+
+            kwargs = mock_client.start_stream_transcription.call_args.kwargs
+            assert kwargs["language_code"] == "en-US"
+            assert kwargs["media_sample_rate_hz"] == 16000
+            assert kwargs["media_encoding"] == "pcm"
+            assert kwargs["show_speaker_label"] is True
+            assert "identify_multiple_languages" not in kwargs
+            assert "language_options" not in kwargs
+            assert "preferred_language" not in kwargs
+            assert "max_speaker_labels" not in kwargs
+
+        asyncio.run(run_test())
 
 
 # ---------------------------------------------------------------------------

@@ -4,9 +4,9 @@ Provides :class:`TranscriptionService`, which opens an Amazon Transcribe
 Streaming session configured for:
 
 * Media encoding: PCM, 16 kHz, mono
-* Language identification: ``identify-multiple-languages`` with options
-  ``[vi-VN, en-US]``
-* Speaker diarization: enabled (max speakers from :mod:`config`)
+* Fixed language code from configuration (default: ``vi-VN``)
+* Speaker labels enabled through the Python SDK's supported
+  ``show_speaker_label`` option
 
 The service feeds audio chunks to the stream as they arrive and processes
 the resulting transcription events, emitting:
@@ -20,8 +20,8 @@ Speaker labels from Transcribe (``"spk_0"``, ``"spk_1"``, …) are mapped to
 human-readable ``"Speaker 1"``, ``"Speaker 2"``, … labels that are stable
 within the Session (Requirement 4.4).
 
-The spoken language is extracted from Transcribe's per-result language
-identification fields.
+The spoken language is derived from Transcribe's per-result language field when
+available, otherwise from the configured fixed language code.
 
 Transcribe errors are propagated to the caller and recorded through the
 :mod:`~app.services.logging_service`.
@@ -60,9 +60,6 @@ from app.services.logging_service import get_logger, log_integration_error
 _SAMPLE_RATE_HZ = 16_000
 _MEDIA_ENCODING = "pcm"
 _NUMBER_OF_CHANNELS = 1
-
-# Language options passed to Transcribe's identify-multiple-languages mode.
-_LANGUAGE_OPTIONS = ["vi-VN", "en-US"]
 
 # Mapping from Transcribe language codes to the MVP's internal short codes.
 _LANG_MAP: dict[str, str] = {
@@ -151,13 +148,10 @@ class TranscriptionService:
 
         try:
             stream = await client.start_stream_transcription(
-                language_code=None,  # not used in identify-multiple-languages mode
+                language_code=self._settings.transcribe_language_code,
                 media_sample_rate_hz=_SAMPLE_RATE_HZ,
                 media_encoding=_MEDIA_ENCODING,
-                identify_multiple_languages=True,
-                language_options=",".join(_LANGUAGE_OPTIONS),
                 show_speaker_label=True,
-                max_speaker_labels=self._settings.max_speakers,
                 number_of_channels=_NUMBER_OF_CHANNELS,
             )
         except Exception as exc:
@@ -261,13 +255,10 @@ class TranscriptionService:
 
         try:
             stream = await client.start_stream_transcription(
-                language_code=None,
+                language_code=self._settings.transcribe_language_code,
                 media_sample_rate_hz=_SAMPLE_RATE_HZ,
                 media_encoding=_MEDIA_ENCODING,
-                identify_multiple_languages=True,
-                language_options=",".join(_LANGUAGE_OPTIONS),
                 show_speaker_label=True,
-                max_speaker_labels=self._settings.max_speakers,
                 number_of_channels=_NUMBER_OF_CHANNELS,
             )
         except Exception as exc:
@@ -334,12 +325,11 @@ class TranscriptionService:
         """Map a Transcribe language code to the MVP's internal short code.
 
         Returns ``"vi"`` for ``"vi-VN"`` and ``"en"`` for ``"en-US"``.
-        Defaults to ``"vi"`` when the code is absent or unrecognised (the
-        primary use-case of this application is Vietnamese speech).
+        Defaults to the configured fixed Transcribe language when the result
+        does not include language metadata.
         """
-        if language_code is None:
-            return "vi"
-        return _LANG_MAP.get(language_code, "vi")
+        resolved_code = language_code or self._settings.transcribe_language_code
+        return _LANG_MAP.get(resolved_code, "vi")
 
 
 # ---------------------------------------------------------------------------
@@ -429,8 +419,8 @@ class _SegmentHandler(TranscriptResultStreamHandler):
                     raw_speaker_label
                 )
 
-                # Resolve the spoken language from Transcribe's language
-                # identification. The language code is on the result object.
+                # Resolve the spoken language from Transcribe's language field
+                # when present, otherwise from the configured fixed language.
                 language_code = _extract_language_code(result)
                 spoken_language = self._service._resolve_spoken_language(
                     language_code
@@ -520,12 +510,11 @@ def _extract_speaker_label(alternative) -> str:
 def _extract_language_code(result) -> str | None:
     """Return the identified language code for *result*, or ``None``.
 
-    Amazon Transcribe Streaming returns the language code in different
-    attributes depending on the SDK version and mode.  This helper tries
-    several known attribute paths so the service stays robust across minor SDK
-    variations.
+    Amazon Transcribe Streaming may expose the language code in different
+    attributes depending on the SDK version. This helper tries several known
+    attribute paths so the service stays robust across minor SDK variations.
     """
-    # Primary attribute used in identify-multiple-languages mode.
+    # Primary attribute when the SDK includes per-result language metadata.
     lang = getattr(result, "language_code", None)
     if lang:
         return lang
