@@ -346,6 +346,67 @@ class TestBilingualDualStream:
         assert finalized_msgs[0]["text_vi"] == "xin chao"
         assert finalized_msgs[0]["text_en"] == "hello"
 
+    def test_dual_stream_prefers_english_candidate_for_english_speech(
+        self, app, mock_logging
+    ):
+        settings = make_settings(bilingual_dual_stream=True)
+
+        vi_msg = FinalizedSegmentMessage(
+            segment_id="seg-1",
+            speaker_label="Speaker 1",
+            text_vi="Sense my voice.",
+            text_en="",
+            spoken_language="vi",
+            timestamp_start=0.0,
+            timestamp_end=1.0,
+        )
+        en_msg = FinalizedSegmentMessage(
+            segment_id="seg-1",
+            speaker_label="Speaker 1",
+            text_vi="",
+            text_en="Sense my voice.",
+            spoken_language="en",
+            timestamp_start=0.0,
+            timestamp_end=1.0,
+        )
+
+        def make_service(*args, **kwargs):
+            language_code = kwargs["language_code"]
+
+            async def mock_transcribe(audio_queue):
+                _ = await audio_queue.get()
+                yield vi_msg if language_code == "vi-VN" else en_msg
+                while True:
+                    item = await audio_queue.get()
+                    if item is None:
+                        break
+
+            service = MagicMock()
+            service.transcribe = mock_transcribe
+            return service
+
+        async def mock_translate(segment, session_id="", **kwargs):
+            if segment.spoken_language == "en":
+                return segment.model_copy(update={"text_vi": "Cảm nhận giọng nói của tôi."})
+            return segment.model_copy(update={"text_en": "Senza mi voce."})
+
+        with patch("app.routers.websocket.get_settings", return_value=settings), \
+             patch("app.routers.websocket._DUAL_STREAM_WINDOW_SECONDS", 0.01), \
+             patch("app.routers.websocket.TranscriptionService", side_effect=make_service), \
+             patch("app.routers.websocket.translate_segment", new=mock_translate):
+            with TestClient(app) as client:
+                with client.websocket_connect("/ws/transcribe") as websocket:
+                    _ = websocket.receive_text()
+                    websocket.send_bytes(make_valid_audio_chunk())
+                    websocket.send_text(make_stop_message())
+                    received_msgs = collect_until_session_end(websocket, max_messages=10)
+
+        finalized_msgs = [m for m in received_msgs if m["type"] == "finalized_segment"]
+        assert len(finalized_msgs) == 1
+        assert finalized_msgs[0]["segment_id"] == "en-seg-1"
+        assert finalized_msgs[0]["text_en"] == "Sense my voice."
+        assert finalized_msgs[0]["text_vi"] == "Cảm nhận giọng nói của tôi."
+
 
 # ---------------------------------------------------------------------------
 # Binary frame routing to transcription (Req 2.3, 3.1)

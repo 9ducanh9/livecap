@@ -99,6 +99,69 @@ _ALLOWED_LANGUAGE_MODES: dict[tuple[str, str], LanguageMode] = {
 _DUAL_STREAM_WINDOW_SECONDS = 1.5
 _DUPLICATE_FINAL_SECONDS = 2.0
 _MIN_FINAL_TEXT_LENGTH = 3
+_VIETNAMESE_CHARS = set(
+    "ăâđêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệ"
+    "íìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
+    "ĂÂĐÊÔƠƯÁÀẢÃẠẮẰẲẴẶẤẦẨẪẬÉÈẺẼẸẾỀỂỄỆ"
+    "ÍÌỈĨỊÓÒỎÕỌỐỒỔỖỘỚỜỞỠỢÚÙỦŨỤỨỪỬỮỰÝỲỶỸỴ"
+)
+_COMMON_ENGLISH_WORDS = {
+    "a",
+    "about",
+    "am",
+    "and",
+    "are",
+    "can",
+    "do",
+    "for",
+    "hello",
+    "hi",
+    "how",
+    "i",
+    "is",
+    "it",
+    "me",
+    "my",
+    "of",
+    "please",
+    "sense",
+    "speak",
+    "test",
+    "that",
+    "the",
+    "this",
+    "to",
+    "voice",
+    "what",
+    "you",
+    "your",
+}
+_COMMON_VIETNAMESE_WORDS = {
+    "anh",
+    "ban",
+    "bạn",
+    "chao",
+    "chào",
+    "cho",
+    "co",
+    "có",
+    "day",
+    "đây",
+    "em",
+    "khong",
+    "không",
+    "la",
+    "là",
+    "minh",
+    "mình",
+    "mot",
+    "một",
+    "noi",
+    "nói",
+    "toi",
+    "tôi",
+    "xin",
+}
 
 
 @dataclass(frozen=True)
@@ -181,6 +244,27 @@ def _log_candidate_dropped(
             "transcript_text": candidate.transcript_text,
         },
     )
+
+
+def _tokenize_for_language_score(text: str) -> list[str]:
+    return [
+        token.strip(".,!?;:\"'()[]{}").casefold()
+        for token in text.split()
+        if token.strip(".,!?;:\"'()[]{}")
+    ]
+
+
+def _language_score(candidate: TranscriptCandidate) -> int:
+    """Estimate whether a candidate text matches its claimed source language."""
+    text = candidate.transcript_text.strip()
+    tokens = _tokenize_for_language_score(text)
+    english_hits = sum(1 for token in tokens if token in _COMMON_ENGLISH_WORDS)
+    vietnamese_hits = sum(1 for token in tokens if token in _COMMON_VIETNAMESE_WORDS)
+    vietnamese_char_hits = sum(1 for char in text if char in _VIETNAMESE_CHARS)
+
+    if candidate.source_language == "en":
+        return english_hits * 3 - vietnamese_hits * 2 - vietnamese_char_hits * 3
+    return vietnamese_hits * 2 + vietnamese_char_hits * 4 - english_hits * 3
 
 
 async def _translate_finalized_candidate(
@@ -378,10 +462,17 @@ async def _arbitrate_dual_candidates(
             ):
                 candidates.append(contender)
 
-        selected = max(candidates, key=lambda c: len(c.transcript_text))
+        selected = max(
+            candidates,
+            key=lambda c: (_language_score(c), len(c.transcript_text)),
+        )
         for candidate in candidates:
             if candidate is not selected:
-                _log_candidate_dropped(session_id, candidate, "shorter_window_candidate")
+                _log_candidate_dropped(
+                    session_id,
+                    candidate,
+                    "lower_language_score_window_candidate",
+                )
 
         recent_finalized[selected.transcript_text.casefold()] = time.monotonic()
         _logger.info(
@@ -391,6 +482,7 @@ async def _arbitrate_dual_candidates(
                 "session_id": session_id,
                 "source_language": selected.source_language,
                 "transcript_text": selected.transcript_text,
+                "language_score": _language_score(selected),
             },
         )
         yield selected.translated_message
