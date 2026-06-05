@@ -168,7 +168,8 @@ _COMMON_VIETNAMESE_WORDS = {
 class TranscriptCandidate:
     source_language: str
     transcript_text: str
-    translated_message: FinalizedSegmentMessage
+    message: FinalizedSegmentMessage
+    mode: LanguageMode
     created_at: float
 
 
@@ -252,6 +253,10 @@ def _tokenize_for_language_score(text: str) -> list[str]:
         for token in text.split()
         if token.strip(".,!?;:\"'()[]{}")
     ]
+
+
+def _normalized_transcript_text(text: str) -> str:
+    return " ".join(_tokenize_for_language_score(text))
 
 
 def _language_score(candidate: TranscriptCandidate) -> int:
@@ -347,17 +352,12 @@ async def _run_dual_transcription_worker(
                         "timestamp_end": msg.timestamp_end,
                     },
                 )
-                translated_msg = await _translate_finalized_candidate(
-                    msg=msg,
-                    session_id=session_id,
-                    mode=mode,
-                    source_language=source_language,
-                )
                 await candidate_queue.put(
                     TranscriptCandidate(
                         source_language=source_language,
                         transcript_text=transcript_text,
-                        translated_message=translated_msg,
+                        message=msg,
+                        mode=mode,
                         created_at=time.monotonic(),
                     )
                 )
@@ -375,12 +375,18 @@ def _candidate_passes_basic_filters(
     now: float,
 ) -> bool:
     text = candidate.transcript_text.strip()
-    normalized = text.casefold()
+    normalized = _normalized_transcript_text(text).casefold()
     if not text:
         _log_candidate_dropped(session_id, candidate, "empty_text")
         return False
-    if len(text) < _MIN_FINAL_TEXT_LENGTH:
+    if len(normalized) < _MIN_FINAL_TEXT_LENGTH:
         _log_candidate_dropped(session_id, candidate, "too_short")
+        return False
+    if len(normalized.split()) < 2:
+        _log_candidate_dropped(session_id, candidate, "too_few_words")
+        return False
+    if _language_score(candidate) < -2:
+        _log_candidate_dropped(session_id, candidate, "wrong_language_score")
         return False
     last_seen = recent_finalized.get(normalized)
     if last_seen is not None and now - last_seen < _DUPLICATE_FINAL_SECONDS:
@@ -474,7 +480,10 @@ async def _arbitrate_dual_candidates(
                     "lower_language_score_window_candidate",
                 )
 
-        recent_finalized[selected.transcript_text.casefold()] = time.monotonic()
+        normalized_selected = _normalized_transcript_text(
+            selected.transcript_text
+        ).casefold()
+        recent_finalized[normalized_selected] = time.monotonic()
         _logger.info(
             "transcript_candidate_emitted",
             extra={
@@ -485,7 +494,12 @@ async def _arbitrate_dual_candidates(
                 "language_score": _language_score(selected),
             },
         )
-        yield selected.translated_message
+        yield await _translate_finalized_candidate(
+            msg=selected.message,
+            session_id=session_id,
+            mode=selected.mode,
+            source_language=selected.source_language,
+        )
 
 
 # ---------------------------------------------------------------------------

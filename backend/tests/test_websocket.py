@@ -299,7 +299,7 @@ class TestBilingualDualStream:
             segment_id="seg-1",
             speaker_label="Speaker 1",
             text_vi="",
-            text_en="hi",
+            text_en="hi there",
             spoken_language="en",
             timestamp_start=0.0,
             timestamp_end=1.0,

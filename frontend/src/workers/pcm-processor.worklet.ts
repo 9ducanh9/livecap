@@ -48,6 +48,9 @@ const CHUNK_DURATION_S = 0.1;
 /** Number of 16 kHz samples per emitted chunk. */
 const CHUNK_SAMPLES = Math.round(TARGET_SAMPLE_RATE * CHUNK_DURATION_S); // 1 600
 
+/** Low-level noise is replaced by digital silence instead of dropping chunks. */
+const NOISE_GATE_RMS_THRESHOLD = 0.01;
+
 // ---------------------------------------------------------------------------
 // Processor implementation
 // ---------------------------------------------------------------------------
@@ -55,6 +58,8 @@ const CHUNK_SAMPLES = Math.round(TARGET_SAMPLE_RATE * CHUNK_DURATION_S); // 1 60
 class PcmProcessor extends AudioWorkletProcessor {
   /** Resampled 16-bit samples accumulated between flushes. */
   private readonly _buffer: Int16Array;
+  /** Sum of squared normalized samples in the current chunk. */
+  private _sumSquares = 0;
   /** Write cursor into _buffer. */
   private _writePos = 0;
 
@@ -95,6 +100,7 @@ class PcmProcessor extends AudioWorkletProcessor {
         clamped < 0
           ? Math.round(clamped * 0x8000)
           : Math.round(clamped * 0x7fff);
+      this._sumSquares += clamped * clamped;
 
       this._writePos++;
 
@@ -118,12 +124,15 @@ class PcmProcessor extends AudioWorkletProcessor {
     // Allocate a fresh ArrayBuffer so we can transfer (zero-copy) ownership.
     const transferBuffer = new ArrayBuffer(this._writePos * 2);
     const view = new DataView(transferBuffer);
+    const rms = Math.sqrt(this._sumSquares / Math.max(this._writePos, 1));
+    const shouldMute = rms < NOISE_GATE_RMS_THRESHOLD;
 
     for (let i = 0; i < this._writePos; i += 1) {
-      view.setInt16(i * 2, this._buffer[i], true);
+      view.setInt16(i * 2, shouldMute ? 0 : this._buffer[i], true);
     }
 
     this._writePos = 0;
+    this._sumSquares = 0;
     this._buffer.fill(0);
 
     // Transfer ownership to avoid a copy across the thread boundary.
