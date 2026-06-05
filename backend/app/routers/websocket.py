@@ -42,7 +42,7 @@ import asyncio
 import json
 import logging
 import uuid
-from typing import AsyncIterator
+from typing import AsyncIterator, NamedTuple
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -71,6 +71,28 @@ from app.utils.audio import validate_audio_chunk
 router = APIRouter()
 
 _logger: logging.Logger = get_logger()
+
+
+class LanguageMode(NamedTuple):
+    source_language_code: str
+    source_translate_code: str
+    target_language_code: str
+
+
+_DEFAULT_LANGUAGE_MODE = LanguageMode(
+    source_language_code="vi-VN",
+    source_translate_code="vi",
+    target_language_code="en",
+)
+
+_ALLOWED_LANGUAGE_MODES: dict[tuple[str, str], LanguageMode] = {
+    ("vi-VN", "en"): _DEFAULT_LANGUAGE_MODE,
+    ("en-US", "vi"): LanguageMode(
+        source_language_code="en-US",
+        source_translate_code="en",
+        target_language_code="vi",
+    ),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +126,13 @@ async def _send_error(
     await _send(websocket, ErrorMessage(message=message, code=code.value))
 
 
+def _resolve_language_mode(websocket: WebSocket) -> LanguageMode | None:
+    """Return the validated manual translation mode from query params."""
+    source = websocket.query_params.get("source") or _DEFAULT_LANGUAGE_MODE.source_language_code
+    target = websocket.query_params.get("target") or _DEFAULT_LANGUAGE_MODE.target_language_code
+    return _ALLOWED_LANGUAGE_MODES.get((source, target))
+
+
 # ---------------------------------------------------------------------------
 # Core WebSocket endpoint
 # ---------------------------------------------------------------------------
@@ -124,8 +153,22 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     """
     settings = get_settings()
     session_id = str(uuid.uuid4())
+    language_mode = _resolve_language_mode(websocket)
 
     await websocket.accept()
+
+    if language_mode is None:
+        await _send_error(
+            websocket,
+            message=(
+                "Invalid language mode. Allowed modes are "
+                "source=vi-VN&target=en or source=en-US&target=vi."
+            ),
+            code=ErrorCode.INVALID_LANGUAGE_MODE,
+        )
+        await websocket.close(code=1008)
+        return
+
     log_websocket_connect(session_id)
 
     # Record session-start event (Requirement 10.1).
@@ -238,6 +281,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     transcription_service = TranscriptionService(
         session_id=session_id,
         settings=settings,
+        language_code=language_mode.source_language_code,
     )
 
     session_end_sent = False
@@ -294,7 +338,10 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
 
                     try:
                         translated = await translate_segment(
-                            segment, session_id=session_id
+                            segment,
+                            session_id=session_id,
+                            source_language_code=language_mode.source_translate_code,
+                            target_language_code=language_mode.target_language_code,
                         )
                         # Rebuild the FinalizedSegmentMessage with translated
                         # text so both columns are populated.

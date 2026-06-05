@@ -197,6 +197,83 @@ class TestSessionStartMessage:
 
 
 # ---------------------------------------------------------------------------
+# Manual language mode validation
+# ---------------------------------------------------------------------------
+
+
+class TestLanguageMode:
+    def test_default_mode_uses_vietnamese_to_english(
+        self, app, mock_settings, mock_logging
+    ):
+        async def mock_transcribe(audio_queue):
+            while True:
+                chunk = await audio_queue.get()
+                if chunk is None:
+                    break
+            if False:
+                yield
+
+        with patch(
+            "app.routers.websocket.TranscriptionService"
+        ) as MockTranscriptionService:
+            mock_service_instance = MagicMock()
+            mock_service_instance.transcribe = mock_transcribe
+            MockTranscriptionService.return_value = mock_service_instance
+
+            with TestClient(app) as client:
+                with client.websocket_connect("/ws/transcribe") as websocket:
+                    _ = websocket.receive_text()
+                    websocket.send_text(make_stop_message())
+                    collect_until_session_end(websocket)
+
+        kwargs = MockTranscriptionService.call_args.kwargs
+        assert kwargs["language_code"] == "vi-VN"
+
+    def test_english_to_vietnamese_mode_sets_transcribe_source(
+        self, app, mock_settings, mock_logging
+    ):
+        async def mock_transcribe(audio_queue):
+            while True:
+                chunk = await audio_queue.get()
+                if chunk is None:
+                    break
+            if False:
+                yield
+
+        with patch(
+            "app.routers.websocket.TranscriptionService"
+        ) as MockTranscriptionService:
+            mock_service_instance = MagicMock()
+            mock_service_instance.transcribe = mock_transcribe
+            MockTranscriptionService.return_value = mock_service_instance
+
+            with TestClient(app) as client:
+                with client.websocket_connect(
+                    "/ws/transcribe?source=en-US&target=vi"
+                ) as websocket:
+                    _ = websocket.receive_text()
+                    websocket.send_text(make_stop_message())
+                    collect_until_session_end(websocket)
+
+        kwargs = MockTranscriptionService.call_args.kwargs
+        assert kwargs["language_code"] == "en-US"
+
+    def test_invalid_language_mode_is_rejected(self, app, mock_settings):
+        with patch(
+            "app.routers.websocket.TranscriptionService"
+        ) as MockTranscriptionService:
+            with TestClient(app) as client:
+                with client.websocket_connect(
+                    "/ws/transcribe?source=vi-VN&target=vi"
+                ) as websocket:
+                    msg = json.loads(websocket.receive_text())
+
+        assert msg["type"] == "error"
+        assert msg["code"] == ErrorCode.INVALID_LANGUAGE_MODE.value
+        MockTranscriptionService.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # Binary frame routing to transcription (Req 2.3, 3.1)
 # ---------------------------------------------------------------------------
 
@@ -450,7 +527,7 @@ class TestSegmentForwarding:
                 if item is None:
                     break
 
-        async def mock_translate(segment, session_id=""):
+        async def mock_translate(segment, session_id="", **kwargs):
             return translated_segment
 
         with patch(
@@ -512,7 +589,7 @@ class TestTranslationErrorHandling:
                 if item is None:
                     break
 
-        async def mock_translate_fail(segment, session_id=""):
+        async def mock_translate_fail(segment, session_id="", **kwargs):
             raise RuntimeError("Translation service unavailable")
 
         with patch(

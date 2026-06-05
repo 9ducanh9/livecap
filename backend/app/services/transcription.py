@@ -83,9 +83,11 @@ class TranscriptionService:
         self,
         session_id: str,
         settings: Settings | None = None,
+        language_code: str | None = None,
     ) -> None:
         self._session_id = session_id
         self._settings = settings or get_settings()
+        self._language_code = language_code or self._settings.transcribe_language_code
         self._logger: logging.Logger = get_logger()
 
         # Allocates stable Segment_IDs within this session (CP-2).
@@ -144,7 +146,7 @@ class TranscriptionService:
 
         try:
             stream = await client.start_stream_transcription(
-                language_code=self._settings.transcribe_language_code,
+                language_code=self._language_code,
                 media_sample_rate_hz=_SAMPLE_RATE_HZ,
                 media_encoding=_MEDIA_ENCODING,
             )
@@ -258,7 +260,7 @@ class TranscriptionService:
 
         try:
             stream = await client.start_stream_transcription(
-                language_code=self._settings.transcribe_language_code,
+                language_code=self._language_code,
                 media_sample_rate_hz=_SAMPLE_RATE_HZ,
                 media_encoding=_MEDIA_ENCODING,
             )
@@ -338,7 +340,7 @@ class TranscriptionService:
         Defaults to the configured fixed Transcribe language when the result
         does not include language metadata.
         """
-        resolved_code = language_code or self._settings.transcribe_language_code
+        resolved_code = language_code or self._language_code
         return _LANG_MAP.get(resolved_code, "vi")
 
 

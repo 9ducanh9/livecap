@@ -111,6 +111,8 @@ class TranslationService:
         self,
         segment: Segment,
         session_id: str = "",
+        source_language_code: str | None = None,
+        target_language_code: str | None = None,
     ) -> Segment:
         """Translate *segment* and return a new :class:`Segment` with both
         ``text_vi`` and ``text_en`` populated.
@@ -144,12 +146,15 @@ class TranslationService:
         # Determine source/target languages and which field to write into.
         if spoken == "vi":
             source_text = segment.text_vi
-            source_lang = "vi"
-            target_lang = "en"
+            default_source_lang = "vi"
+            default_target_lang = "en"
         else:  # spoken == "en"
             source_text = segment.text_en
-            source_lang = "en"
-            target_lang = "vi"
+            default_source_lang = "en"
+            default_target_lang = "vi"
+
+        source_lang = source_language_code or default_source_lang
+        target_lang = target_language_code or default_target_lang
 
         # If the source text is empty there is nothing to translate; return
         # the segment as-is so we don't waste an API call.
@@ -220,6 +225,8 @@ def _get_default_service() -> TranslationService:
 async def translate_segment(
     segment: Segment,
     session_id: str = "",
+    source_language_code: str | None = None,
+    target_language_code: str | None = None,
 ) -> Segment:
     """Module-level convenience wrapper around :meth:`TranslationService.translate_segment`.
 
@@ -240,4 +247,9 @@ async def translate_segment(
         or the source segment unchanged if translation fails.
     """
     service = _get_default_service()
-    return await service.translate_segment(segment, session_id=session_id)
+    return await service.translate_segment(
+        segment,
+        session_id=session_id,
+        source_language_code=source_language_code,
+        target_language_code=target_language_code,
+    )

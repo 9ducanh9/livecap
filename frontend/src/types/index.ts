@@ -25,6 +25,15 @@ export interface AppState {
   error: string | null;
 }
 
+export type SourceLanguageCode = 'vi-VN' | 'en-US';
+export type TargetLanguageCode = 'en' | 'vi';
+
+export interface LanguageMode {
+  label: string;
+  source: SourceLanguageCode;
+  target: TargetLanguageCode;
+}
+
 // ---------------------------------------------------------------------------
 // WebSocket Messages — Backend → Frontend (discriminated union)
 // ---------------------------------------------------------------------------

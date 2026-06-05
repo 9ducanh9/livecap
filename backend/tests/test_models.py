@@ -291,6 +291,7 @@ class TestErrorCode:
         assert "TRANSCRIBE_ERROR" in codes
         assert "TRANSLATE_ERROR" in codes
         assert "SESSION_TIMEOUT" in codes
+        assert "INVALID_LANGUAGE_MODE" in codes
         assert "INTERNAL_ERROR" in codes
 
 

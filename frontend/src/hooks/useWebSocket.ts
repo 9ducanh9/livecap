@@ -22,6 +22,8 @@ import type {
   ServerMessage,
   SessionEndMessage,
   SessionStartMessage,
+  SourceLanguageCode,
+  TargetLanguageCode,
 } from '../types/index';
 
 const DEBUG = import.meta.env.VITE_AUDIO_DEBUG === 'true';
@@ -31,6 +33,10 @@ const DEBUG = import.meta.env.VITE_AUDIO_DEBUG === 'true';
 // ---------------------------------------------------------------------------
 
 export interface UseWebSocketOptions {
+  /** Fixed Transcribe source language for this WebSocket session. */
+  sourceLanguage?: SourceLanguageCode;
+  /** Fixed Translate target language for this WebSocket session. */
+  targetLanguage?: TargetLanguageCode;
   /** Called once the backend assigns a session ID. */
   onSessionStart?: (sessionId: string) => void;
   /** Called whenever a partial segment is received. */
@@ -62,14 +68,22 @@ export interface UseWebSocketReturn {
 
 /** Derive the WebSocket URL from the current page origin.
  *  http(s)://host[:port] → ws(s)://host[:port]/ws/transcribe */
-function buildWsUrl(): string {
+function buildWsUrl(
+  sourceLanguage: SourceLanguageCode = 'vi-VN',
+  targetLanguage: TargetLanguageCode = 'en'
+): string {
   const configuredUrl = import.meta.env.VITE_WS_URL;
-  if (typeof configuredUrl === 'string' && configuredUrl.trim() !== '') {
-    return configuredUrl.trim();
-  }
+  const baseUrl =
+    typeof configuredUrl === 'string' && configuredUrl.trim() !== ''
+      ? configuredUrl.trim()
+      : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${
+          window.location.host
+        }/ws/transcribe`;
 
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.host}/ws/transcribe`;
+  const url = new URL(baseUrl);
+  url.searchParams.set('source', sourceLanguage);
+  url.searchParams.set('target', targetLanguage);
+  return url.toString();
 }
 
 /** Map a raw server JSON payload to the typed ServerMessage union.
@@ -230,7 +244,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 
     let ws: WebSocket;
     try {
-      ws = new WebSocket(buildWsUrl());
+      ws = new WebSocket(
+        buildWsUrl(
+          optionsRef.current.sourceLanguage,
+          optionsRef.current.targetLanguage
+        )
+      );
     } catch (err) {
       console.error('[useWebSocket] Failed to construct WebSocket:', err);
       setIsConnectionLost(true);

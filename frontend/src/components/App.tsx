@@ -14,8 +14,8 @@
  * Requirements: 1.1, 1.4, 1.5, 2.6, 6.1, 6.2
  */
 
-import { useCallback, useReducer } from 'react';
-import type { AppState, Segment } from '../types/index';
+import { useCallback, useReducer, useState } from 'react';
+import type { AppState, LanguageMode, Segment } from '../types/index';
 import { useAudioCapture } from '../hooks/useAudioCapture';
 import { useWebSocket } from '../hooks/useWebSocket';
 import CaptionDisplay from './CaptionDisplay';
@@ -45,6 +45,11 @@ const initialState: AppState = {
   currentPartial: null,
   error: null,
 };
+
+const LANGUAGE_MODES: LanguageMode[] = [
+  { label: 'Vietnamese → English', source: 'vi-VN', target: 'en' },
+  { label: 'English → Vietnamese', source: 'en-US', target: 'vi' },
+];
 
 function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -117,6 +122,9 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
 export default function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const [languageMode, setLanguageMode] = useState<LanguageMode>(
+    LANGUAGE_MODES[0]
+  );
 
   // ------------------------------------------------------------------
   // WebSocket hook — message parsing → state updates
@@ -128,6 +136,8 @@ export default function App() {
     disconnect,
     sendAudioChunk,
   } = useWebSocket({
+    sourceLanguage: languageMode.source,
+    targetLanguage: languageMode.target,
     onSessionStart(sessionId) {
       dispatch({ type: 'SESSION_START', sessionId });
     },
@@ -308,6 +318,10 @@ export default function App() {
             isCapturing={isCapturing}
             isConnecting={wsIsConnecting}
             permissionDenied={permissionDenied}
+            languageMode={languageMode}
+            languageModes={LANGUAGE_MODES}
+            isLanguageModeDisabled={isCapturing || isConnected}
+            onLanguageModeChange={setLanguageMode}
             onStart={handleStart}
             onStop={handleStop}
           />
