@@ -39,9 +39,11 @@ Error handling
 from __future__ import annotations
 
 import asyncio
+import time
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from typing import AsyncIterator, NamedTuple
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -94,6 +96,18 @@ _ALLOWED_LANGUAGE_MODES: dict[tuple[str, str], LanguageMode] = {
     ),
 }
 
+_DUAL_STREAM_WINDOW_SECONDS = 1.5
+_DUPLICATE_FINAL_SECONDS = 2.0
+_MIN_FINAL_TEXT_LENGTH = 3
+
+
+@dataclass(frozen=True)
+class TranscriptCandidate:
+    source_language: str
+    transcript_text: str
+    translated_message: FinalizedSegmentMessage
+    created_at: float
+
 
 # ---------------------------------------------------------------------------
 # Helper: send a Pydantic model as JSON
@@ -126,11 +140,260 @@ async def _send_error(
     await _send(websocket, ErrorMessage(message=message, code=code.value))
 
 
-def _resolve_language_mode(websocket: WebSocket) -> LanguageMode | None:
+def _mode_for_source_language(source_language_code: str) -> LanguageMode | None:
+    """Return the supported mode that starts from a Transcribe language code."""
+    if source_language_code == "en-US":
+        return _ALLOWED_LANGUAGE_MODES[("en-US", "vi")]
+    if source_language_code == "vi-VN":
+        return _ALLOWED_LANGUAGE_MODES[("vi-VN", "en")]
+    return None
+
+
+def _resolve_language_mode(
+    websocket: WebSocket,
+    fallback_source_language_code: str,
+) -> LanguageMode | None:
     """Return the validated manual translation mode from query params."""
+    if "source" not in websocket.query_params and "target" not in websocket.query_params:
+        return _mode_for_source_language(fallback_source_language_code)
     source = websocket.query_params.get("source") or _DEFAULT_LANGUAGE_MODE.source_language_code
     target = websocket.query_params.get("target") or _DEFAULT_LANGUAGE_MODE.target_language_code
     return _ALLOWED_LANGUAGE_MODES.get((source, target))
+
+
+def _final_text(message: FinalizedSegmentMessage, source_language: str) -> str:
+    """Return the source transcript text from a finalized message."""
+    return message.text_vi if source_language == "vi" else message.text_en
+
+
+def _log_candidate_dropped(
+    session_id: str,
+    candidate: TranscriptCandidate,
+    reason: str,
+) -> None:
+    _logger.info(
+        "transcript_candidate_dropped",
+        extra={
+            "event": "transcript_candidate_dropped",
+            "session_id": session_id,
+            "source_language": candidate.source_language,
+            "reason": reason,
+            "transcript_text": candidate.transcript_text,
+        },
+    )
+
+
+async def _translate_finalized_candidate(
+    *,
+    msg: FinalizedSegmentMessage,
+    session_id: str,
+    mode: LanguageMode,
+    source_language: str,
+) -> FinalizedSegmentMessage:
+    """Translate one finalized candidate and preserve the old frontend contract."""
+    from app.models import Segment  # local import to avoid cycles
+
+    segment = Segment(
+        segment_id=msg.segment_id,
+        speaker_label=msg.speaker_label,
+        text_vi=msg.text_vi,
+        text_en=msg.text_en,
+        spoken_language=msg.spoken_language,
+        is_final=True,
+        timestamp_start=msg.timestamp_start,
+        timestamp_end=msg.timestamp_end,
+    )
+
+    try:
+        translated = await translate_segment(
+            segment,
+            session_id=session_id,
+            source_language_code=mode.source_translate_code,
+            target_language_code=mode.target_language_code,
+        )
+    except Exception as exc:
+        log_integration_error(
+            session_id=session_id,
+            service_name="Amazon Translate",
+            error=exc,
+        )
+        translated = segment
+
+    return FinalizedSegmentMessage(
+        segment_id=f"{source_language}-{translated.segment_id}",
+        speaker_label=translated.speaker_label,
+        text_vi=translated.text_vi,
+        text_en=translated.text_en,
+        spoken_language=translated.spoken_language,
+        timestamp_start=translated.timestamp_start,
+        timestamp_end=translated.timestamp_end,
+    )
+
+
+async def _run_dual_transcription_worker(
+    *,
+    session_id: str,
+    settings,
+    mode: LanguageMode,
+    source_language: str,
+    audio_queue: "asyncio.Queue[bytes | None]",
+    candidate_queue: "asyncio.Queue[TranscriptCandidate | Exception | None]",
+) -> None:
+    """Run one fixed-language Transcribe stream and publish finalized candidates."""
+    service = TranscriptionService(
+        session_id=session_id,
+        settings=settings,
+        language_code=mode.source_language_code,
+    )
+    try:
+        async for msg in service.transcribe(audio_queue):
+            if isinstance(msg, PartialSegmentMessage):
+                continue
+            if isinstance(msg, FinalizedSegmentMessage):
+                transcript_text = _final_text(msg, source_language).strip()
+                _logger.info(
+                    f"{source_language}_transcript_candidate",
+                    extra={
+                        "event": f"{source_language}_transcript_candidate",
+                        "session_id": session_id,
+                        "source_language": source_language,
+                        "transcript_text": transcript_text,
+                        "is_final": True,
+                        "timestamp_start": msg.timestamp_start,
+                        "timestamp_end": msg.timestamp_end,
+                    },
+                )
+                translated_msg = await _translate_finalized_candidate(
+                    msg=msg,
+                    session_id=session_id,
+                    mode=mode,
+                    source_language=source_language,
+                )
+                await candidate_queue.put(
+                    TranscriptCandidate(
+                        source_language=source_language,
+                        transcript_text=transcript_text,
+                        translated_message=translated_msg,
+                        created_at=time.monotonic(),
+                    )
+                )
+    except Exception as exc:
+        await candidate_queue.put(exc)
+    finally:
+        await candidate_queue.put(None)
+
+
+def _candidate_passes_basic_filters(
+    *,
+    session_id: str,
+    candidate: TranscriptCandidate,
+    recent_finalized: dict[str, float],
+    now: float,
+) -> bool:
+    text = candidate.transcript_text.strip()
+    normalized = text.casefold()
+    if not text:
+        _log_candidate_dropped(session_id, candidate, "empty_text")
+        return False
+    if len(text) < _MIN_FINAL_TEXT_LENGTH:
+        _log_candidate_dropped(session_id, candidate, "too_short")
+        return False
+    last_seen = recent_finalized.get(normalized)
+    if last_seen is not None and now - last_seen < _DUPLICATE_FINAL_SECONDS:
+        _log_candidate_dropped(session_id, candidate, "duplicate_within_2s")
+        return False
+    return True
+
+
+async def _next_dual_candidate(
+    candidate_queue: "asyncio.Queue[TranscriptCandidate | Exception | None]",
+    active_workers: int,
+    timeout: float | None = None,
+) -> tuple[TranscriptCandidate | Exception | None, int]:
+    """Read the next candidate, tracking worker completion sentinels."""
+    while active_workers > 0:
+        try:
+            item = (
+                await candidate_queue.get()
+                if timeout is None
+                else await asyncio.wait_for(candidate_queue.get(), timeout=timeout)
+            )
+        except TimeoutError:
+            return None, active_workers
+        if item is None:
+            active_workers -= 1
+            continue
+        return item, active_workers
+    return None, active_workers
+
+
+async def _arbitrate_dual_candidates(
+    *,
+    session_id: str,
+    candidate_queue: "asyncio.Queue[TranscriptCandidate | Exception | None]",
+) -> AsyncIterator[FinalizedSegmentMessage | Exception]:
+    """Choose one finalized candidate when both streams produce nearby text."""
+    active_workers = 2
+    recent_finalized: dict[str, float] = {}
+
+    while active_workers > 0:
+        item, active_workers = await _next_dual_candidate(
+            candidate_queue, active_workers
+        )
+        if item is None:
+            continue
+        if isinstance(item, Exception):
+            yield item
+            continue
+
+        now = time.monotonic()
+        if not _candidate_passes_basic_filters(
+            session_id=session_id,
+            candidate=item,
+            recent_finalized=recent_finalized,
+            now=now,
+        ):
+            continue
+
+        candidates = [item]
+        deadline = now + _DUAL_STREAM_WINDOW_SECONDS
+        while active_workers > 0:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            contender, active_workers = await _next_dual_candidate(
+                candidate_queue, active_workers, timeout=remaining
+            )
+            if contender is None:
+                continue
+            if isinstance(contender, Exception):
+                yield contender
+                continue
+            contender_now = time.monotonic()
+            if _candidate_passes_basic_filters(
+                session_id=session_id,
+                candidate=contender,
+                recent_finalized=recent_finalized,
+                now=contender_now,
+            ):
+                candidates.append(contender)
+
+        selected = max(candidates, key=lambda c: len(c.transcript_text))
+        for candidate in candidates:
+            if candidate is not selected:
+                _log_candidate_dropped(session_id, candidate, "shorter_window_candidate")
+
+        recent_finalized[selected.transcript_text.casefold()] = time.monotonic()
+        _logger.info(
+            "transcript_candidate_emitted",
+            extra={
+                "event": "transcript_candidate_emitted",
+                "session_id": session_id,
+                "source_language": selected.source_language,
+                "transcript_text": selected.transcript_text,
+            },
+        )
+        yield selected.translated_message
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +416,10 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     """
     settings = get_settings()
     session_id = str(uuid.uuid4())
-    language_mode = _resolve_language_mode(websocket)
+    language_mode = _resolve_language_mode(
+        websocket,
+        fallback_source_language_code=settings.transcribe_language_code,
+    )
 
     await websocket.accept()
 
@@ -182,9 +448,11 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         extra={"event": "session_open", "session_id": session_id},
     )
 
-    # Queue that bridges the incoming-frame reader with TranscriptionService.
+    # Queues that bridge the incoming-frame reader with TranscriptionService.
     # Audio bytes are pushed here; ``None`` signals end-of-stream.
     audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+    vi_audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+    en_audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
 
     # Flag shared between the frame-reader and the session main loop.
     # Set to True when a JSON stop signal is received.
@@ -239,7 +507,21 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                         error_event.set()
                         break
 
-                    await audio_queue.put(data)
+                    if settings.bilingual_dual_stream:
+                        await vi_audio_queue.put(data)
+                        await en_audio_queue.put(data)
+                        _logger.info(
+                            "dual_stream_audio_fanned_out",
+                            extra={
+                                "event": "dual_stream_audio_fanned_out",
+                                "session_id": session_id,
+                                "byte_length": len(data),
+                                "vi_queue_size": vi_audio_queue.qsize(),
+                                "en_queue_size": en_audio_queue.qsize(),
+                            },
+                        )
+                    else:
+                        await audio_queue.put(data)
                     if settings.audio_pipeline_debug:
                         _logger.info(
                             "audio_pipeline_audio_queued",
@@ -247,7 +529,11 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                                 "event": "audio_pipeline_audio_queued",
                                 "session_id": session_id,
                                 "byte_length": len(data),
-                                "queue_size": audio_queue.qsize(),
+                                "queue_size": (
+                                    vi_audio_queue.qsize()
+                                    if settings.bilingual_dual_stream
+                                    else audio_queue.qsize()
+                                ),
                             },
                         )
 
@@ -273,16 +559,14 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         finally:
             # Signal end-of-stream to TranscriptionService regardless of how
             # the loop exited (stop, disconnect, or error).
-            await audio_queue.put(None)
+            if settings.bilingual_dual_stream:
+                await vi_audio_queue.put(None)
+                await en_audio_queue.put(None)
+            else:
+                await audio_queue.put(None)
 
     # Start the frame-reader background task.
     reader_task = asyncio.ensure_future(_read_frames())
-
-    transcription_service = TranscriptionService(
-        session_id=session_id,
-        settings=settings,
-        language_code=language_mode.source_language_code,
-    )
 
     session_end_sent = False
 
@@ -311,73 +595,136 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     try:
         # Wrap the entire session in a timeout (Requirement 2.5).
         async with asyncio.timeout(settings.session_timeout):
-            async for msg in transcription_service.transcribe(audio_queue):
-                # Check if an audio-format error was flagged by the reader.
-                if error_event.is_set():
-                    break
-
-                if isinstance(msg, PartialSegmentMessage):
-                    # Forward partial segment directly (Requirement 3.2).
-                    await _send(websocket, msg)
-
-                elif isinstance(msg, FinalizedSegmentMessage):
-                    # Translate the finalized segment, then forward (Req 5.2).
-                    # Build a temporary Segment to pass to translate_segment.
-                    from app.models import Segment  # local import to avoid cycles
-
-                    segment = Segment(
-                        segment_id=msg.segment_id,
-                        speaker_label=msg.speaker_label,
-                        text_vi=msg.text_vi,
-                        text_en=msg.text_en,
-                        spoken_language=msg.spoken_language,
-                        is_final=True,
-                        timestamp_start=msg.timestamp_start,
-                        timestamp_end=msg.timestamp_end,
+            if settings.bilingual_dual_stream:
+                _logger.info(
+                    "dual_stream_started",
+                    extra={
+                        "event": "dual_stream_started",
+                        "session_id": session_id,
+                    },
+                )
+                candidate_queue: asyncio.Queue[
+                    TranscriptCandidate | Exception | None
+                ] = asyncio.Queue()
+                vi_task = asyncio.create_task(
+                    _run_dual_transcription_worker(
+                        session_id=session_id,
+                        settings=settings,
+                        mode=_ALLOWED_LANGUAGE_MODES[("vi-VN", "en")],
+                        source_language="vi",
+                        audio_queue=vi_audio_queue,
+                        candidate_queue=candidate_queue,
                     )
+                )
+                en_task = asyncio.create_task(
+                    _run_dual_transcription_worker(
+                        session_id=session_id,
+                        settings=settings,
+                        mode=_ALLOWED_LANGUAGE_MODES[("en-US", "vi")],
+                        source_language="en",
+                        audio_queue=en_audio_queue,
+                        candidate_queue=candidate_queue,
+                    )
+                )
+                try:
+                    async for msg in _arbitrate_dual_candidates(
+                        session_id=session_id,
+                        candidate_queue=candidate_queue,
+                    ):
+                        if error_event.is_set():
+                            break
+                        if isinstance(msg, Exception):
+                            log_integration_error(
+                                session_id=session_id,
+                                service_name="Amazon Transcribe Streaming",
+                                error=msg,
+                            )
+                            await _send_error(
+                                websocket,
+                                message=f"Transcription error: {msg}",
+                                code=ErrorCode.TRANSCRIBE_ERROR,
+                            )
+                            break
+                        await _send(websocket, msg)
+                finally:
+                    for task in (vi_task, en_task):
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(vi_task, en_task, return_exceptions=True)
 
-                    try:
-                        translated = await translate_segment(
-                            segment,
-                            session_id=session_id,
-                            source_language_code=language_mode.source_translate_code,
-                            target_language_code=language_mode.target_language_code,
-                        )
-                        # Rebuild the FinalizedSegmentMessage with translated
-                        # text so both columns are populated.
-                        translated_msg = FinalizedSegmentMessage(
-                            segment_id=translated.segment_id,
-                            speaker_label=translated.speaker_label,
-                            text_vi=translated.text_vi,
-                            text_en=translated.text_en,
-                            spoken_language=translated.spoken_language,
-                            timestamp_start=translated.timestamp_start,
-                            timestamp_end=translated.timestamp_end,
-                        )
-                        await _send(websocket, translated_msg)
-                    except Exception as exc:
-                        # Translation error: log and forward untranslated
-                        # segment (Requirement 5.3).
-                        log_integration_error(
-                            session_id=session_id,
-                            service_name="Amazon Translate",
-                            error=exc,
-                        )
+            else:
+                transcription_service = TranscriptionService(
+                    session_id=session_id,
+                    settings=settings,
+                    language_code=language_mode.source_language_code,
+                )
+                async for msg in transcription_service.transcribe(audio_queue):
+                    # Check if an audio-format error was flagged by the reader.
+                    if error_event.is_set():
+                        break
+
+                    if isinstance(msg, PartialSegmentMessage):
+                        # Forward partial segment directly (Requirement 3.2).
                         await _send(websocket, msg)
 
-                elif isinstance(msg, Exception):
-                    # Transcription error surfaced as an exception value.
-                    log_integration_error(
-                        session_id=session_id,
-                        service_name="Amazon Transcribe Streaming",
-                        error=msg,
-                    )
-                    await _send_error(
-                        websocket,
-                        message=f"Transcription error: {msg}",
-                        code=ErrorCode.TRANSCRIBE_ERROR,
-                    )
-                    break
+                    elif isinstance(msg, FinalizedSegmentMessage):
+                        # Translate the finalized segment, then forward (Req 5.2).
+                        # Build a temporary Segment to pass to translate_segment.
+                        from app.models import Segment  # local import to avoid cycles
+
+                        segment = Segment(
+                            segment_id=msg.segment_id,
+                            speaker_label=msg.speaker_label,
+                            text_vi=msg.text_vi,
+                            text_en=msg.text_en,
+                            spoken_language=msg.spoken_language,
+                            is_final=True,
+                            timestamp_start=msg.timestamp_start,
+                            timestamp_end=msg.timestamp_end,
+                        )
+
+                        try:
+                            translated = await translate_segment(
+                                segment,
+                                session_id=session_id,
+                                source_language_code=language_mode.source_translate_code,
+                                target_language_code=language_mode.target_language_code,
+                            )
+                            # Rebuild the FinalizedSegmentMessage with translated
+                            # text so both columns are populated.
+                            translated_msg = FinalizedSegmentMessage(
+                                segment_id=translated.segment_id,
+                                speaker_label=translated.speaker_label,
+                                text_vi=translated.text_vi,
+                                text_en=translated.text_en,
+                                spoken_language=translated.spoken_language,
+                                timestamp_start=translated.timestamp_start,
+                                timestamp_end=translated.timestamp_end,
+                            )
+                            await _send(websocket, translated_msg)
+                        except Exception as exc:
+                            # Translation error: log and forward untranslated
+                            # segment (Requirement 5.3).
+                            log_integration_error(
+                                session_id=session_id,
+                                service_name="Amazon Translate",
+                                error=exc,
+                            )
+                            await _send(websocket, msg)
+
+                    elif isinstance(msg, Exception):
+                        # Transcription error surfaced as an exception value.
+                        log_integration_error(
+                            session_id=session_id,
+                            service_name="Amazon Transcribe Streaming",
+                            error=msg,
+                        )
+                        await _send_error(
+                            websocket,
+                            message=f"Transcription error: {msg}",
+                            code=ErrorCode.TRANSCRIBE_ERROR,
+                        )
+                        break
 
             # If an audio-format error was flagged, surface it now.
             if error_event.is_set():

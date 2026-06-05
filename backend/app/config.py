@@ -30,6 +30,7 @@ DEFAULT_DOWNLOAD_LINK_EXPIRATION = 86_400
 DEFAULT_SESSION_TIMEOUT = 1_800
 DEFAULT_MAX_SPEAKERS = 5
 DEFAULT_TRANSCRIBE_LANGUAGE_CODE = "vi-VN"
+DEFAULT_BILINGUAL_DUAL_STREAM = True
 DEFAULT_AUDIO_PIPELINE_DEBUG = False
 DEFAULT_ALLOWED_ORIGIN = "http://localhost:5173"
 DEFAULT_CLOUDWATCH_LOG_GROUP = "livecap"
@@ -80,6 +81,7 @@ class Settings:
         session_timeout: Maximum session duration (seconds) before timeout.
         max_speakers: Maximum number of speakers for Transcribe diarization.
         transcribe_language_code: Fixed Transcribe Streaming language code.
+        bilingual_dual_stream: Enables parallel vi-VN and en-US Transcribe streams.
         audio_pipeline_debug: Enables temporary audio flow debug logging.
         allowed_origin: The single frontend origin permitted by CORS.
         cloudwatch_log_group: CloudWatch log group for the Logging_Service.
@@ -91,6 +93,7 @@ class Settings:
     session_timeout: int = DEFAULT_SESSION_TIMEOUT
     max_speakers: int = DEFAULT_MAX_SPEAKERS
     transcribe_language_code: str = DEFAULT_TRANSCRIBE_LANGUAGE_CODE
+    bilingual_dual_stream: bool = DEFAULT_BILINGUAL_DUAL_STREAM
     audio_pipeline_debug: bool = DEFAULT_AUDIO_PIPELINE_DEBUG
     allowed_origin: str = DEFAULT_ALLOWED_ORIGIN
     cloudwatch_log_group: str = DEFAULT_CLOUDWATCH_LOG_GROUP
@@ -109,6 +112,9 @@ class Settings:
             max_speakers=_get_int("MAX_SPEAKERS", DEFAULT_MAX_SPEAKERS),
             transcribe_language_code=_get_str(
                 "TRANSCRIBE_LANGUAGE_CODE", DEFAULT_TRANSCRIBE_LANGUAGE_CODE
+            ),
+            bilingual_dual_stream=_get_bool(
+                "BILINGUAL_DUAL_STREAM", DEFAULT_BILINGUAL_DUAL_STREAM
             ),
             audio_pipeline_debug=_get_bool(
                 "AUDIO_PIPELINE_DEBUG", DEFAULT_AUDIO_PIPELINE_DEBUG

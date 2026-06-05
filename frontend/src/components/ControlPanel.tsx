@@ -6,8 +6,6 @@
  * Requirements: 1.1, 1.4, 1.5
  */
 
-import type { LanguageMode } from '../types/index';
-
 interface ControlPanelProps {
   /** Whether capture is currently active. */
   isCapturing: boolean;
@@ -15,10 +13,6 @@ interface ControlPanelProps {
   isConnecting: boolean;
   /** Whether microphone permission was denied. */
   permissionDenied: boolean;
-  languageMode: LanguageMode;
-  languageModes: LanguageMode[];
-  isLanguageModeDisabled: boolean;
-  onLanguageModeChange: (mode: LanguageMode) => void;
   /** Start capture — opens the WebSocket, then begins audio capture. */
   onStart: () => void;
   /** Stop capture — stops audio and signals the backend. */
@@ -29,10 +23,6 @@ export default function ControlPanel({
   isCapturing,
   isConnecting,
   permissionDenied,
-  languageMode,
-  languageModes,
-  isLanguageModeDisabled,
-  onLanguageModeChange,
   onStart,
   onStop,
 }: ControlPanelProps) {
@@ -40,30 +30,6 @@ export default function ControlPanel({
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-        <span>Mode</span>
-        <select
-          value={`${languageMode.source}:${languageMode.target}`}
-          disabled={isLanguageModeDisabled}
-          onChange={(event) => {
-            const selected = languageModes.find(
-              (mode) => `${mode.source}:${mode.target}` === event.target.value
-            );
-            if (selected) onLanguageModeChange(selected);
-          }}
-          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
-        >
-          {languageModes.map((mode) => (
-            <option
-              key={`${mode.source}:${mode.target}`}
-              value={`${mode.source}:${mode.target}`}
-            >
-              {mode.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
       {/* Capture-active indicator + Start/Stop button row */}
       <div className="flex items-center gap-3">
         {/* Animated red dot — visible only while capturing */}

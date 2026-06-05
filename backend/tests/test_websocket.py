@@ -47,6 +47,7 @@ def make_settings(**overrides) -> Settings:
         download_link_expiration=86400,
         session_timeout=30,  # short timeout for tests
         max_speakers=5,
+        bilingual_dual_stream=False,
         allowed_origin="http://localhost:5173",
         cloudwatch_log_group="livecap",
     )
@@ -271,6 +272,79 @@ class TestLanguageMode:
         assert msg["type"] == "error"
         assert msg["code"] == ErrorCode.INVALID_LANGUAGE_MODE.value
         MockTranscriptionService.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Bilingual dual-stream mode
+# ---------------------------------------------------------------------------
+
+
+class TestBilingualDualStream:
+    def test_dual_stream_fans_out_audio_and_emits_longer_finalized_candidate(
+        self, app, mock_logging
+    ):
+        settings = make_settings(bilingual_dual_stream=True)
+        chunks_by_language: dict[str, list[bytes]] = {"vi-VN": [], "en-US": []}
+
+        vi_msg = FinalizedSegmentMessage(
+            segment_id="seg-1",
+            speaker_label="Speaker 1",
+            text_vi="xin chao",
+            text_en="",
+            spoken_language="vi",
+            timestamp_start=0.0,
+            timestamp_end=1.0,
+        )
+        en_msg = FinalizedSegmentMessage(
+            segment_id="seg-1",
+            speaker_label="Speaker 1",
+            text_vi="",
+            text_en="hi",
+            spoken_language="en",
+            timestamp_start=0.0,
+            timestamp_end=1.0,
+        )
+
+        def make_service(*args, **kwargs):
+            language_code = kwargs["language_code"]
+
+            async def mock_transcribe(audio_queue):
+                chunk = await audio_queue.get()
+                if chunk is not None:
+                    chunks_by_language[language_code].append(chunk)
+                yield vi_msg if language_code == "vi-VN" else en_msg
+                while True:
+                    item = await audio_queue.get()
+                    if item is None:
+                        break
+
+            service = MagicMock()
+            service.transcribe = mock_transcribe
+            return service
+
+        async def mock_translate(segment, session_id="", **kwargs):
+            if segment.spoken_language == "vi":
+                return segment.model_copy(update={"text_en": "hello"})
+            return segment.model_copy(update={"text_vi": "xin"})
+
+        with patch("app.routers.websocket.get_settings", return_value=settings), \
+             patch("app.routers.websocket._DUAL_STREAM_WINDOW_SECONDS", 0.01), \
+             patch("app.routers.websocket.TranscriptionService", side_effect=make_service), \
+             patch("app.routers.websocket.translate_segment", new=mock_translate):
+            with TestClient(app) as client:
+                with client.websocket_connect("/ws/transcribe") as websocket:
+                    _ = websocket.receive_text()
+                    websocket.send_bytes(make_valid_audio_chunk())
+                    websocket.send_text(make_stop_message())
+                    received_msgs = collect_until_session_end(websocket, max_messages=10)
+
+        assert chunks_by_language["vi-VN"] == [make_valid_audio_chunk()]
+        assert chunks_by_language["en-US"] == [make_valid_audio_chunk()]
+        finalized_msgs = [m for m in received_msgs if m["type"] == "finalized_segment"]
+        assert len(finalized_msgs) == 1
+        assert finalized_msgs[0]["segment_id"] == "vi-seg-1"
+        assert finalized_msgs[0]["text_vi"] == "xin chao"
+        assert finalized_msgs[0]["text_en"] == "hello"
 
 
 # ---------------------------------------------------------------------------

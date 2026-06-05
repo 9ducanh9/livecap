@@ -69,8 +69,8 @@ export interface UseWebSocketReturn {
 /** Derive the WebSocket URL from the current page origin.
  *  http(s)://host[:port] → ws(s)://host[:port]/ws/transcribe */
 function buildWsUrl(
-  sourceLanguage: SourceLanguageCode = 'vi-VN',
-  targetLanguage: TargetLanguageCode = 'en'
+  sourceLanguage?: SourceLanguageCode,
+  targetLanguage?: TargetLanguageCode
 ): string {
   const configuredUrl = import.meta.env.VITE_WS_URL;
   const baseUrl =
@@ -81,8 +81,10 @@ function buildWsUrl(
         }/ws/transcribe`;
 
   const url = new URL(baseUrl);
-  url.searchParams.set('source', sourceLanguage);
-  url.searchParams.set('target', targetLanguage);
+  if (sourceLanguage && targetLanguage) {
+    url.searchParams.set('source', sourceLanguage);
+    url.searchParams.set('target', targetLanguage);
+  }
   return url.toString();
 }
 
