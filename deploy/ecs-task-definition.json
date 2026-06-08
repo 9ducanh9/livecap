@@ -1,0 +1,84 @@
+{
+  "family": "livecap-backend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/livecap-task-role",
+  "containerDefinitions": [
+    {
+      "name": "livecap-backend",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/livecap-backend:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "AWS_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "S3_BUCKET",
+          "value": "livecap-transcripts"
+        },
+        {
+          "name": "DOWNLOAD_LINK_EXPIRATION",
+          "value": "86400"
+        },
+        {
+          "name": "SESSION_TIMEOUT",
+          "value": "1800"
+        },
+        {
+          "name": "MAX_SPEAKERS",
+          "value": "5"
+        },
+        {
+          "name": "TRANSCRIBE_LANGUAGE_CODE",
+          "value": "vi-VN"
+        },
+        {
+          "name": "BILINGUAL_DUAL_STREAM",
+          "value": "true"
+        },
+        {
+          "name": "AUDIO_PIPELINE_DEBUG",
+          "value": "false"
+        },
+        {
+          "name": "ALLOWED_ORIGIN",
+          "value": "https://CLOUDFRONT_DOMAIN"
+        },
+        {
+          "name": "CLOUDWATCH_LOG_GROUP",
+          "value": "livecap"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/livecap-backend",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs",
+          "awslogs-create-group": "true"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -f http://localhost:8000/api/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      },
+      "stopTimeout": 30
+    }
+  ]
+}

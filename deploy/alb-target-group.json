@@ -1,0 +1,31 @@
+{
+  "TargetGroupName": "livecap-backend-tg",
+  "Protocol": "HTTP",
+  "Port": 8000,
+  "VpcId": "vpc-XXXXXXXX",
+  "TargetType": "ip",
+  "HealthCheckEnabled": true,
+  "HealthCheckProtocol": "HTTP",
+  "HealthCheckPath": "/api/health",
+  "HealthCheckIntervalSeconds": 30,
+  "HealthCheckTimeoutSeconds": 5,
+  "HealthyThresholdCount": 2,
+  "UnhealthyThresholdCount": 3,
+  "Matcher": {
+    "HttpCode": "200"
+  },
+  "TargetGroupAttributes": [
+    {
+      "Key": "deregistration_delay.timeout_seconds",
+      "Value": "30"
+    },
+    {
+      "Key": "stickiness.enabled",
+      "Value": "false"
+    },
+    {
+      "Key": "load_balancing.algorithm.type",
+      "Value": "least_outstanding_requests"
+    }
+  ]
+}

@@ -2,244 +2,728 @@
 
 LiveCap is a real-time speech caption and translation web application. It captures microphone audio in the browser, streams it to a FastAPI backend over a secure WebSocket (WSS), transcribes it with Amazon Transcribe Streaming, translates it with Amazon Translate, and displays bilingual captions side-by-side — Vietnamese on the left, English on the right. Sessions can be exported as TXT files and stored in Amazon S3 with a time-limited download link.
 
+The application is deployed on AWS using a cloud-native architecture: the frontend is served through Amazon CloudFront from S3, while the backend runs as Docker containers on Amazon ECS Fargate behind an Application Load Balancer (ALB) that terminates TLS.
+
 ---
 
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [Environment Variables](#environment-variables)
-3. [Backend Setup (EC2)](#backend-setup-ec2)
-4. [Frontend Setup (S3 + CloudFront)](#frontend-setup-s3--cloudfront)
+2. [AWS Deployment Guide](#aws-deployment-guide)
+   - [Initial Setup](#initial-setup)
+   - [Backend Deployment](#backend-deployment)
+   - [Infrastructure Provisioning](#infrastructure-provisioning)
+   - [Frontend Deployment](#frontend-deployment)
+   - [Environment Configuration](#environment-configuration)
+3. [ECS Service Operations](#ecs-service-operations)
+   - [Updating Backend Code](#updating-backend-code)
+   - [Scaling ECS Service](#scaling-ecs-service)
+   - [Rollback Procedure](#rollback-procedure)
+4. [Monitoring and Troubleshooting](#monitoring-and-troubleshooting)
+   - [Viewing Logs](#viewing-logs)
+   - [Checking Service Health](#checking-service-health)
+   - [Common Issues](#common-issues)
 5. [Local Development](#local-development)
 6. [Architecture Overview](#architecture-overview)
+7. [Cost Optimization](#cost-optimization)
 
 ---
 
 ## Prerequisites
 
-| Requirement | Version |
-|-------------|---------|
-| Python | 3.11 or later |
-| Node.js | 18 LTS or later |
-| npm | 9 or later |
-| AWS account | — |
-| AWS CLI | v2, configured with credentials that have access to EC2, S3, CloudFront, IAM, Transcribe, Translate, and CloudWatch |
+### Required Tools
 
----
+| Tool | Version | Purpose |
+|------|---------|---------|
+| **AWS CLI** | v2 or later | AWS resource management and deployment |
+| **Docker** | Latest | Building backend container images |
+| **Terraform** | Latest | Infrastructure as Code provisioning |
+| **Node.js** | 18 LTS or later | Building frontend application |
+| **npm** | 9 or later | Frontend dependency management |
+| **Python** | 3.11+ | Local backend development (optional) |
 
-## Environment Variables
+### AWS Account Requirements
 
-Copy `backend/.env.example` to `backend/.env` and fill in the values for your environment.
+1. **Active AWS Account** with billing enabled
+2. **IAM User/Role** with permissions to create:
+   - S3 buckets
+   - CloudFront distributions
+   - ECS clusters and services
+   - Application Load Balancers
+   - IAM roles and policies
+   - ECR repositories
+   - CloudWatch log groups
+   - VPC security groups
+
+3. **AWS CLI Configuration**:
+   ```bash
+   aws configure
+   # Enter your AWS Access Key ID
+   # Enter your AWS Secret Access Key
+   # Enter your default region (e.g., us-east-1)
+   # Enter output format (json recommended)
+   ```
+
+4. **Verify AWS Access**:
+   ```bash
+   aws sts get-caller-identity
+   ```
+
+### ECR Access
+
+Ensure you have permissions to authenticate to Amazon ECR:
 
 ```bash
-cp backend/.env.example backend/.env
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <your-account-id>.dkr.ecr.us-east-1.amazonaws.com
 ```
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AWS_REGION` | `us-east-1` | AWS region used for Transcribe, Translate, and S3. |
-| `S3_BUCKET` | — | Name of the S3 bucket where exported transcripts are stored. |
-| `DOWNLOAD_LINK_EXPIRATION` | `86400` | Expiration in seconds for pre-signed download links (default: 24 hours). |
-| `SESSION_TIMEOUT` | `1800` | Maximum session duration in seconds before the backend times out an active streaming session (default: 30 minutes). |
-| `MAX_SPEAKERS` | `5` | Maximum number of speakers for Transcribe diarization. |
-| `ALLOWED_ORIGIN` | `http://localhost:5173` | The single frontend origin allowed to call the backend (CORS). In production, set to your CloudFront URL, e.g. `https://d1234abcd.cloudfront.net`. |
-| `CLOUDWATCH_LOG_GROUP` | `livecap` | CloudWatch log group for structured logging. Falls back to stdout when CloudWatch is unavailable. |
-
-Frontend build-time variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VITE_WS_URL` | current browser origin + `/ws/transcribe` | Backend WebSocket endpoint. In production, set this to the EC2/Nginx WSS endpoint, e.g. `wss://your-ec2-domain/ws/transcribe`. |
-| `VITE_API_BASE_URL` | current browser origin | Backend REST API origin. In production, set this to the EC2/Nginx HTTPS origin, e.g. `https://your-ec2-domain`. |
-
-> **Important:** On EC2, AWS credentials are supplied by the instance IAM role. Do **not** set `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` in `.env`.
 
 ---
 
-## Backend Setup (EC2)
+---
 
-### 1. EC2 Instance Requirements
+## AWS Deployment Guide
 
-- **Instance type:** t3.small or larger (2 vCPU, 2 GB RAM recommended for MVP)
-- **OS:** Amazon Linux 2023 or Ubuntu 22.04 LTS
-- **Security group inbound rules:**
-  - Port 22 (SSH) — from your IP only
-  - Port 443 (HTTPS/WSS) — from `0.0.0.0/0`
-- **Storage:** 8 GB gp3 root volume (minimum)
+This section covers deploying LiveCap to AWS using Terraform Infrastructure as Code.
 
-### 2. IAM Role
+### Initial Setup
 
-Create an IAM role named `livecap-ec2-role` (or similar) and attach the following AWS-managed and inline policies:
+#### 1. Configure Infrastructure Variables
 
-| Policy | Purpose |
-|--------|---------|
-| `AmazonTranscribeFullAccess` | Stream audio to Amazon Transcribe |
-| `TranslateFullAccess` | Call Amazon Translate |
-| `AmazonS3FullAccess` (or a scoped inline policy) | Upload transcripts and generate pre-signed URLs |
-| `CloudWatchLogsFullAccess` (or a scoped inline policy) | Write structured logs to CloudWatch |
+Navigate to your IaC directory:
 
-**Recommended scoped S3 inline policy** (replace `YOUR_BUCKET` with your actual bucket name):
+```bash
+cd infrastructure/terraform
+```
 
+**Terraform Example** (`terraform.tfvars`):
+```hcl
+aws_region   = "us-east-1"
+environment  = "production"
+project_name = "livecap"
+
+# S3 bucket names must be globally unique
+frontend_bucket_name   = "my-company-livecap-frontend"
+transcript_bucket_name = "my-company-livecap-transcripts"
+
+# Resource sizing
+ecs_task_cpu      = 512    # 0.5 vCPU
+ecs_task_memory   = 1024   # 1 GB RAM
+ecs_desired_count = 1      # Number of tasks
+
+# Lifecycle
+transcript_retention_days = 30
+session_timeout_seconds   = 1800
+
+# Production backend TLS:
+# alb_ssl_certificate_arn = "arn:aws:acm:REGION:ACCOUNT_ID:certificate/BACKEND_CERT_ID"
+# backend_domain_name     = "api.livecap.example.com"
+```
+
+#### 2. Initialize IaC Tool
+
+**Terraform:**
+```bash
+cd infrastructure/terraform
+terraform init
+terraform validate
+```
+
+---
+
+### Backend Deployment
+
+**IMPORTANT:** You must push a Docker image to ECR before the ECS service starts, as it will try to pull `:latest` immediately.
+
+#### Step 1: Build Docker Image
+
+```bash
+cd backend
+docker build -t livecap-backend .
+```
+
+The Dockerfile includes:
+- Python 3.11 slim base image
+- FastAPI application and dependencies
+- Uvicorn ASGI server
+- curl for health checks (required by ECS)
+- Environment variable configuration
+
+#### Step 2: Authenticate to ECR
+
+```bash
+# Get ECR repository URI from infrastructure outputs (after provisioning)
+# Or create ECR repository first:
+aws ecr create-repository --repository-name livecap-backend --region us-east-1
+
+# Authenticate Docker to ECR
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
+```
+
+#### Step 3: Tag and Push Image
+
+```bash
+# Tag with ECR repository URI
+docker tag livecap-backend:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/livecap-backend:latest
+
+# Push to ECR
+docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/livecap-backend:latest
+```
+
+**Tip:** Use `terraform output -raw ecr_repository_uri` to get the exact ECR URI.
+
+---
+
+### Infrastructure Provisioning
+
+#### Using Terraform
+
+**For First-Time Deployment:**
+
+```bash
+cd infrastructure/terraform
+
+# Step 1: Create ECR repository first
+terraform apply -target=aws_ecr_repository.backend
+
+# Step 2: Build and push Docker image (see Backend Deployment section above)
+
+# Step 3: Apply full infrastructure
+terraform plan
+terraform apply
+```
+
+Type `yes` when prompted. Deployment takes approximately 10-15 minutes.
+
+**Resources Created:**
+- 2 S3 buckets (frontend + transcripts with lifecycle policy)
+- 1 CloudFront distribution (CDN for frontend)
+- 1 Application Load Balancer (ALB with TLS termination)
+- 1 ECS Fargate cluster
+- 1 ECS service and task definition
+- 1 ECR repository
+- 2 CloudWatch log groups
+- IAM roles and policies
+- Security groups
+
+#### Save Infrastructure Outputs
+
+**Terraform:**
+```bash
+terraform output > outputs.txt
+```
+
+**Key Outputs:**
+- `cloudfront_url` — Frontend public HTTPS URL
+- `alb_backend_base_url` — Backend REST API URL
+- `alb_websocket_url` — Backend WebSocket URL
+- `ecr_repository_uri` — Docker registry
+- `frontend_bucket_name` — S3 frontend bucket
+- `transcript_bucket_name` — S3 transcript bucket
+- `ecs_cluster_name` — ECS cluster name
+- `ecs_service_name` — ECS service name
+- `cloudfront_distribution_id` — For cache invalidation
+- `cloudwatch_log_group_name` — Backend logs
+
+---
+
+### Frontend Deployment
+
+#### Step 1: Configure Backend URL
+
+Create production environment file:
+
+```bash
+cd frontend
+
+# Set backend URLs from Terraform outputs
+cat > .env.production << EOF
+VITE_API_BASE_URL=<alb_backend_base_url>
+VITE_WS_URL=<alb_websocket_url>
+EOF
+```
+
+Use `terraform output -raw alb_backend_base_url` and `terraform output -raw alb_websocket_url`. Production should return `https`/`wss` using `backend_domain_name`; development without an ALB certificate returns `http`/`ws` on the ALB DNS name.
+
+#### Step 2: Build Production Bundle
+
+```bash
+npm install
+npm run build
+```
+
+This creates an optimized build in `frontend/dist/`.
+
+#### Step 3: Upload to S3
+
+```bash
+# Sync build to Frontend_Bucket
+aws s3 sync dist/ s3://<frontend-bucket-name>/ --delete
+
+# Example with actual bucket name:
+aws s3 sync dist/ s3://my-company-livecap-frontend/ --delete
+```
+
+The `--delete` flag removes old files not in the new build.
+
+#### Step 4: Invalidate CloudFront Cache
+
+```bash
+aws cloudfront create-invalidation \
+  --distribution-id <cloudfront-distribution-id> \
+  --paths "/*"
+```
+
+Cache invalidation propagates globally in 1-2 minutes.
+
+**Verification:**
+```bash
+# Get CloudFront URL
+echo "Frontend URL: https://<cloudfront-domain>"
+
+# Test in browser - should load the LiveCap interface
+```
+
+---
+
+### Environment Configuration
+
+#### Backend Environment Variables
+
+Backend configuration is injected via ECS task definition environment variables:
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `AWS_REGION` | Yes | AWS region for all services | `us-east-1` |
+| `S3_BUCKET` | Yes | S3 bucket for transcripts | `my-livecap-transcripts` |
+| `ALLOWED_ORIGIN` | Yes | Frontend CloudFront URL | `https://d123abc.cloudfront.net` |
+| `SESSION_TIMEOUT` | No | Max session duration (seconds) | `1800` |
+| `DOWNLOAD_LINK_EXPIRATION` | No | Pre-signed URL expiration (seconds) | `86400` |
+| `MAX_SPEAKERS` | No | Transcribe diarization max speakers | `5` |
+| `CLOUDWATCH_LOG_GROUP` | No | CloudWatch log group | `/ecs/livecap-backend` |
+
+**Configuration in Terraform:**
+```hcl
+# In ecs.tf task definition
+environment = [
+  {
+    name  = "AWS_REGION"
+    value = var.aws_region
+  },
+  {
+    name  = "S3_BUCKET"
+    value = aws_s3_bucket.transcript.id
+  },
+  {
+    name  = "ALLOWED_ORIGIN"
+    value = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+  }
+]
+```
+
+**No AWS Credentials Required:** ECS tasks use the task IAM role for AWS SDK authentication — never embed access keys.
+
+#### Frontend Environment Variables
+
+Frontend configuration is set at build time:
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `VITE_API_BASE_URL` | Yes | Backend API endpoint | `https://alb-dns.elb.amazonaws.com` |
+| `VITE_WS_URL` | Yes | Backend WebSocket endpoint | `wss://alb-dns.elb.amazonaws.com/ws/transcribe` |
+
+Set in `.env.production` before running `npm run build`.
+
+---
+
+## ECS Service Operations
+
+### Updating Backend Code
+
+When you make changes to the backend application, follow these steps to deploy the new version:
+
+#### 1. Build and Push New Docker Image
+
+```bash
+cd backend
+
+# Build with version tag
+docker build -t livecap-backend:v2 .
+
+# Tag for ECR
+docker tag livecap-backend:v2 <account-id>.dkr.ecr.us-east-1.amazonaws.com/livecap-backend:v2
+
+# Push to ECR
+docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/livecap-backend:v2
+```
+
+#### 2. Update ECS Task Definition
+
+**Option A: Register new task definition revision (Terraform)**
+```bash
+cd infrastructure/terraform
+
+# Update the image tag in ecs.tf or variables
+# Then apply:
+terraform apply
+```
+
+**Option B: Register new task definition (AWS CLI)**
+```bash
+# Get current task definition
+aws ecs describe-task-definition \
+  --task-definition livecap-backend \
+  --query 'taskDefinition' > task-def.json
+
+# Edit task-def.json to update the image URI to :v2
+# Remove fields: taskDefinitionArn, revision, status, requiresAttributes, compatibilities, registeredAt, registeredBy
+
+# Register new revision
+aws ecs register-task-definition --cli-input-json file://task-def.json
+```
+
+#### 3. Update ECS Service
+
+```bash
+aws ecs update-service \
+  --cluster <ecs-cluster-name> \
+  --service <ecs-service-name> \
+  --task-definition livecap-backend:2 \
+  --force-new-deployment
+```
+
+Replace `livecap-backend:2` with the new task definition revision number.
+
+#### 4. Monitor Deployment
+
+```bash
+# Watch deployment progress
+aws ecs describe-services \
+  --cluster <ecs-cluster-name> \
+  --services <ecs-service-name> \
+  --query 'services[0].deployments'
+
+# Check running count
+aws ecs describe-services \
+  --cluster <ecs-cluster-name> \
+  --services <ecs-service-name> \
+  --query 'services[0].{Running:runningCount,Desired:desiredCount}'
+```
+
+Wait until `runningCount` equals `desiredCount` and the new deployment shows `PRIMARY` status.
+
+---
+
+### Scaling ECS Service
+
+#### Manual Scaling
+
+Adjust the number of running tasks:
+
+```bash
+# Scale to 3 tasks
+aws ecs update-service \
+  --cluster <ecs-cluster-name> \
+  --service <ecs-service-name> \
+  --desired-count 3
+```
+
+**Terraform:**
+```hcl
+# Update terraform.tfvars
+ecs_desired_count = 3
+
+# Apply
+terraform apply
+```
+
+#### Auto-Scaling (Optional Enhancement)
+
+Set up target tracking based on CPU utilization:
+
+```bash
+# Register scalable target
+aws application-autoscaling register-scalable-target \
+  --service-namespace ecs \
+  --resource-id service/<cluster-name>/<service-name> \
+  --scalable-dimension ecs:service:DesiredCount \
+  --min-capacity 1 \
+  --max-capacity 5
+
+# Create scaling policy
+aws application-autoscaling put-scaling-policy \
+  --service-namespace ecs \
+  --resource-id service/<cluster-name>/<service-name> \
+  --scalable-dimension ecs:service:DesiredCount \
+  --policy-name livecap-cpu-scaling \
+  --policy-type TargetTrackingScaling \
+  --target-tracking-scaling-policy-configuration \
+    '{"TargetValue":70.0,"PredefinedMetricSpecification":{"PredefinedMetricType":"ECSServiceAverageCPUUtilization"}}'
+```
+
+---
+
+### Rollback Procedure
+
+If a new deployment causes issues, rollback to the previous task definition:
+
+```bash
+# List task definition revisions
+aws ecs list-task-definitions --family-prefix livecap-backend
+
+# Update service to previous revision
+aws ecs update-service \
+  --cluster <ecs-cluster-name> \
+  --service <ecs-service-name> \
+  --task-definition livecap-backend:1
+```
+
+**Monitor rollback:**
+```bash
+aws ecs describe-services \
+  --cluster <ecs-cluster-name> \
+  --services <ecs-service-name> \
+  --query 'services[0].events[0:5]'
+```
+
+---
+
+## Monitoring and Troubleshooting
+
+### Viewing Logs
+
+#### Real-Time Log Streaming
+
+```bash
+# Tail all backend logs
+aws logs tail /ecs/livecap-backend --follow
+
+# View logs from last hour
+aws logs tail /ecs/livecap-backend --since 1h
+
+# Filter by specific session
+aws logs tail /ecs/livecap-backend --follow --filter-pattern "session_id:abc-123"
+```
+
+#### CloudWatch Log Insights Queries
+
+Navigate to CloudWatch → Log Insights and run queries:
+
+**Find all errors:**
+```
+fields @timestamp, @message
+| filter @message like /ERROR/
+| sort @timestamp desc
+| limit 50
+```
+
+**Session duration analysis:**
+```
+fields @timestamp, session_id, message
+| filter message like /session_start/ or message like /session_end/
+| stats count() by session_id
+```
+
+---
+
+### Checking Service Health
+
+#### ALB Target Health
+
+```bash
+# Get target group ARN from outputs
+aws elbv2 describe-target-health \
+  --target-group-arn <target-group-arn>
+```
+
+**Healthy Response:**
 ```json
 {
-  "Version": "2012-10-17",
-  "Statement": [
+  "TargetHealthDescriptions": [
     {
-      "Effect": "Allow",
-      "Action": [
-        "s3:PutObject",
-        "s3:GetObject"
-      ],
-      "Resource": "arn:aws:s3:::YOUR_BUCKET/transcripts/*"
+      "Target": {
+        "Id": "10.0.1.100",
+        "Port": 8000
+      },
+      "TargetHealth": {
+        "State": "healthy"
+      }
     }
   ]
 }
 ```
 
-Attach the role to your EC2 instance under **Actions → Security → Modify IAM Role**.
-
-### 3. Install Dependencies
-
-SSH into the instance and install Python 3.11+ and the project dependencies:
+#### ECS Service Status
 
 ```bash
-# Amazon Linux 2023
-sudo dnf install -y python3.11 python3.11-pip git nginx
+# Check service health
+aws ecs describe-services \
+  --cluster <ecs-cluster-name> \
+  --services <ecs-service-name> \
+  --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount,Healthy:healthCheckGracePeriodSeconds}'
 
-# Ubuntu 22.04
-# sudo apt update && sudo apt install -y python3.11 python3.11-pip git nginx
+# List running tasks
+aws ecs list-tasks \
+  --cluster <ecs-cluster-name> \
+  --service-name <ecs-service-name>
 
-# Clone the repository
-git clone https://github.com/your-org/livecap.git
-cd livecap/backend
-
-# Install Python packages
-pip3.11 install -r requirements.txt
+# Describe specific task
+aws ecs describe-tasks \
+  --cluster <ecs-cluster-name> \
+  --tasks <task-arn>
 ```
 
-### 4. Configure Environment
+#### Application Health Check
 
 ```bash
-cp .env.example .env
-# Edit .env — set S3_BUCKET, AWS_REGION, ALLOWED_ORIGIN (your CloudFront URL), etc.
-nano .env
+# Test health endpoint directly
+curl <alb_backend_base_url>/api/health
 ```
 
-### 5. Run with Uvicorn (manual test)
-
-```bash
-cd livecap/backend
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+**Expected Response:**
+```json
+{
+  "status": "healthy",
+  "version": "1.0.0"
+}
 ```
-
-Visit `http://127.0.0.1:8000/api/health` on the instance to confirm the backend is running.
-
-### 6. systemd Service
-
-A ready-made systemd unit is provided at `deploy/livecap.service`. Copy it to systemd and enable it:
-
-```bash
-# Adjust the WorkingDirectory and ExecStart paths in the file if needed
-sudo cp deploy/livecap.service /etc/systemd/system/livecap.service
-sudo systemctl daemon-reload
-sudo systemctl enable livecap
-sudo systemctl start livecap
-sudo systemctl status livecap
-```
-
-Logs are available via:
-
-```bash
-sudo journalctl -u livecap -f
-```
-
-### 7. Nginx Reverse Proxy (TLS + WSS)
-
-Nginx terminates TLS on port 443 and forwards both HTTPS and WSS connections to the Uvicorn process on `127.0.0.1:8000`.
-
-A configuration template is provided at `deploy/nginx.conf`. Before applying it:
-
-1. Obtain a TLS certificate (e.g., via Let's Encrypt / Certbot) for your EC2 domain.
-2. Update the `server_name`, `ssl_certificate`, and `ssl_certificate_key` directives in `nginx.conf`.
-3. Apply the configuration:
-
-```bash
-sudo cp deploy/nginx.conf /etc/nginx/conf.d/livecap.conf
-sudo nginx -t          # verify config syntax
-sudo systemctl reload nginx
-```
-
-The WebSocket endpoint is then reachable at `wss://your-ec2-domain/ws/transcribe`.
 
 ---
 
-## Frontend Setup (S3 + CloudFront)
+### Common Issues
 
-### 1. Install and Build
+#### Issue: ECS Tasks Not Starting
 
+**Symptoms:** `runningCount` stays at 0; tasks fail health checks
+
+**Debugging Steps:**
 ```bash
-cd livecap/frontend
-npm install
+# Check stopped tasks
+aws ecs list-tasks \
+  --cluster <ecs-cluster-name> \
+  --desired-status STOPPED \
+  --max-results 5
 
-# Set the backend WebSocket and REST API URLs before building
-# Replace the URL with your EC2 domain
-VITE_WS_URL=wss://your-ec2-domain/ws/transcribe \
-VITE_API_BASE_URL=https://your-ec2-domain \
-npm run build
+# Get stop reason
+aws ecs describe-tasks \
+  --cluster <ecs-cluster-name> \
+  --tasks <stopped-task-arn> \
+  --query 'tasks[0].{StopReason:stoppedReason,StopCode:stopCode}'
 ```
 
-The static bundle is output to `frontend/dist/`.
+**Common Causes:**
+1. **Docker image not found in ECR** → Push image to ECR
+2. **Insufficient IAM permissions** → Check task role policies
+3. **Container startup failure** → Check CloudWatch logs for errors
+4. **Health check failing** → Verify `/api/health` endpoint works
 
-### 2. Create and Configure the S3 Bucket
-
+**Solutions:**
 ```bash
-# Create the bucket (choose a unique name)
-aws s3 mb s3://livecap-frontend --region us-east-1
+# Verify image exists
+aws ecr describe-images \
+  --repository-name livecap-backend \
+  --query 'imageDetails[*].imageTags'
 
-# Disable public access block (CloudFront will control access via OAC)
-aws s3api put-public-access-block \
-  --bucket livecap-frontend \
-  --public-access-block-configuration \
-    "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+# Check task execution role
+aws iam get-role --role-name ecsTaskExecutionRole
+
+# Test container locally
+docker run -p 8000:8000 <ecr-uri>:latest
+curl http://localhost:8000/api/health
 ```
 
-### 3. Upload the Static Bundle
+#### Issue: ALB Health Checks Failing
 
+**Symptoms:** Tasks start but immediately stop; ALB reports unhealthy targets
+
+**Debugging Steps:**
 ```bash
-aws s3 sync frontend/dist/ s3://livecap-frontend/ \
-  --delete \
-  --cache-control "max-age=31536000,immutable" \
-  --exclude "index.html"
-
-# Upload index.html separately with no-cache so CloudFront always fetches the latest
-aws s3 cp frontend/dist/index.html s3://livecap-frontend/index.html \
-  --cache-control "no-cache,no-store,must-revalidate"
+# Check target health details
+aws elbv2 describe-target-health \
+  --target-group-arn <target-group-arn> \
+  --query 'TargetHealthDescriptions[*].{Target:Target.Id,Health:TargetHealth.State,Reason:TargetHealth.Reason}'
 ```
 
-### 4. Create a CloudFront Distribution
+**Common Causes:**
+1. **Security group misconfiguration** → ECS task SG must allow inbound 8000 from ALB SG
+2. **Container port mismatch** → Task definition port must match application port (8000)
+3. **Health check path incorrect** → Must be `/api/health`
+4. **Application startup delay** → Increase health check grace period
 
-1. In the AWS console, go to **CloudFront → Create distribution**.
-2. **Origin domain:** select your S3 bucket (`livecap-frontend.s3.amazonaws.com`).
-3. **Origin access:** choose **Origin access control (OAC)**. Create a new OAC and copy the generated bucket policy into your S3 bucket's **Permissions → Bucket policy**.
-4. **Viewer protocol policy:** set to **Redirect HTTP to HTTPS**.
-5. **Default root object:** enter `index.html`.
-6. **Error pages:** add a custom error response — HTTP error code `403` → Response page `/index.html`, HTTP response code `200` (enables client-side routing).
-7. Click **Create distribution** and wait for the status to change to **Deployed**.
-8. Note the **Distribution domain name** (e.g., `d1234abcd.cloudfront.net`). This is your public HTTPS URL.
-
-### 5. Update the Backend CORS Origin
-
-Set `ALLOWED_ORIGIN` in `backend/.env` to your CloudFront URL:
-
-```
-ALLOWED_ORIGIN=https://d1234abcd.cloudfront.net
-```
-
-Then restart the backend service:
-
+**Solutions:**
 ```bash
-sudo systemctl restart livecap
+# Verify security group rules
+aws ec2 describe-security-groups \
+  --group-ids <ecs-task-sg-id> \
+  --query 'SecurityGroups[0].IpPermissions'
+
+# Update health check grace period
+aws ecs update-service \
+  --cluster <ecs-cluster-name> \
+  --service <ecs-service-name> \
+  --health-check-grace-period-seconds 120
 ```
+
+#### Issue: WebSocket Connection Fails
+
+**Symptoms:** Frontend connects but WebSocket upgrade fails; CORS errors
+
+**Debugging Steps:**
+```bash
+# Check backend logs for connection errors
+aws logs tail /ecs/livecap-backend --follow --filter-pattern "WebSocket"
+
+# Test WebSocket with wscat
+npm install -g wscat
+wscat -c <alb_websocket_url>
+```
+
+**Common Causes:**
+1. **CORS origin mismatch** → `ALLOWED_ORIGIN` must match CloudFront URL exactly
+2. **ALB doesn't support WebSocket upgrade** → ALB supports this by default; verify listener config
+3. **Security group blocks traffic** → Check ALB → ECS task connectivity
+
+**Solutions:**
+```bash
+# Verify ALLOWED_ORIGIN environment variable in task definition
+aws ecs describe-task-definition \
+  --task-definition livecap-backend \
+  --query 'taskDefinition.containerDefinitions[0].environment'
+
+# Update task definition with correct ALLOWED_ORIGIN
+# Then force new deployment
+```
+
+#### Issue: High AWS Costs
+
+**Symptoms:** Unexpected Transcribe/Translate charges
+
+**Cost Monitoring:**
+```bash
+# Enable CloudWatch billing alerts
+aws cloudwatch put-metric-alarm \
+  --alarm-name livecap-high-cost \
+  --alarm-description "Alert when estimated charges exceed threshold" \
+  --metric-name EstimatedCharges \
+  --namespace AWS/Billing \
+  --statistic Maximum \
+  --period 21600 \
+  --threshold 100 \
+  --comparison-operator GreaterThanThreshold
+```
+
+**Main Cost Drivers:**
+1. **Amazon Transcribe:** ~$0.024/minute × 2 streams = $0.048/minute
+2. **Amazon Translate:** ~$15 per million characters
+3. **ECS Fargate:** ~$0.04/vCPU-hour + $0.004/GB-hour
+4. **ALB:** ~$0.0225/hour + data processing
+
+**Optimization Strategies:**
+- Set shorter `SESSION_TIMEOUT` to prevent abandoned sessions
+- Use AWS Free Tier during testing (S3, CloudWatch)
+- Set S3 lifecycle retention to 7 days instead of 30
+- Monitor usage in AWS Cost Explorer
+- Consider single-language Transcribe stream if accuracy permits (50% cost reduction)
 
 ---
 
@@ -264,8 +748,8 @@ The API is available at `http://localhost:8000`. Health check: `http://localhost
 ```bash
 cd livecap/frontend
 npm install
-VITE_WS_URL=ws://localhost:8000/ws/transcribe \
 VITE_API_BASE_URL=http://localhost:8000 \
+VITE_WS_URL=ws://localhost:8000/ws/transcribe \
 npm run dev
 ```
 
@@ -277,23 +761,162 @@ The app opens at `http://localhost:5173`.
 
 ## Architecture Overview
 
+### Production Deployment Architecture
+
 ```
-Browser
-  │
-  ├── HTTPS ──► Amazon CloudFront ──► Amazon S3 (static React bundle)
-  │
-  └── WSS ───► Nginx (TLS termination) on EC2
-                  └──► Uvicorn + FastAPI (WebSocket + REST)
-                            ├──► Amazon Transcribe Streaming
-                            ├──► Amazon Translate
-                            ├──► Amazon S3 (transcript storage)
-                            └──► Amazon CloudWatch (logging)
+┌──────────────────────────────────────────────────────────────────────┐
+│                        End User Browser                              │
+└──────────────┬────────────────────────────────┬──────────────────────┘
+               │ HTTPS (static assets)          │ WSS (audio stream)
+               ▼                                ▼
+ ┌──────────────────────────┐       ┌────────────────────────────────┐
+ │ Amazon CloudFront (CDN)  │       │ Application Load Balancer (ALB)│
+ │   + TLS certificate      │       │   + TLS termination            │
+ └───────────┬──────────────┘       │   + Health checks              │
+             │ origin fetch         │   + Target groups              │
+             ▼                      └────────────┬───────────────────┘
+ ┌──────────────────────────┐                   │ HTTP/WSS (internal)
+ │ Frontend_Bucket (S3)     │                   ▼
+ │ - Static React bundle    │       ┌────────────────────────────────┐
+ │ - Public read (CF only)  │       │  Amazon ECS Fargate Service    │
+ └──────────────────────────┘       │  ┌──────────────────────────┐  │
+                                    │  │  ECS Task (Docker)       │  │
+                                    │  │  ┌────────────────────┐  │  │
+                                    │  │  │ FastAPI + Uvicorn  │  │  │
+                                    │  │  │ /api/health        │  │  │
+                                    │  │  │ /ws/transcribe     │  │  │
+                                    │  │  └────────────────────┘  │  │
+                                    │  └──────────────────────────┘  │
+                                    └────────────┬───────────────────┘
+                                                 │ AWS SDK (boto3)
+                                                 │ + IAM Task Role
+                                                 ▼
+                   ┌────────────────────────────────────────────────────┐
+                   │ AWS Services                                       │
+                   │ - Amazon Transcribe Streaming                      │
+                   │ - Amazon Translate                                 │
+                   │ - Transcript_Bucket (S3, private)                  │
+                   │ - Amazon CloudWatch Logs                           │
+                   └────────────────────────────────────────────────────┘
 ```
 
-- **Frontend** — React + TypeScript, built with Vite, served globally over HTTPS via Amazon CloudFront backed by Amazon S3.
-- **Backend** — FastAPI (Python 3.11+) running under Uvicorn on a single Amazon EC2 instance. Nginx on the same instance terminates TLS and upgrades WebSocket connections to WSS.
-- **AWS credentials** — Provided exclusively by the EC2 instance IAM role. No credentials are stored in environment variables or source code.
-- **Transcription** — Amazon Transcribe Streaming with automatic language identification (`vi-VN` / `en-US`) and speaker diarization.
-- **Translation** — Amazon Translate, called per finalized segment (vi → en or en → vi).
-- **Storage** — Exported TXT transcripts are uploaded to Amazon S3; time-limited pre-signed URLs are returned to the browser.
-- **Logging** — Structured JSON logs sent to Amazon CloudWatch Logs via the `watchtower` library; falls back to stdout in development.
+### Components
+
+- **Frontend:** React + TypeScript application built with Vite, hosted on Amazon S3, distributed globally via Amazon CloudFront with HTTPS
+- **Backend:** FastAPI (Python 3.11+) packaged as a Docker container, running on Amazon ECS Fargate
+- **Load Balancer:** Application Load Balancer terminates TLS and routes HTTPS and WSS traffic to ECS tasks
+- **Transcription:** Amazon Transcribe Streaming with parallel Vietnamese (vi-VN) and English (en-US) fixed-language streams for accurate bilingual transcription
+- **Translation:** Amazon Translate for Vietnamese ↔ English translation
+- **Storage:** Two isolated S3 buckets:
+  - Frontend_Bucket: Static assets (public via CloudFront OAC)
+  - Transcript_Bucket: Exported transcripts (private, backend-only access with IAM role)
+- **Monitoring:** Amazon CloudWatch Logs with structured JSON logging
+- **Container Registry:** Amazon ECR for Docker image storage
+
+### Key Design Decisions
+
+**Why ECS Fargate + ALB?**
+- **Operational Excellence:** Automatic task restart; container packaging ensures consistency; CloudWatch integration
+- **Security:** ALB TLS termination; IAM task roles (no embedded credentials); isolated S3 buckets
+- **Reliability:** ECS auto-restarts failed tasks; ALB routes only to healthy targets; stateless design enables scaling
+- **Performance:** Right-sized Fargate tasks; CloudFront CDN reduces latency globally
+- **Cost Optimization:** Pay-per-use pricing; no idle EC2 costs; S3 lifecycle policies control storage costs
+
+---
+
+## Cost Optimization
+
+### Estimated Monthly Costs
+
+#### Development Environment (Low Usage - 10 hours/month)
+
+| Service | Configuration | Monthly Cost |
+|---------|--------------|--------------|
+| ECS Fargate | 1 task × 0.5 vCPU × 1 GB × 10 hours | ~$0.60 |
+| ALB | Partial hours + minimal data processing | ~$16 |
+| S3 Storage | 1 GB | $0.02 |
+| CloudFront | 10 GB transfer | $1 |
+| Transcribe | 10 hours × 2 streams × $0.024/min | $288 |
+| Translate | 100K characters | $1.50 |
+| **Total** | | **~$307/month** |
+
+#### Production Environment (Moderate Usage - 100 hours/month)
+
+| Service | Configuration | Monthly Cost |
+|---------|--------------|--------------|
+| ECS Fargate | 1 task × 0.5 vCPU × 1 GB × 730 hours | ~$21 |
+| ALB | Full month + data processing | ~$23 |
+| S3 Storage | 10 GB | $0.23 |
+| CloudFront | 100 GB transfer | $8.50 |
+| Transcribe | 100 hours × 2 streams × $0.024/min | $2,880 |
+| Translate | 5M characters | $75 |
+| **Total** | | **~$3,008/month** |
+
+**Note:** Transcribe and Translate dominate costs at scale.
+
+### Cost Reduction Strategies
+
+1. **AWS Free Tier:** During testing:
+   - S3: 5 GB storage, 20,000 GET requests
+   - CloudFront: 1 TB data transfer out
+   - CloudWatch Logs: 5 GB ingestion
+
+2. **Session Timeout:** Set `SESSION_TIMEOUT=1800` (30 minutes) to prevent abandoned long-running transcriptions
+
+3. **S3 Lifecycle Policy:** Reduce transcript retention from 30 days to 7 days if acceptable:
+   ```bash
+   # Update in Terraform variables
+   transcript_retention_days = 7
+   ```
+
+4. **Single-Language Detection (Future):** Consider replacing dual-stream Transcribe with single `identify-language` mode if accuracy permits (50% cost reduction on Transcribe)
+
+5. **Monitor Usage:**
+   ```bash
+   # Set up billing alerts
+   aws cloudwatch put-metric-alarm \
+     --alarm-name livecap-cost-alert \
+     --metric-name EstimatedCharges \
+     --namespace AWS/Billing \
+     --threshold 50 \
+     --comparison-operator GreaterThanThreshold
+   ```
+
+6. **Scale Down Off-Hours:** For development environments, manually scale to 0 tasks during non-working hours:
+   ```bash
+   aws ecs update-service \
+     --cluster <cluster> \
+     --service <service> \
+     --desired-count 0
+   ```
+
+---
+
+## Additional Resources
+
+### Documentation
+
+- **Detailed Deployment Guide:** `infrastructure/DEPLOYMENT_GUIDE.md` — Comprehensive IaC setup and deployment instructions
+- **Quick Reference:** `infrastructure/QUICK_REFERENCE.md` — One-command deployment and common operations
+- **ECS Configuration:** `deploy/ECS_DEPLOYMENT.md` — Task definitions, IAM roles, and service configuration
+
+### AWS Documentation
+
+- [Amazon ECS on Fargate](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/AWS_Fargate.html)
+- [Application Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/)
+- [Amazon Transcribe Streaming](https://docs.aws.amazon.com/transcribe/latest/dg/streaming.html)
+- [Amazon Translate](https://docs.aws.amazon.com/translate/)
+- [Amazon CloudFront](https://docs.aws.amazon.com/cloudfront/)
+
+### Support
+
+For issues or questions:
+1. Check the [Monitoring and Troubleshooting](#monitoring-and-troubleshooting) section above
+2. Review CloudWatch Logs for error messages
+3. Consult the detailed deployment guides in `infrastructure/`
+
+---
+
+## License
+
+[Your license information here]

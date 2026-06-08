@@ -48,9 +48,6 @@ const CHUNK_DURATION_S = 0.1;
 /** Number of 16 kHz samples per emitted chunk. */
 const CHUNK_SAMPLES = Math.round(TARGET_SAMPLE_RATE * CHUNK_DURATION_S); // 1 600
 
-/** Low-level noise is replaced by digital silence instead of dropping chunks. */
-const NOISE_GATE_RMS_THRESHOLD = 0.01;
-
 // ---------------------------------------------------------------------------
 // Processor implementation
 // ---------------------------------------------------------------------------
@@ -124,11 +121,9 @@ class PcmProcessor extends AudioWorkletProcessor {
     // Allocate a fresh ArrayBuffer so we can transfer (zero-copy) ownership.
     const transferBuffer = new ArrayBuffer(this._writePos * 2);
     const view = new DataView(transferBuffer);
-    const rms = Math.sqrt(this._sumSquares / Math.max(this._writePos, 1));
-    const shouldMute = rms < NOISE_GATE_RMS_THRESHOLD;
 
     for (let i = 0; i < this._writePos; i += 1) {
-      view.setInt16(i * 2, shouldMute ? 0 : this._buffer[i], true);
+      view.setInt16(i * 2, this._buffer[i], true);
     }
 
     this._writePos = 0;

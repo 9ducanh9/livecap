@@ -138,15 +138,10 @@ export function useAudioCapture(
       targetSampleRate: AUDIO_SAMPLE_RATE,
     });
 
-    // 3. Load the PCM processor worklet module.
-    //    Vite resolves the URL at build time. The worklet registers itself
-    //    under the name 'pcm-processor'.
+    // 3. Load the PCM processor worklet module. Keep this as a plain JS file
+    //    in public/ because browsers load AudioWorklet modules directly.
     try {
-      const workerUrl = new URL(
-        '../workers/pcm-processor.worklet.ts',
-        import.meta.url
-      );
-      await audioCtx.audioWorklet.addModule(workerUrl.href);
+      await audioCtx.audioWorklet.addModule('/worklets/pcm-processor.js');
     } catch (err) {
       audioCtx.close().catch(() => undefined);
       releaseStream(stream);

@@ -1,0 +1,72 @@
+# Example Terraform Variables Configuration
+# Copy this file to terraform.tfvars and customize for your deployment
+
+# AWS Configuration
+aws_region   = "us-east-1"
+environment  = "dev"
+project_name = "livecap"
+
+# S3 Bucket Names (must be globally unique)
+# If left empty, bucket names will be auto-generated with account ID suffix
+# frontend_bucket_name   = "my-company-livecap-frontend-dev"
+# transcript_bucket_name = "my-company-livecap-transcripts-dev"
+
+# Transcript Retention
+transcript_retention_days = 30  # Auto-delete transcripts after 30 days
+
+# ECS Task Configuration
+ecs_task_cpu      = 512   # 0.5 vCPU
+ecs_task_memory   = 1024  # 1 GB RAM
+ecs_desired_count = 1     # Number of tasks to run initially
+
+# ECS Autoscaling
+ecs_min_capacity = 1  # Minimum tasks
+ecs_max_capacity = 4  # Maximum tasks (scales based on CPU/memory)
+
+autoscaling_target_cpu    = 70  # Scale out when CPU > 70%
+autoscaling_target_memory = 80  # Scale out when memory > 80%
+
+# Application Configuration
+session_timeout_seconds           = 1800  # 30 minutes
+download_link_expiration_seconds  = 86400 # 24 hours
+max_speakers                      = 5
+
+# Health Check Configuration
+health_check_interval = 30  # seconds
+health_check_timeout  = 5   # seconds
+healthy_threshold     = 2   # consecutive successes
+unhealthy_threshold   = 3   # consecutive failures
+
+# CloudWatch Logs
+log_retention_days = 7  # Retain logs for 7 days
+
+# CloudFront Configuration
+cloudfront_price_class = "PriceClass_100"  # Use edge locations in North America and Europe
+
+# TLS/SSL Configuration
+# Provide an ACM certificate ARN for the backend ALB in the same region as the ALB.
+# Leave empty only for development HTTP mode.
+# alb_ssl_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/backend-cert-id"
+# backend_domain_name = "api.livecap.example.com"
+
+# Provide your ACM certificate ARN for a CloudFront custom domain (certificate must be in us-east-1)
+# cloudfront_ssl_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/abc123..."
+# custom_domain = "livecap.example.com"
+
+# Network Configuration (optional)
+# If not provided, Terraform will use the default VPC and auto-discover subnets
+# vpc_id             = "vpc-xxxxx"
+# public_subnet_ids  = ["subnet-xxxxx", "subnet-yyyyy"]
+# private_subnet_ids = ["subnet-aaaaa", "subnet-bbbbb"]
+
+# ECR Configuration
+ecr_repository_name      = "livecap-backend"
+ecr_image_tag_mutability = "MUTABLE"
+ecr_scan_on_push         = true
+
+# Additional Resource Tags
+tags = {
+  Owner       = "DevOps Team"
+  CostCenter  = "Engineering"
+  Terraform   = "true"
+}

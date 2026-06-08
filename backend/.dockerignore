@@ -1,0 +1,48 @@
+# Exclude Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Exclude virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Exclude local development files
+.env
+.env.local
+
+# Exclude test files and test cache
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+*.test
+
+# Exclude version control
+.git/
+.gitignore
+
+# Exclude IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Exclude documentation
+README.md
+*.md
+docs/
+
+# Exclude CI/CD files
+.github/
+.gitlab-ci.yml
+
+# Exclude build artifacts
+dist/
+build/
+*.egg-info/

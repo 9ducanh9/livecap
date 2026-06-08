@@ -1,0 +1,12 @@
+{
+  "Rules": [
+    {
+      "Id": "DeleteOldTranscripts",
+      "Status": "Enabled",
+      "Prefix": "transcripts/",
+      "Expiration": {
+        "Days": 30
+      }
+    }
+  ]
+}
