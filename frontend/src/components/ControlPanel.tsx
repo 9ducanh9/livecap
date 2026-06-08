@@ -179,6 +179,10 @@ export default function ControlPanel({
         </button>
       </div>
 
+      <p className="max-w-md text-center text-xs text-slate-500">
+        Please stop recording when you finish so LiveCap does not keep processing audio.
+      </p>
+
       {permissionDenied && (
         <p role="alert" aria-live="assertive" className="text-center text-sm text-red-600">
           Microphone access is required to capture audio
