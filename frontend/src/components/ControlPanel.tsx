@@ -180,7 +180,8 @@ export default function ControlPanel({
       </div>
 
       <p className="max-w-md text-center text-xs text-slate-500">
-        Please stop recording when you finish so LiveCap does not keep processing audio.
+        Lưu ý: bấm Stop khi ghi âm xong để tránh phát sinh phí AWS Transcribe,
+        Translate và S3 nếu có export transcript.
       </p>
 
       {permissionDenied && (
