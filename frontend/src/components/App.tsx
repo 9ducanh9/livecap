@@ -14,7 +14,7 @@
  * Requirements: 1.1, 1.4, 1.5, 2.6, 6.1, 6.2
  */
 
-import { useCallback, useReducer } from 'react';
+import { useCallback, useEffect, useReducer, useState } from 'react';
 import type { AppState, Segment } from '../types/index';
 import { useAudioCapture } from '../hooks/useAudioCapture';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -117,6 +117,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
 export default function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(Date.now());
 
   // ------------------------------------------------------------------
   // WebSocket hook — message parsing → state updates
@@ -148,10 +150,34 @@ export default function App() {
   // ------------------------------------------------------------------
   // Audio capture hook — chunks → WebSocket
   // ------------------------------------------------------------------
-  const { isCapturing, permissionDenied, startCapture, stopCapture } =
-    useAudioCapture({
-      onChunk: sendAudioChunk,
-    });
+  const {
+    isCapturing,
+    permissionDenied,
+    audioInputDevices,
+    selectedDeviceId,
+    setSelectedDeviceId,
+    refreshAudioInputDevices,
+    startCapture,
+    stopCapture,
+  } = useAudioCapture({
+    onChunk: sendAudioChunk,
+  });
+
+  useEffect(() => {
+    if (!isCapturing) {
+      setRecordingStartedAt(null);
+      return undefined;
+    }
+
+    setNowMs(Date.now());
+    const intervalId = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isCapturing]);
 
   // ------------------------------------------------------------------
   // Start: connect WebSocket then begin audio capture
@@ -161,6 +187,7 @@ export default function App() {
     connect();
     try {
       await startCapture();
+      setRecordingStartedAt(Date.now());
       dispatch({ type: 'SET_CAPTURING', value: true });
     } catch {
       // Permission denied is exposed via permissionDenied; other errors
@@ -171,6 +198,7 @@ export default function App() {
           error: 'Failed to start audio capture. Please check your microphone.',
         });
       }
+      setRecordingStartedAt(null);
       disconnect();
     }
   }, [connect, disconnect, startCapture, permissionDenied]);
@@ -181,6 +209,7 @@ export default function App() {
   const handleStop = useCallback(() => {
     stopCapture();
     disconnect();
+    setRecordingStartedAt(null);
     dispatch({ type: 'SET_CAPTURING', value: false });
   }, [stopCapture, disconnect]);
 
@@ -201,6 +230,11 @@ export default function App() {
     // For simplicity, we let ControlPanel show normal "Start" state on first
     // render and rely on the disabled flag only when explicitly needed.
     false;
+
+  const recordingDurationSeconds =
+    recordingStartedAt !== null && isCapturing
+      ? Math.max(0, Math.floor((nowMs - recordingStartedAt) / 1_000))
+      : 0;
 
   // ---------------------------------------------------------------------------
   // Render helpers
@@ -308,6 +342,11 @@ export default function App() {
             isCapturing={isCapturing}
             isConnecting={wsIsConnecting}
             permissionDenied={permissionDenied}
+            recordingDurationSeconds={recordingDurationSeconds}
+            audioInputDevices={audioInputDevices}
+            selectedDeviceId={selectedDeviceId}
+            onSelectedDeviceChange={setSelectedDeviceId}
+            onRefreshAudioInputDevices={refreshAudioInputDevices}
             onStart={handleStart}
             onStop={handleStop}
           />

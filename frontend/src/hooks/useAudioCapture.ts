@@ -14,7 +14,7 @@
  *    (Requirement 1.4).
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -26,6 +26,8 @@ const AUDIO_SAMPLE_RATE = 16_000;
 /** Enable verbose audio pipeline logs with VITE_AUDIO_DEBUG=true. */
 const DEBUG = import.meta.env.VITE_AUDIO_DEBUG === 'true';
 
+const DEFAULT_AUDIO_INPUT_ID = 'default';
+
 // ---------------------------------------------------------------------------
 // Public interface
 // ---------------------------------------------------------------------------
@@ -33,6 +35,11 @@ const DEBUG = import.meta.env.VITE_AUDIO_DEBUG === 'true';
 export interface UseAudioCaptureOptions {
   /** Called with each PCM ArrayBuffer chunk emitted by the AudioWorklet. */
   onChunk: (chunk: ArrayBuffer) => void;
+}
+
+export interface AudioInputDevice {
+  deviceId: string;
+  label: string;
 }
 
 export interface UseAudioCaptureReturn {
@@ -43,6 +50,14 @@ export interface UseAudioCaptureReturn {
    * The UI should show "Microphone access is required to capture audio".
    */
   permissionDenied: boolean;
+  /** Available microphone input devices reported by the browser. */
+  audioInputDevices: AudioInputDevice[];
+  /** Selected microphone deviceId. "default" lets the browser choose. */
+  selectedDeviceId: string;
+  /** Select the microphone used by the next startCapture call. */
+  setSelectedDeviceId: (deviceId: string) => void;
+  /** Refresh the browser audio input device list. */
+  refreshAudioInputDevices: () => Promise<void>;
   /** Start capturing audio. Resolves once the pipeline is ready (or rejects on error). */
   startCapture: () => Promise<void>;
   /** Stop capturing audio and release the microphone. */
@@ -63,12 +78,68 @@ export function useAudioCapture(
 
   const [isCapturing, setIsCapturing] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [audioInputDevices, setAudioInputDevices] = useState<AudioInputDevice[]>([]);
+  const [selectedDeviceId, setSelectedDeviceIdState] = useState(DEFAULT_AUDIO_INPUT_ID);
 
   // Hold live references so stopCapture() can tear everything down regardless
   // of how many times the component re-renders between start and stop.
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const selectedDeviceIdRef = useRef(DEFAULT_AUDIO_INPUT_ID);
+
+  const setSelectedDeviceId = useCallback((deviceId: string) => {
+    const nextDeviceId = deviceId || DEFAULT_AUDIO_INPUT_ID;
+    selectedDeviceIdRef.current = nextDeviceId;
+    setSelectedDeviceIdState(nextDeviceId);
+  }, []);
+
+  const refreshAudioInputDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices
+        .filter(
+          (device) =>
+            device.kind === 'audioinput' &&
+            device.deviceId !== '' &&
+            device.deviceId !== DEFAULT_AUDIO_INPUT_ID
+        )
+        .map((device, index) => ({
+          deviceId: device.deviceId || DEFAULT_AUDIO_INPUT_ID,
+          label: device.label || `Microphone ${index + 1}`,
+        }));
+
+      setAudioInputDevices(inputs);
+
+      const currentDeviceId = selectedDeviceIdRef.current;
+      const selectedDeviceStillExists =
+        currentDeviceId === DEFAULT_AUDIO_INPUT_ID ||
+        inputs.some((device) => device.deviceId === currentDeviceId);
+
+      if (!selectedDeviceStillExists) {
+        setSelectedDeviceId(DEFAULT_AUDIO_INPUT_ID);
+      }
+    } catch (err) {
+      debugLog('audio-input-enumeration-failed', { error: err });
+    }
+  }, [setSelectedDeviceId]);
+
+  useEffect(() => {
+    void refreshAudioInputDevices();
+
+    if (!navigator.mediaDevices?.addEventListener) return undefined;
+
+    const handleDeviceChange = () => {
+      void refreshAudioInputDevices();
+    };
+
+    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+    return () => {
+      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+    };
+  }, [refreshAudioInputDevices]);
 
   // ------------------------------------------------------------------
   // startCapture — build the capture pipeline
@@ -85,20 +156,28 @@ export function useAudioCapture(
     //    to open the device at the target rate. Some browsers may ignore the
     //    sampleRate hint; the PCM worklet handles downsampling internally.
     let stream: MediaStream;
+    const requestedDeviceId = selectedDeviceIdRef.current;
+    const audioConstraints: MediaTrackConstraints = {
+      sampleRate: AUDIO_SAMPLE_RATE,
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      channelCount: 1,
+      ...(requestedDeviceId !== DEFAULT_AUDIO_INPUT_ID
+        ? { deviceId: { exact: requestedDeviceId } }
+        : {}),
+    };
+
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: AUDIO_SAMPLE_RATE,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          channelCount: 1,
-        },
+        audio: audioConstraints,
       });
       debugLog('microphone-started', {
         trackCount: stream.getAudioTracks().length,
         requestedSampleRate: AUDIO_SAMPLE_RATE,
+        requestedDeviceId,
       });
+      void refreshAudioInputDevices();
     } catch (err) {
       // NotAllowedError / PermissionDeniedError → user denied (Requirement 1.3).
       const isDenied =
@@ -180,7 +259,7 @@ export function useAudioCapture(
     }
 
     setIsCapturing(true);
-  }, []);
+  }, [refreshAudioInputDevices]);
 
   // ------------------------------------------------------------------
   // stopCapture — tear down the pipeline and release the microphone
@@ -213,6 +292,10 @@ export function useAudioCapture(
   return {
     isCapturing,
     permissionDenied,
+    audioInputDevices,
+    selectedDeviceId,
+    setSelectedDeviceId,
+    refreshAudioInputDevices,
     startCapture,
     stopCapture,
   };
@@ -240,7 +323,7 @@ function computePcm16Rms(chunk: ArrayBuffer): number {
   return Math.sqrt(sumSquares / samples.length);
 }
 
-function debugLog(message: string, data: Record<string, number>): void {
+function debugLog(message: string, data: Record<string, unknown>): void {
   if (!DEBUG) return;
   console.debug(`[useAudioCapture] ${message}`, data);
 }
