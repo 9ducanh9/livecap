@@ -54,6 +54,7 @@ from app.models import (
     ErrorMessage,
     FinalizedSegmentMessage,
     PartialSegmentMessage,
+    PongMessage,
     SessionEndMessage,
     SessionStartMessage,
     StopMessage,
@@ -66,6 +67,7 @@ from app.services.logging_service import (
     log_websocket_connect,
     log_websocket_disconnect,
 )
+from app.services.session_registry import active_session_registry
 from app.services.transcription import TranscriptionService
 from app.services.translation import translate_segment
 from app.utils.audio import validate_audio_chunk
@@ -223,6 +225,21 @@ def _resolve_language_mode(
     source = websocket.query_params.get("source") or _DEFAULT_LANGUAGE_MODE.source_language_code
     target = websocket.query_params.get("target") or _DEFAULT_LANGUAGE_MODE.target_language_code
     return _ALLOWED_LANGUAGE_MODES.get((source, target))
+
+
+def _resolve_client_ip(websocket: WebSocket) -> str:
+    """Resolve the caller IP, preferring ALB/CloudFront forwarded headers."""
+
+    forwarded_for = websocket.headers.get("x-forwarded-for")
+    if forwarded_for:
+        first_ip = forwarded_for.split(",", maxsplit=1)[0].strip()
+        if first_ip:
+            return first_ip
+
+    if websocket.client is not None and websocket.client.host:
+        return websocket.client.host
+
+    return "unknown"
 
 
 def _final_text(message: FinalizedSegmentMessage, source_language: str) -> str:
@@ -541,6 +558,35 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         await websocket.close(code=1008)
         return
 
+    client_ip = _resolve_client_ip(websocket)
+    session_registered = False
+    limit_result = active_session_registry.try_register(
+        session_id=session_id,
+        client_ip=client_ip,
+        max_total=settings.max_concurrent_sessions,
+        max_per_ip=settings.max_sessions_per_ip,
+    )
+    if not limit_result.allowed:
+        _logger.warning(
+            "Session rejected by active-session limit",
+            extra={
+                "event": "session_rejected",
+                "session_id": session_id,
+                "client_ip": client_ip,
+                "reason": limit_result.reason,
+                "max_concurrent_sessions": settings.max_concurrent_sessions,
+                "max_sessions_per_ip": settings.max_sessions_per_ip,
+            },
+        )
+        await _send_error(
+            websocket,
+            message="Too many active LiveCap sessions. Please try again later.",
+            code=ErrorCode.TOO_MANY_SESSIONS,
+        )
+        await websocket.close(code=1008)
+        return
+    session_registered = True
+
     log_websocket_connect(session_id)
 
     # Record session-start event (Requirement 10.1).
@@ -559,6 +605,13 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
     vi_audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
     en_audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+
+    async def _signal_end_of_stream() -> None:
+        """Push end-of-stream sentinels to all possible Transcribe queues."""
+
+        await audio_queue.put(None)
+        await vi_audio_queue.put(None)
+        await en_audio_queue.put(None)
 
     # Flag shared between the frame-reader and the session main loop.
     # Set to True when a JSON stop signal is received.
@@ -661,15 +714,14 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                         )
                         stop_requested.set()
                         break
+                    if isinstance(payload, dict) and payload.get("type") == "ping":
+                        await _send(websocket, PongMessage())
+                        continue
 
         finally:
             # Signal end-of-stream to TranscriptionService regardless of how
             # the loop exited (stop, disconnect, or error).
-            if settings.bilingual_dual_stream:
-                await vi_audio_queue.put(None)
-                await en_audio_queue.put(None)
-            else:
-                await audio_queue.put(None)
+            await _signal_end_of_stream()
 
     # Start the frame-reader background task.
     reader_task = asyncio.ensure_future(_read_frames())
@@ -858,8 +910,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
             ),
             code=ErrorCode.SESSION_TIMEOUT,
         )
-        # Push None to stop the TranscriptionService audio feed.
-        await audio_queue.put(None)
+        await _signal_end_of_stream()
 
     except WebSocketDisconnect:
         # Client disconnected mid-session; teardown proceeds normally.
@@ -880,12 +931,16 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
             message="An unexpected server error occurred.",
             code=ErrorCode.INTERNAL_ERROR,
         )
-        await audio_queue.put(None)
+        await _signal_end_of_stream()
 
     finally:
         # Always send session_end and clean up (Requirements 2.5, 10.2).
-        await _teardown(send_session_end=True)
         try:
-            await websocket.close()
-        except Exception:
-            pass
+            await _teardown(send_session_end=True)
+        finally:
+            if session_registered:
+                active_session_registry.unregister(session_id)
+            try:
+                await websocket.close()
+            except Exception:
+                pass

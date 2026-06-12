@@ -1,7 +1,7 @@
 # Main Terraform Configuration
 
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.10"
 
   required_providers {
     aws = {
@@ -10,14 +10,12 @@ terraform {
     }
   }
 
-  # Uncomment and configure backend for state management in production
-  # backend "s3" {
-  #   bucket         = "your-terraform-state-bucket"
-  #   key            = "livecap/terraform.tfstate"
-  #   region         = "us-east-1"
-  #   encrypt        = true
-  #   dynamodb_table = "terraform-state-lock"
-  # }
+  backend "s3" {
+    key          = "livecap/main/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {

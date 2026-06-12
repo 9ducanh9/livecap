@@ -14,7 +14,7 @@
  * Requirements: 1.1, 1.4, 1.5, 2.6, 6.1, 6.2
  */
 
-import { useCallback, useEffect, useReducer, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { AppState, Segment } from '../types/index';
 import { useAudioCapture } from '../hooks/useAudioCapture';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -28,6 +28,7 @@ import ControlPanel from './ControlPanel';
 
 type AppAction =
   | { type: 'SESSION_START'; sessionId: string }
+  | { type: 'SESSION_RECONNECT_START'; sessionId: string }
   | { type: 'PARTIAL_SEGMENT'; segment: Segment }
   | { type: 'FINALIZED_SEGMENT'; segment: Segment }
   | { type: 'SESSION_END' }
@@ -54,6 +55,15 @@ function appReducer(state: AppState, action: AppAction): AppState {
         sessionId: action.sessionId,
         isConnected: true,
         segments: [],
+        currentPartial: null,
+        error: null,
+      };
+
+    case 'SESSION_RECONNECT_START':
+      return {
+        ...state,
+        sessionId: action.sessionId,
+        isConnected: true,
         currentPartial: null,
         error: null,
       };
@@ -119,6 +129,7 @@ export default function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState(Date.now());
+  const stopCaptureRef = useRef<(() => void) | null>(null);
 
   // ------------------------------------------------------------------
   // WebSocket hook — message parsing → state updates
@@ -126,12 +137,17 @@ export default function App() {
   const {
     isConnected,
     isConnectionLost,
+    connectionStatus,
     connect,
     disconnect,
     sendAudioChunk,
   } = useWebSocket({
-    onSessionStart(sessionId) {
-      dispatch({ type: 'SESSION_START', sessionId });
+    reconnectOnUnexpectedClose: state.isCapturing,
+    onSessionStart(sessionId, isReconnect) {
+      dispatch({
+        type: isReconnect ? 'SESSION_RECONNECT_START' : 'SESSION_START',
+        sessionId,
+      });
     },
     onPartialSegment(segment) {
       dispatch({ type: 'PARTIAL_SEGMENT', segment });
@@ -144,6 +160,15 @@ export default function App() {
     },
     onSessionEnd() {
       dispatch({ type: 'SESSION_END' });
+    },
+    onReconnectFailed() {
+      stopCaptureRef.current?.();
+      setRecordingStartedAt(null);
+      dispatch({ type: 'SET_CAPTURING', value: false });
+      dispatch({
+        type: 'SET_ERROR',
+        error: 'Connection lost. Please restart the session.',
+      });
     },
   });
 
@@ -162,6 +187,10 @@ export default function App() {
   } = useAudioCapture({
     onChunk: sendAudioChunk,
   });
+
+  useEffect(() => {
+    stopCaptureRef.current = stopCapture;
+  }, [stopCapture]);
 
   useEffect(() => {
     if (!isCapturing) {
@@ -268,6 +297,21 @@ export default function App() {
     );
   }
 
+  function ReconnectedBanner() {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+      >
+        <p>
+          <strong>Reconnected.</strong> A new backend session is active; finalized transcript
+          segments were preserved.
+        </p>
+      </div>
+    );
+  }
+
   /** Error toast shown for backend errors and failed capture starts. */
   function ErrorBanner({ message }: { message: string }) {
     return (
@@ -334,6 +378,7 @@ export default function App() {
 
         {/* Status banners */}
         {isConnectionLost && <ConnectionLostBanner />}
+        {connectionStatus === 'reconnected' && !isConnectionLost && <ReconnectedBanner />}
         {state.error && <ErrorBanner message={state.error} />}
 
         {/* Control panel — start/stop + active indicator */}

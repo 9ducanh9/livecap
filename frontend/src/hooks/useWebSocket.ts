@@ -1,15 +1,11 @@
 /**
- * useWebSocket — WebSocket client hook for the /ws/transcribe streaming channel.
+ * useWebSocket - WebSocket client hook for the /ws/transcribe streaming channel.
  *
- * Responsibilities (Requirements 2.1, 2.4, 2.6, 2.7, 3.2, 3.3, 3.7):
- *  - Open a WSS connection to /ws/transcribe when the user starts capturing.
- *  - Send binary audio chunks (ArrayBuffer) while the session is active.
- *  - Send the JSON stop signal { type: "stop" } when the user stops.
- *  - Parse all server messages (session_start, partial_segment, finalized_segment,
- *    error, session_end) and dispatch them to the caller via callbacks.
- *  - Ignore malformed/unrecognised messages with a console.warn (never throw).
- *  - On unexpected interruption: expose isConnectionLost = true, stop transmitting,
- *    and do NOT automatically reconnect (manual restart required).
+ * Responsibilities:
+ *  - Open a WebSocket connection to /ws/transcribe when capture starts.
+ *  - Send binary audio chunks while the socket is open.
+ *  - Send stop and heartbeat control messages.
+ *  - Retry unexpected recording-time disconnects up to a small fixed limit.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -27,47 +23,38 @@ import type {
 } from '../types/index';
 
 const DEBUG = import.meta.env.VITE_AUDIO_DEBUG === 'true';
+const HEARTBEAT_INTERVAL_MS = 30_000;
+const RETRY_DELAYS_MS = [1_000, 2_000, 4_000] as const;
 
-// ---------------------------------------------------------------------------
-// Public interface
-// ---------------------------------------------------------------------------
+export type WebSocketConnectionStatus =
+  | 'idle'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'reconnected'
+  | 'lost';
 
 export interface UseWebSocketOptions {
-  /** Fixed Transcribe source language for this WebSocket session. */
   sourceLanguage?: SourceLanguageCode;
-  /** Fixed Translate target language for this WebSocket session. */
   targetLanguage?: TargetLanguageCode;
-  /** Called once the backend assigns a session ID. */
-  onSessionStart?: (sessionId: string) => void;
-  /** Called whenever a partial segment is received. */
+  reconnectOnUnexpectedClose?: boolean;
+  onSessionStart?: (sessionId: string, isReconnect: boolean) => void;
   onPartialSegment?: (segment: Segment) => void;
-  /** Called whenever a finalized segment is received. */
   onFinalizedSegment?: (segment: Segment) => void;
-  /** Called when the backend sends an error message. */
   onError?: (message: string, code: string) => void;
-  /** Called when the backend sends session_end or the connection closes cleanly. */
   onSessionEnd?: (sessionId: string | null) => void;
+  onReconnectFailed?: () => void;
 }
 
 export interface UseWebSocketReturn {
-  /** True while the WebSocket is open and ready. */
   isConnected: boolean;
-  /** True after an unexpected disconnection (not triggered by the user stopping). */
   isConnectionLost: boolean;
-  /** Open the connection. Idempotent if already open. */
+  connectionStatus: WebSocketConnectionStatus;
   connect: () => void;
-  /** Send the stop signal and close the connection gracefully. */
   disconnect: () => void;
-  /** Send a binary audio chunk. No-op when the socket is not open. */
   sendAudioChunk: (chunk: ArrayBuffer) => void;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Derive the WebSocket URL from the current page origin.
- *  http(s)://host[:port] → ws(s)://host[:port]/ws/transcribe */
 function buildWsUrl(
   sourceLanguage?: SourceLanguageCode,
   targetLanguage?: TargetLanguageCode
@@ -88,16 +75,12 @@ function buildWsUrl(
   return url.toString();
 }
 
-/** Map a raw server JSON payload to the typed ServerMessage union.
- *  Returns null if the payload is not a recognised message shape. */
 function parseServerMessage(raw: unknown): ServerMessage | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const obj = raw as Record<string, unknown>;
   if (typeof obj['type'] !== 'string') return null;
 
-  const type = obj['type'] as string;
-
-  switch (type) {
+  switch (obj['type']) {
     case 'session_start': {
       if (typeof obj['session_id'] !== 'string') return null;
       return { type: 'session_start', session_id: obj['session_id'] } as SessionStartMessage;
@@ -170,12 +153,14 @@ function parseServerMessage(raw: unknown): ServerMessage | null {
       } as SessionEndMessage;
     }
 
+    case 'pong':
+      return { type: 'pong' };
+
     default:
       return null;
   }
 }
 
-/** Convert a ServerMessage to the frontend Segment shape. */
 function toSegment(
   msg: PartialSegmentMessage | FinalizedSegmentMessage
 ): Segment {
@@ -187,7 +172,6 @@ function toSegment(
       textEn: msg.text_en,
       spokenLanguage: msg.spoken_language,
       isFinal: false,
-      // Partial segments do not carry timestamps; use 0 as a placeholder.
       timestampStart: 0,
       timestampEnd: 0,
     };
@@ -204,45 +188,54 @@ function toSegment(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
-
 export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketReturn {
   const optionsRef = useRef(options);
-  // Keep the ref up to date with the latest callbacks without resetting the
-  // effect (avoids stale closure issues when callers pass inline functions).
   useEffect(() => {
     optionsRef.current = options;
   });
 
   const wsRef = useRef<WebSocket | null>(null);
-  // Track the current session ID for session_end reporting.
   const sessionIdRef = useRef<string | null>(null);
-  // Flag that separates an intentional user-stop from an interruption.
   const intentionalCloseRef = useRef(false);
+  const retryAttemptRef = useRef(0);
+  const reconnectingRef = useRef(false);
+  const retryTimerRef = useRef<number | null>(null);
+  const heartbeatTimerRef = useRef<number | null>(null);
 
   const [isConnected, setIsConnected] = useState(false);
   const [isConnectionLost, setIsConnectionLost] = useState(false);
+  const [connectionStatus, setConnectionStatus] =
+    useState<WebSocketConnectionStatus>('idle');
 
-  // ------------------------------------------------------------------
-  // connect — open the WebSocket
-  // ------------------------------------------------------------------
-  const connect = useCallback(() => {
-    // Already open or connecting — do nothing.
-    if (
-      wsRef.current !== null &&
-      (wsRef.current.readyState === WebSocket.OPEN ||
-        wsRef.current.readyState === WebSocket.CONNECTING)
-    ) {
-      return;
+  const clearHeartbeat = useCallback(() => {
+    if (heartbeatTimerRef.current !== null) {
+      window.clearInterval(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = null;
     }
+  }, []);
 
-    // Clear stale state from a previous (lost) connection before opening a
-    // fresh one so the caller always gets a clean slate.
-    setIsConnectionLost(false);
-    intentionalCloseRef.current = false;
-    sessionIdRef.current = null;
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
+
+  const startHeartbeat = useCallback((ws: WebSocket) => {
+    clearHeartbeat();
+    heartbeatTimerRef.current = window.setInterval(() => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      try {
+        ws.send(JSON.stringify({ type: 'ping' }));
+      } catch (err) {
+        console.error('[useWebSocket] Failed to send ping:', err);
+      }
+    }, HEARTBEAT_INTERVAL_MS);
+  }, [clearHeartbeat]);
+
+  const openSocket = useCallback((isRetry: boolean) => {
+    clearRetryTimer();
+    setConnectionStatus(isRetry ? 'reconnecting' : 'connecting');
 
     let ws: WebSocket;
     try {
@@ -254,25 +247,25 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       );
     } catch (err) {
       console.error('[useWebSocket] Failed to construct WebSocket:', err);
+      setConnectionStatus('lost');
       setIsConnectionLost(true);
+      optionsRef.current.onReconnectFailed?.();
       return;
     }
 
-    // Use binary frames for audio chunks (ArrayBuffer → binary message).
     ws.binaryType = 'arraybuffer';
     wsRef.current = ws;
-
-    // ----------------------------------------------------------------
-    // Event handlers
-    // ----------------------------------------------------------------
+    reconnectingRef.current = isRetry;
 
     ws.onopen = () => {
       setIsConnected(true);
       setIsConnectionLost(false);
+      setConnectionStatus(isRetry ? 'reconnected' : 'connected');
+      retryAttemptRef.current = 0;
+      startHeartbeat(ws);
     };
 
     ws.onmessage = (event: MessageEvent) => {
-      // Only JSON text frames are expected from the server.
       if (typeof event.data !== 'string') {
         console.warn('[useWebSocket] Received unexpected binary frame from server; ignoring.');
         return;
@@ -293,11 +286,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       }
 
       const cb = optionsRef.current;
-
       switch (msg.type) {
         case 'session_start':
           sessionIdRef.current = msg.session_id;
-          cb.onSessionStart?.(msg.session_id);
+          cb.onSessionStart?.(msg.session_id, reconnectingRef.current);
+          reconnectingRef.current = false;
           break;
 
         case 'partial_segment':
@@ -316,45 +309,78 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
           sessionIdRef.current = msg.session_id;
           cb.onSessionEnd?.(msg.session_id);
           break;
+
+        case 'pong':
+          debugLog('heartbeat-pong', {});
+          break;
       }
     };
 
     ws.onerror = (event: Event) => {
       console.error('[useWebSocket] WebSocket error:', event);
-      // onclose fires immediately after onerror; the interruption logic lives there.
     };
 
     ws.onclose = (event: CloseEvent) => {
+      clearHeartbeat();
       setIsConnected(false);
+      wsRef.current = null;
 
       if (intentionalCloseRef.current) {
-        // User-initiated stop — normal teardown; call onSessionEnd if we
-        // did not already receive a session_end message from the server.
-        // (The server normally sends session_end before closing, but defend
-        // against it not arriving.)
         optionsRef.current.onSessionEnd?.(sessionIdRef.current);
-      } else {
-        // Unexpected interruption — expose connection-lost state.
-        // Per Requirement 2.6 / 2.7: stop transmitting and require manual restart.
+        setConnectionStatus('idle');
+        return;
+      }
+
+      const shouldRetry = optionsRef.current.reconnectOnUnexpectedClose === true;
+      if (!shouldRetry) {
         console.warn(
           `[useWebSocket] Connection lost unexpectedly (code=${event.code}, reason="${event.reason}").`
         );
+        setConnectionStatus('lost');
         setIsConnectionLost(true);
+        return;
       }
 
-      wsRef.current = null;
-    };
-  }, []);
+      if (retryAttemptRef.current >= RETRYABLE_RETRY_COUNT) {
+        setConnectionStatus('lost');
+        setIsConnectionLost(true);
+        optionsRef.current.onReconnectFailed?.();
+        return;
+      }
 
-  // ------------------------------------------------------------------
-  // disconnect — send stop signal then close gracefully
-  // ------------------------------------------------------------------
+      const delayMs = RETRY_DELAYS_MS[retryAttemptRef.current];
+      retryAttemptRef.current += 1;
+      setConnectionStatus('reconnecting');
+      retryTimerRef.current = window.setTimeout(() => {
+        openSocket(true);
+      }, delayMs);
+    };
+  }, [clearHeartbeat, clearRetryTimer, startHeartbeat]);
+
+  const connect = useCallback(() => {
+    if (
+      wsRef.current !== null &&
+      (wsRef.current.readyState === WebSocket.OPEN ||
+        wsRef.current.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
+
+    intentionalCloseRef.current = false;
+    reconnectingRef.current = false;
+    retryAttemptRef.current = 0;
+    sessionIdRef.current = null;
+    setIsConnectionLost(false);
+    openSocket(false);
+  }, [openSocket]);
+
   const disconnect = useCallback(() => {
+    clearRetryTimer();
+    clearHeartbeat();
     const ws = wsRef.current;
     if (ws === null) return;
 
     intentionalCloseRef.current = true;
-
     if (ws.readyState === WebSocket.OPEN) {
       try {
         ws.send(JSON.stringify({ type: 'stop' }));
@@ -363,19 +389,13 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       }
       ws.close(1000, 'User stopped capture');
     } else {
-      // CONNECTING — cannot send yet; just close it.
       ws.close(1000, 'User stopped capture');
     }
-  }, []);
+  }, [clearHeartbeat, clearRetryTimer]);
 
-  // ------------------------------------------------------------------
-  // sendAudioChunk — transmit a binary PCM frame
-  // ------------------------------------------------------------------
   const sendAudioChunk = useCallback((chunk: ArrayBuffer) => {
     const ws = wsRef.current;
     if (ws === null || ws.readyState !== WebSocket.OPEN) {
-      // Silently drop: the caller may briefly produce chunks after the
-      // connection closes; logging would be too noisy.
       return;
     }
     try {
@@ -388,33 +408,31 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     }
   }, []);
 
-  // ------------------------------------------------------------------
-  // Cleanup on unmount — close without marking as intentional so that
-  // any in-progress session is terminated cleanly.
-  // ------------------------------------------------------------------
   useEffect(() => {
     return () => {
+      clearRetryTimer();
+      clearHeartbeat();
       const ws = wsRef.current;
       if (ws !== null) {
         intentionalCloseRef.current = true;
         ws.close(1001, 'Component unmounted');
       }
     };
-  }, []);
+  }, [clearHeartbeat, clearRetryTimer]);
 
   return {
     isConnected,
     isConnectionLost,
+    connectionStatus,
     connect,
     disconnect,
     sendAudioChunk,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Re-export AppState for convenience — consumers can import it from here.
-// ---------------------------------------------------------------------------
 export type { AppState };
+
+const RETRYABLE_RETRY_COUNT = RETRY_DELAYS_MS.length;
 
 function debugLog(message: string, data: Record<string, number>): void {
   if (!DEBUG) return;

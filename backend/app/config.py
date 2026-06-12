@@ -34,6 +34,8 @@ DEFAULT_BILINGUAL_DUAL_STREAM = True
 DEFAULT_AUDIO_PIPELINE_DEBUG = False
 DEFAULT_ALLOWED_ORIGIN = "http://localhost:5173"
 DEFAULT_CLOUDWATCH_LOG_GROUP = "livecap"
+DEFAULT_MAX_CONCURRENT_SESSIONS = 4
+DEFAULT_MAX_SESSIONS_PER_IP = 1
 
 
 def _get_int(name: str, default: int) -> int:
@@ -85,6 +87,8 @@ class Settings:
         audio_pipeline_debug: Enables temporary audio flow debug logging.
         allowed_origin: The single frontend origin permitted by CORS.
         cloudwatch_log_group: CloudWatch log group for the Logging_Service.
+        max_concurrent_sessions: Process-local active WebSocket session limit.
+        max_sessions_per_ip: Process-local active WebSocket session limit per IP.
     """
 
     aws_region: str = DEFAULT_AWS_REGION
@@ -97,10 +101,20 @@ class Settings:
     audio_pipeline_debug: bool = DEFAULT_AUDIO_PIPELINE_DEBUG
     allowed_origin: str = DEFAULT_ALLOWED_ORIGIN
     cloudwatch_log_group: str = DEFAULT_CLOUDWATCH_LOG_GROUP
+    max_concurrent_sessions: int = DEFAULT_MAX_CONCURRENT_SESSIONS
+    max_sessions_per_ip: int = DEFAULT_MAX_SESSIONS_PER_IP
 
     @classmethod
     def from_env(cls) -> "Settings":
         """Build a ``Settings`` instance from the current environment."""
+        max_concurrent_sessions = max(
+            0,
+            _get_int("MAX_CONCURRENT_SESSIONS", DEFAULT_MAX_CONCURRENT_SESSIONS),
+        )
+        max_sessions_per_ip = max(
+            0,
+            _get_int("MAX_SESSIONS_PER_IP", DEFAULT_MAX_SESSIONS_PER_IP),
+        )
 
         return cls(
             aws_region=_get_str("AWS_REGION", DEFAULT_AWS_REGION),
@@ -123,6 +137,8 @@ class Settings:
             cloudwatch_log_group=_get_str(
                 "CLOUDWATCH_LOG_GROUP", DEFAULT_CLOUDWATCH_LOG_GROUP
             ),
+            max_concurrent_sessions=max_concurrent_sessions,
+            max_sessions_per_ip=max_sessions_per_ip,
         )
 
 

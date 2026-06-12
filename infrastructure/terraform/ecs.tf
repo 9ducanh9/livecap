@@ -63,6 +63,14 @@ resource "aws_ecs_task_definition" "backend" {
           value = tostring(var.max_speakers)
         },
         {
+          name  = "MAX_CONCURRENT_SESSIONS"
+          value = tostring(var.max_concurrent_sessions)
+        },
+        {
+          name  = "MAX_SESSIONS_PER_IP"
+          value = tostring(var.max_sessions_per_ip)
+        },
+        {
           name  = "TRANSCRIBE_LANGUAGE_CODE"
           value = "vi-VN"
         },
@@ -166,6 +174,38 @@ resource "aws_appautoscaling_target" "ecs_target" {
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.backend.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
+}
+
+resource "aws_appautoscaling_scheduled_action" "ecs_demo_up" {
+  count = var.enable_demo_scheduled_scaling ? 1 : 0
+
+  name               = "${var.project_name}-demo-up-${var.environment}"
+  service_namespace  = aws_appautoscaling_target.ecs_target.service_namespace
+  resource_id        = aws_appautoscaling_target.ecs_target.resource_id
+  scalable_dimension = aws_appautoscaling_target.ecs_target.scalable_dimension
+  schedule           = var.demo_scale_up_schedule_expression
+  timezone           = var.demo_scaling_timezone
+
+  scalable_target_action {
+    min_capacity = 1
+    max_capacity = 1
+  }
+}
+
+resource "aws_appautoscaling_scheduled_action" "ecs_demo_down" {
+  count = var.enable_demo_scheduled_scaling ? 1 : 0
+
+  name               = "${var.project_name}-demo-down-${var.environment}"
+  service_namespace  = aws_appautoscaling_target.ecs_target.service_namespace
+  resource_id        = aws_appautoscaling_target.ecs_target.resource_id
+  scalable_dimension = aws_appautoscaling_target.ecs_target.scalable_dimension
+  schedule           = var.demo_scale_down_schedule_expression
+  timezone           = var.demo_scaling_timezone
+
+  scalable_target_action {
+    min_capacity = 0
+    max_capacity = 0
+  }
 }
 
 # Auto Scaling Policy - CPU

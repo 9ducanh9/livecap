@@ -145,6 +145,7 @@ class ErrorCode(str, Enum):
     TRANSLATE_ERROR = "TRANSLATE_ERROR"
     SESSION_TIMEOUT = "SESSION_TIMEOUT"
     INVALID_LANGUAGE_MODE = "INVALID_LANGUAGE_MODE"
+    TOO_MANY_SESSIONS = "TOO_MANY_SESSIONS"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
@@ -163,6 +164,12 @@ class SessionEndMessage(BaseModel):
     session_id: str
 
 
+class PongMessage(BaseModel):
+    """Heartbeat response delivered when the Frontend sends ``ping``."""
+
+    type: Literal["pong"] = "pong"
+
+
 # A discriminated union of every message the Backend sends to the Frontend.
 ServerMessage = Union[
     SessionStartMessage,
@@ -170,6 +177,7 @@ ServerMessage = Union[
     FinalizedSegmentMessage,
     ErrorMessage,
     SessionEndMessage,
+    PongMessage,
 ]
 
 
@@ -185,6 +193,12 @@ class StopMessage(BaseModel):
     """
 
     type: Literal["stop"] = "stop"
+
+
+class PingMessage(BaseModel):
+    """Heartbeat ping sent by the Frontend while recording."""
+
+    type: Literal["ping"] = "ping"
 
 
 # ---------------------------------------------------------------------------

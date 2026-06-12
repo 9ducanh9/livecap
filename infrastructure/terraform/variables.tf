@@ -65,7 +65,7 @@ variable "ecs_min_capacity" {
 variable "ecs_max_capacity" {
   description = "Maximum number of ECS tasks for autoscaling"
   type        = number
-  default     = 4
+  default     = 1
 }
 
 variable "container_port" {
@@ -91,6 +91,54 @@ variable "max_speakers" {
   description = "Maximum number of speakers for diarization"
   type        = number
   default     = 5
+}
+
+variable "max_concurrent_sessions" {
+  description = "Process-local maximum active WebSocket sessions. Keep ECS max capacity at 1 while this is in-memory."
+  type        = number
+  default     = 4
+}
+
+variable "max_sessions_per_ip" {
+  description = "Process-local maximum active WebSocket sessions from one client IP."
+  type        = number
+  default     = 1
+}
+
+variable "monthly_budget_limit_usd" {
+  description = "Monthly AWS Budget cost threshold in USD."
+  type        = number
+  default     = 50
+}
+
+variable "budget_notification_email" {
+  description = "Email address for AWS Budget alerts. Leave empty to skip creating the budget notification."
+  type        = string
+  default     = ""
+}
+
+variable "enable_demo_scheduled_scaling" {
+  description = "Enable demo-safe scheduled scaling for the ECS service."
+  type        = bool
+  default     = true
+}
+
+variable "demo_scale_up_schedule_expression" {
+  description = "Application Auto Scaling schedule expression for demo hours. Default is 08:00 Asia/Saigon, Monday-Friday."
+  type        = string
+  default     = "cron(0 8 ? * MON-FRI *)"
+}
+
+variable "demo_scale_down_schedule_expression" {
+  description = "Application Auto Scaling schedule expression for off hours. Default is 19:00 Asia/Saigon, Monday-Friday."
+  type        = string
+  default     = "cron(0 19 ? * MON-FRI *)"
+}
+
+variable "demo_scaling_timezone" {
+  description = "Timezone used by the demo scheduled scaling expressions."
+  type        = string
+  default     = "Asia/Ho_Chi_Minh"
 }
 
 # Health Check Configuration

@@ -29,11 +29,33 @@ The infrastructure provisions:
 
 ## Quick Start
 
+### 0. Bootstrap remote state first
+
+Remote state is managed by a separate bootstrap stack:
+
+```bash
+cd infrastructure/bootstrap/remote-state
+terraform init
+terraform plan
+```
+
+Apply the bootstrap stack only after reviewing the plan. Copy the
+`state_bucket_name` output into a local, untracked
+`infrastructure/terraform/backend.hcl` file:
+
+```hcl
+bucket = "livecap-terraform-state-dev-123456789012"
+```
+
+The main stack uses an S3 backend with native lockfiles, so Terraform 1.10 or
+newer is required. Do not run `terraform init -migrate-state` until the
+migration plan has been reviewed.
+
 ### 1. Initialize Terraform
 
 ```bash
 cd infrastructure/terraform
-terraform init
+terraform init -backend-config=backend.hcl
 ```
 
 ### 2. Create a terraform.tfvars file
@@ -52,11 +74,19 @@ ecs_task_cpu      = 512
 ecs_task_memory   = 1024
 ecs_desired_count = 1
 ecs_min_capacity  = 1
-ecs_max_capacity  = 4
+ecs_max_capacity  = 1
 
 # Optional: Configure retention periods
 transcript_retention_days = 30
 log_retention_days        = 7
+
+# Budget alerts are delayed by AWS Billing and are not real-time.
+monthly_budget_limit_usd = 50
+# budget_notification_email = "billing-alerts@example.com"
+
+# Keep ECS at max=1 while WebSocket session limits are in-memory.
+max_concurrent_sessions = 4
+max_sessions_per_ip     = 1
 
 # Optional: Provide backend ALB TLS certificate (REQUIRED for production)
 # alb_ssl_certificate_arn = "arn:aws:acm:REGION:ACCOUNT_ID:certificate/BACKEND_CERT_ID"

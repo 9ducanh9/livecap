@@ -21,7 +21,7 @@ ecs_desired_count = 1     # Number of tasks to run initially
 
 # ECS Autoscaling
 ecs_min_capacity = 1  # Minimum tasks
-ecs_max_capacity = 4  # Maximum tasks (scales based on CPU/memory)
+ecs_max_capacity = 1  # Keep max=1 while backend session limits are in-memory
 
 autoscaling_target_cpu    = 70  # Scale out when CPU > 70%
 autoscaling_target_memory = 80  # Scale out when memory > 80%
@@ -30,6 +30,18 @@ autoscaling_target_memory = 80  # Scale out when memory > 80%
 session_timeout_seconds           = 1800  # 30 minutes
 download_link_expiration_seconds  = 86400 # 24 hours
 max_speakers                      = 5
+max_concurrent_sessions           = 4
+max_sessions_per_ip               = 1
+
+# Cost guard. AWS Budget notifications are not real-time and can lag behind usage.
+monthly_budget_limit_usd = 50
+# budget_notification_email = "billing-alerts@example.com"
+
+# Demo-safe scheduled scaling.
+enable_demo_scheduled_scaling       = true
+demo_scale_up_schedule_expression   = "cron(0 8 ? * MON-FRI *)"
+demo_scale_down_schedule_expression = "cron(0 19 ? * MON-FRI *)"
+demo_scaling_timezone               = "Asia/Ho_Chi_Minh"
 
 # Health Check Configuration
 health_check_interval = 30  # seconds

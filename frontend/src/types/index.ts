@@ -76,13 +76,18 @@ export interface SessionEndMessage {
   session_id: string;
 }
 
+export interface PongMessage {
+  type: 'pong';
+}
+
 /** Union of all messages the backend can send to the frontend. */
 export type ServerMessage =
   | SessionStartMessage
   | PartialSegmentMessage
   | FinalizedSegmentMessage
   | ErrorMessage
-  | SessionEndMessage;
+  | SessionEndMessage
+  | PongMessage;
 
 // ---------------------------------------------------------------------------
 // WebSocket Messages — Frontend → Backend (discriminated union)
@@ -92,7 +97,11 @@ export interface StopMessage {
   type: 'stop';
 }
 
+export interface PingMessage {
+  type: 'ping';
+}
+
 /** Union of all JSON messages the frontend can send to the backend.
  *  Binary audio chunks (ArrayBuffer) are sent as raw binary frames, not
  *  covered by this union. */
-export type ClientMessage = StopMessage;
+export type ClientMessage = StopMessage | PingMessage;

@@ -50,6 +50,8 @@ def make_settings(**overrides) -> Settings:
         bilingual_dual_stream=False,
         allowed_origin="http://localhost:5173",
         cloudwatch_log_group="livecap",
+        max_concurrent_sessions=4,
+        max_sessions_per_ip=1,
     )
     defaults.update(overrides)
     return Settings(**defaults)
@@ -81,6 +83,14 @@ def app():
     return test_app
 
 
+@pytest.fixture(autouse=True)
+def clear_active_session_registry():
+    """Ensure process-local session limits do not leak between tests."""
+    ws_module.active_session_registry.clear()
+    yield
+    ws_module.active_session_registry.clear()
+
+
 def make_valid_audio_chunk() -> bytes:
     """Return valid PCM 16-bit mono 16 kHz audio (~100 ms)."""
     return b"\x00" * 3200
@@ -94,6 +104,11 @@ def make_invalid_audio_chunk() -> bytes:
 def make_stop_message() -> str:
     """Return the JSON stop signal."""
     return json.dumps({"type": "stop"})
+
+
+def make_ping_message() -> str:
+    """Return the JSON heartbeat ping signal."""
+    return json.dumps({"type": "ping"})
 
 
 def collect_until_session_end(websocket, max_messages: int = 20) -> list[dict]:
@@ -272,6 +287,149 @@ class TestLanguageMode:
         assert msg["type"] == "error"
         assert msg["code"] == ErrorCode.INVALID_LANGUAGE_MODE.value
         MockTranscriptionService.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Active session abuse guard
+# ---------------------------------------------------------------------------
+
+
+class TestActiveSessionGuard:
+    def test_rejects_when_per_ip_limit_exceeded(self, app, mock_logging):
+        settings = make_settings(max_concurrent_sessions=4, max_sessions_per_ip=1)
+        ws_module.active_session_registry.try_register(
+            session_id="existing",
+            client_ip="203.0.113.10",
+            max_total=4,
+            max_per_ip=1,
+        )
+
+        with patch("app.routers.websocket.get_settings", return_value=settings), \
+             patch("app.routers.websocket.TranscriptionService") as MockTranscriptionService:
+            with TestClient(app) as client:
+                with client.websocket_connect(
+                    "/ws/transcribe",
+                    headers={"x-forwarded-for": "203.0.113.10"},
+                ) as websocket:
+                    msg = json.loads(websocket.receive_text())
+
+        assert msg["type"] == "error"
+        assert msg["code"] == ErrorCode.TOO_MANY_SESSIONS.value
+        MockTranscriptionService.assert_not_called()
+
+    def test_rejects_when_global_limit_exceeded(self, app, mock_logging):
+        settings = make_settings(max_concurrent_sessions=1, max_sessions_per_ip=1)
+        ws_module.active_session_registry.try_register(
+            session_id="existing",
+            client_ip="203.0.113.10",
+            max_total=1,
+            max_per_ip=1,
+        )
+
+        with patch("app.routers.websocket.get_settings", return_value=settings), \
+             patch("app.routers.websocket.TranscriptionService") as MockTranscriptionService:
+            with TestClient(app) as client:
+                with client.websocket_connect(
+                    "/ws/transcribe",
+                    headers={"x-forwarded-for": "198.51.100.20"},
+                ) as websocket:
+                    msg = json.loads(websocket.receive_text())
+
+        assert msg["type"] == "error"
+        assert msg["code"] == ErrorCode.TOO_MANY_SESSIONS.value
+        MockTranscriptionService.assert_not_called()
+
+    def test_registry_cleanup_after_stop(self, app, mock_settings, mock_logging):
+        async def mock_transcribe(audio_queue):
+            while True:
+                chunk = await audio_queue.get()
+                if chunk is None:
+                    break
+            if False:
+                yield
+
+        with patch(
+            "app.routers.websocket.TranscriptionService"
+        ) as MockTranscriptionService:
+            mock_service_instance = MagicMock()
+            mock_service_instance.transcribe = mock_transcribe
+            MockTranscriptionService.return_value = mock_service_instance
+
+            with TestClient(app) as client:
+                with client.websocket_connect(
+                    "/ws/transcribe",
+                    headers={"x-forwarded-for": "203.0.113.30"},
+                ) as websocket:
+                    _ = websocket.receive_text()
+                    assert ws_module.active_session_registry.active_count == 1
+                    websocket.send_text(make_stop_message())
+                    collect_until_session_end(websocket)
+
+        assert ws_module.active_session_registry.active_count == 0
+        assert ws_module.active_session_registry.active_count_for_ip("203.0.113.30") == 0
+
+    def test_registry_cleanup_after_transcribe_error(
+        self, app, mock_settings, mock_logging
+    ):
+        async def mock_transcribe(audio_queue):
+            _ = await audio_queue.get()
+            yield RuntimeError("transcribe failed")
+            while True:
+                chunk = await audio_queue.get()
+                if chunk is None:
+                    break
+
+        with patch(
+            "app.routers.websocket.TranscriptionService"
+        ) as MockTranscriptionService:
+            mock_service_instance = MagicMock()
+            mock_service_instance.transcribe = mock_transcribe
+            MockTranscriptionService.return_value = mock_service_instance
+
+            with TestClient(app) as client:
+                with client.websocket_connect(
+                    "/ws/transcribe",
+                    headers={"x-forwarded-for": "203.0.113.40"},
+                ) as websocket:
+                    _ = websocket.receive_text()
+                    websocket.send_bytes(make_valid_audio_chunk())
+                    collect_until_session_end(websocket)
+
+        assert ws_module.active_session_registry.active_count == 0
+        assert ws_module.active_session_registry.active_count_for_ip("203.0.113.40") == 0
+
+
+# ---------------------------------------------------------------------------
+# Heartbeat
+# ---------------------------------------------------------------------------
+
+
+class TestHeartbeat:
+    def test_ping_returns_pong(self, app, mock_settings, mock_logging):
+        async def mock_transcribe(audio_queue):
+            while True:
+                chunk = await audio_queue.get()
+                if chunk is None:
+                    break
+            if False:
+                yield
+
+        with patch(
+            "app.routers.websocket.TranscriptionService"
+        ) as MockTranscriptionService:
+            mock_service_instance = MagicMock()
+            mock_service_instance.transcribe = mock_transcribe
+            MockTranscriptionService.return_value = mock_service_instance
+
+            with TestClient(app) as client:
+                with client.websocket_connect("/ws/transcribe") as websocket:
+                    _ = websocket.receive_text()
+                    websocket.send_text(make_ping_message())
+                    msg = json.loads(websocket.receive_text())
+                    websocket.send_text(make_stop_message())
+                    collect_until_session_end(websocket)
+
+        assert msg == {"type": "pong"}
 
 
 # ---------------------------------------------------------------------------
