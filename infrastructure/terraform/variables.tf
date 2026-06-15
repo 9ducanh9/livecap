@@ -22,7 +22,7 @@ variable "project_name" {
 variable "transcript_retention_days" {
   description = "Number of days to retain transcript files in S3 before automatic deletion"
   type        = number
-  default     = 30
+  default     = 14
 }
 
 variable "frontend_bucket_name" {
@@ -286,7 +286,7 @@ variable "ecr_scan_on_push" {
 variable "log_retention_days" {
   description = "Number of days to retain CloudWatch logs"
   type        = number
-  default     = 7
+  default     = 14
 }
 
 # Autoscaling Configuration

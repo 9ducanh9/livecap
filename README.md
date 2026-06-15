@@ -844,7 +844,8 @@ The app opens at `http://localhost:5173`.
 - **Security:** ALB TLS termination; IAM task roles (no embedded credentials); isolated S3 buckets
 - **Reliability:** ECS auto-restarts failed tasks; ALB routes only to healthy targets; stateless design enables scaling
 - **Performance:** Right-sized Fargate tasks; CloudFront CDN reduces latency globally
-- **Cost Optimization:** Pay-per-use pricing; no idle EC2 costs; S3 lifecycle policies control storage costs
+- **Cost Optimization:** Pay-per-use pricing; no idle EC2 costs; 14-day retention for transcripts and logs; no raw audio storage
+- **Sustainability:** Automated data lifecycle management reduces environmental impact by limiting unnecessary storage
 
 ---
 
@@ -887,15 +888,23 @@ The app opens at `http://localhost:5173`.
 
 2. **Session Timeout:** Set `SESSION_TIMEOUT=1800` (30 minutes) to prevent abandoned long-running transcriptions
 
-3. **S3 Lifecycle Policy:** Reduce transcript retention from 30 days to 7 days if acceptable:
+3. **S3 Lifecycle Policy:** Transcripts are automatically deleted after 14 days (configurable via `transcript_retention_days`):
    ```bash
-   # Update in Terraform variables
-   transcript_retention_days = 7
+   # Update in Terraform variables if different retention is needed
+   transcript_retention_days = 14
    ```
 
-4. **Single-Language Detection (Future):** Consider replacing dual-stream Transcribe with single `identify-language` mode if accuracy permits (50% cost reduction on Transcribe)
+4. **CloudWatch Log Retention:** Logs are retained for 14 days (configurable via `log_retention_days`):
+   ```bash
+   # Update in Terraform variables if different retention is needed
+   log_retention_days = 14
+   ```
 
-5. **Monitor Usage:**
+5. **No Raw Audio Storage:** LiveCap MVP does not store raw audio files. Only exported transcript TXT files are retained in S3, significantly reducing storage costs.
+
+6. **Single-Language Detection (Future):** Consider replacing dual-stream Transcribe with single `identify-language` mode if accuracy permits (50% cost reduction on Transcribe)
+
+7. **Monitor Usage:**
    ```bash
    # Set up billing alerts
    aws cloudwatch put-metric-alarm \
@@ -910,7 +919,7 @@ The app opens at `http://localhost:5173`.
    ECS service to 0 outside demo hours and back to 1 during demo hours through
    `enable_demo_scheduled_scaling`.
 
-7. **Optional Wake Endpoint:** If `enable_wake_endpoint=true` is reviewed and
+8. **Optional Wake Endpoint:** If `enable_wake_endpoint=true` is reviewed and
    applied, the frontend can call `VITE_WAKE_BACKEND_URL` before opening the
    WebSocket. This lets a scaled-to-zero ECS service start on demand. It does
    not remove ALB hourly cost because the ALB remains the stable backend entry
@@ -919,12 +928,12 @@ The app opens at `http://localhost:5173`.
    ECS to one task. Add authentication, WAF, and rate limiting before real
    production use.
 
-8. **Idle Backend Scale-Down:** If `ENABLE_IDLE_SCALE_DOWN=true`, the backend
+9. **Idle Backend Scale-Down:** If `ENABLE_IDLE_SCALE_DOWN=true`, the backend
    waits for `IDLE_SCALE_DOWN_GRACE_SECONDS` after the last active session ends,
    then requests ECS desired count 0. A new session cancels the pending
    scale-down.
 
-9. **Budget Guardrail:** Terraform can create a `$50/month` AWS Budget alert
+10. **Budget Guardrail:** Terraform can create a `$50/month` AWS Budget alert
    when `budget_notification_email` is set. AWS Budget alerts are not
    real-time and can lag behind actual usage.
 

@@ -77,8 +77,8 @@ backend_min_capacity  = 0
 backend_max_capacity  = 1
 
 # Optional: Configure retention periods
-transcript_retention_days = 30
-log_retention_days        = 7
+transcript_retention_days = 14
+log_retention_days        = 14
 
 # Budget alerts are delayed by AWS Billing and are not real-time.
 monthly_budget_limit_usd = 50
@@ -279,7 +279,7 @@ echo "Backend API: $(terraform output -raw alb_backend_base_url)"
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `transcript_retention_days` | Days to retain transcripts before deletion | `30` |
+| `transcript_retention_days` | Days to retain transcripts before deletion | `14` |
 | `frontend_bucket_name` | Frontend S3 bucket name (auto-generated if empty) | `""` |
 | `transcript_bucket_name` | Transcript S3 bucket name (auto-generated if empty) | `""` |
 
@@ -366,11 +366,17 @@ infrastructure/terraform/
 
 ## Cost Optimization
 
-- **S3 Lifecycle Policies**: Automatic transcript cleanup after 30 days
+- **S3 Lifecycle Policies**: Automatic transcript cleanup after 14 days (configurable via `transcript_retention_days`)
+- **CloudWatch Log Retention**: Logs retained for 14 days (configurable via `log_retention_days`)
+- **No Raw Audio Storage**: LiveCap MVP does not store raw audio; only exported transcript TXT files are retained
 - **Fargate Pay-per-Use**: No idle EC2 costs
 - **CloudFront Caching**: Reduces S3 GET requests and improves performance
 - **ECR Lifecycle**: Cleans up old container images
 - **Right-Sizing**: Configurable CPU/memory for cost efficiency
+
+These retention policies support AWS Well-Architected Framework pillars:
+- **Cost Optimization**: Minimize storage costs by automatically deleting aged data
+- **Sustainability**: Reduce environmental impact by limiting unnecessary data retention
 
 ## Monitoring and Operations
 

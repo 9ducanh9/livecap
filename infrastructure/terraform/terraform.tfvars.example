@@ -12,7 +12,7 @@ project_name = "livecap"
 # transcript_bucket_name = "my-company-livecap-transcripts-dev"
 
 # Transcript Retention
-transcript_retention_days = 30  # Auto-delete transcripts after 30 days
+transcript_retention_days = 14  # Auto-delete transcripts after 14 days
 
 # ECS Task Configuration
 ecs_task_cpu      = 512   # 0.5 vCPU
@@ -60,7 +60,7 @@ healthy_threshold     = 2   # consecutive successes
 unhealthy_threshold   = 3   # consecutive failures
 
 # CloudWatch Logs
-log_retention_days = 7  # Retain logs for 7 days
+log_retention_days = 14  # Retain logs for 14 days
 
 # CloudFront Configuration
 cloudfront_price_class = "PriceClass_100"  # Use edge locations in North America and Europe
