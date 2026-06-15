@@ -2,7 +2,7 @@
 # Copy this file to terraform.tfvars and customize for your deployment
 
 # AWS Configuration
-aws_region   = "us-east-1"
+aws_region   = "ap-southeast-1"
 environment  = "dev"
 project_name = "livecap"
 
@@ -17,11 +17,11 @@ transcript_retention_days = 30  # Auto-delete transcripts after 30 days
 # ECS Task Configuration
 ecs_task_cpu      = 512   # 0.5 vCPU
 ecs_task_memory   = 1024  # 1 GB RAM
-ecs_desired_count = 1     # Number of tasks to run initially
 
-# ECS Autoscaling
-ecs_min_capacity = 1  # Minimum tasks
-ecs_max_capacity = 1  # Keep max=1 while backend session limits are in-memory
+# ECS backend scale-to-zero. Keep max=1 while session limits are in-memory.
+backend_desired_count = 0
+backend_min_capacity  = 0
+backend_max_capacity  = 1
 
 autoscaling_target_cpu    = 70  # Scale out when CPU > 70%
 autoscaling_target_memory = 80  # Scale out when memory > 80%
@@ -42,6 +42,16 @@ enable_demo_scheduled_scaling       = true
 demo_scale_up_schedule_expression   = "cron(0 8 ? * MON-FRI *)"
 demo_scale_down_schedule_expression = "cron(0 19 ? * MON-FRI *)"
 demo_scaling_timezone               = "Asia/Ho_Chi_Minh"
+
+# Optional backend self scale-down after the last session ends.
+# Keep disabled until the ECS task role/plan are reviewed.
+enable_idle_scale_down         = false
+idle_scale_down_grace_seconds = 300
+
+# Optional wake-on-demand endpoint. Keep disabled until the Terraform plan is reviewed.
+# When enabled, frontend can call VITE_WAKE_BACKEND_URL before opening the WebSocket.
+enable_wake_endpoint          = false
+wake_endpoint_timeout_seconds = 15
 
 # Health Check Configuration
 health_check_interval = 30  # seconds

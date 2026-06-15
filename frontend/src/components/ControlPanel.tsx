@@ -11,10 +11,16 @@ interface ControlPanelProps {
   isCapturing: boolean;
   /** Whether the WebSocket is in the process of connecting. */
   isConnecting: boolean;
+  /** Optional label shown while startup is in progress. */
+  connectionStatusLabel?: string | null;
   /** Whether microphone permission was denied. */
   permissionDenied: boolean;
   /** Current recording length in seconds. */
   recordingDurationSeconds: number;
+  /** Maximum recording length in seconds. */
+  maxSessionSeconds: number;
+  /** Remaining recording time in seconds. */
+  remainingSessionSeconds: number;
   /** Browser microphone input devices. */
   audioInputDevices: AudioInputDevice[];
   /** Selected microphone deviceId. */
@@ -32,8 +38,11 @@ interface ControlPanelProps {
 export default function ControlPanel({
   isCapturing,
   isConnecting,
+  connectionStatusLabel,
   permissionDenied,
   recordingDurationSeconds,
+  maxSessionSeconds,
+  remainingSessionSeconds,
   audioInputDevices,
   selectedDeviceId,
   onSelectedDeviceChange,
@@ -81,7 +90,7 @@ export default function ControlPanel({
           <button
             onClick={onStart}
             disabled={isDisabled}
-            aria-label={isConnecting ? 'Connecting...' : 'Start capture'}
+            aria-label={isConnecting ? connectionStatusLabel ?? 'Connecting...' : 'Start capture'}
             aria-busy={isConnecting}
             className={[
               'inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2',
@@ -112,7 +121,7 @@ export default function ControlPanel({
                     d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
                   />
                 </svg>
-                Connecting...
+                {connectionStatusLabel ?? 'Connecting...'}
               </>
             ) : (
               <>
@@ -182,6 +191,11 @@ export default function ControlPanel({
       <p className="max-w-md text-center text-xs text-slate-500">
         Lưu ý: bấm Stop khi ghi âm xong để tránh phát sinh phí AWS Transcribe,
         Translate và S3 nếu có export transcript.
+      </p>
+
+      <p className="max-w-md text-center text-xs text-slate-500">
+        Max session: {formatDuration(maxSessionSeconds)}
+        {isCapturing ? ` - Remaining: ${formatDuration(remainingSessionSeconds)}` : ''}
       </p>
 
       {permissionDenied && (

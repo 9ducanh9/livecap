@@ -34,6 +34,11 @@ output "alb_websocket_url" {
   value       = local.backend_ws_url
 }
 
+output "wake_backend_url" {
+  description = "Optional Lambda Function URL for frontend VITE_WAKE_BACKEND_URL when enable_wake_endpoint is true."
+  value       = var.enable_wake_endpoint ? aws_lambda_function_url.wake_backend[0].function_url : ""
+}
+
 output "alb_arn" {
   description = "ARN of the Application Load Balancer"
   value       = aws_lb.main.arn
@@ -148,6 +153,10 @@ output "deployment_instructions" {
        cat > .env.production << EOF
        VITE_API_BASE_URL=${local.backend_base_url}
        VITE_WS_URL=${local.backend_ws_url}
+       VITE_WAKE_BACKEND_URL=${var.enable_wake_endpoint ? aws_lambda_function_url.wake_backend[0].function_url : ""}
+       VITE_BACKEND_HEALTH_URL=${local.backend_base_url}/api/health
+       VITE_BACKEND_WAKE_TIMEOUT_SECONDS=120
+       VITE_MAX_SESSION_SECONDS=${var.session_timeout_seconds}
        EOF
        npm run build
        aws s3 sync dist/ s3://${aws_s3_bucket.frontend.id}/ --delete

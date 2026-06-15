@@ -89,6 +89,22 @@ resource "aws_ecs_task_definition" "backend" {
         {
           name  = "CLOUDWATCH_LOG_GROUP"
           value = aws_cloudwatch_log_group.backend.name
+        },
+        {
+          name  = "ENABLE_IDLE_SCALE_DOWN"
+          value = tostring(var.enable_idle_scale_down)
+        },
+        {
+          name  = "IDLE_SCALE_DOWN_GRACE_SECONDS"
+          value = tostring(var.idle_scale_down_grace_seconds)
+        },
+        {
+          name  = "ECS_CLUSTER_NAME"
+          value = aws_ecs_cluster.main.name
+        },
+        {
+          name  = "ECS_SERVICE_NAME"
+          value = "${var.project_name}-backend-service-${var.environment}"
         }
       ]
 
@@ -127,7 +143,7 @@ resource "aws_ecs_service" "backend" {
   name            = "${var.project_name}-backend-service-${var.environment}"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.backend.arn
-  desired_count   = var.ecs_desired_count
+  desired_count   = var.backend_desired_count
   launch_type     = "FARGATE"
 
   network_configuration {
@@ -169,8 +185,8 @@ resource "aws_ecs_service" "backend" {
 
 # Auto Scaling Target
 resource "aws_appautoscaling_target" "ecs_target" {
-  max_capacity       = var.ecs_max_capacity
-  min_capacity       = var.ecs_min_capacity
+  max_capacity       = var.backend_max_capacity
+  min_capacity       = var.backend_min_capacity
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.backend.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
@@ -204,7 +220,7 @@ resource "aws_appautoscaling_scheduled_action" "ecs_demo_down" {
 
   scalable_target_action {
     min_capacity = 0
-    max_capacity = 0
+    max_capacity = 1
   }
 }
 

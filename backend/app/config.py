@@ -22,7 +22,7 @@ load_dotenv()
 
 # --- Defaults -------------------------------------------------------------
 
-DEFAULT_AWS_REGION = "us-east-1"
+DEFAULT_AWS_REGION = "ap-southeast-1"
 DEFAULT_S3_BUCKET = "livecap-transcripts"
 # 24 hours, in seconds.
 DEFAULT_DOWNLOAD_LINK_EXPIRATION = 86_400
@@ -36,6 +36,8 @@ DEFAULT_ALLOWED_ORIGIN = "http://localhost:5173"
 DEFAULT_CLOUDWATCH_LOG_GROUP = "livecap"
 DEFAULT_MAX_CONCURRENT_SESSIONS = 4
 DEFAULT_MAX_SESSIONS_PER_IP = 1
+DEFAULT_ENABLE_IDLE_SCALE_DOWN = False
+DEFAULT_IDLE_SCALE_DOWN_GRACE_SECONDS = 300
 
 
 def _get_int(name: str, default: int) -> int:
@@ -89,6 +91,10 @@ class Settings:
         cloudwatch_log_group: CloudWatch log group for the Logging_Service.
         max_concurrent_sessions: Process-local active WebSocket session limit.
         max_sessions_per_ip: Process-local active WebSocket session limit per IP.
+        enable_idle_scale_down: Enables delayed ECS scale-to-zero after idle.
+        idle_scale_down_grace_seconds: Delay before scaling ECS desired count to 0.
+        ecs_cluster_name: ECS cluster name used by idle scale-down.
+        ecs_service_name: ECS service name used by idle scale-down.
     """
 
     aws_region: str = DEFAULT_AWS_REGION
@@ -103,6 +109,10 @@ class Settings:
     cloudwatch_log_group: str = DEFAULT_CLOUDWATCH_LOG_GROUP
     max_concurrent_sessions: int = DEFAULT_MAX_CONCURRENT_SESSIONS
     max_sessions_per_ip: int = DEFAULT_MAX_SESSIONS_PER_IP
+    enable_idle_scale_down: bool = DEFAULT_ENABLE_IDLE_SCALE_DOWN
+    idle_scale_down_grace_seconds: int = DEFAULT_IDLE_SCALE_DOWN_GRACE_SECONDS
+    ecs_cluster_name: str = ""
+    ecs_service_name: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -139,6 +149,18 @@ class Settings:
             ),
             max_concurrent_sessions=max_concurrent_sessions,
             max_sessions_per_ip=max_sessions_per_ip,
+            enable_idle_scale_down=_get_bool(
+                "ENABLE_IDLE_SCALE_DOWN", DEFAULT_ENABLE_IDLE_SCALE_DOWN
+            ),
+            idle_scale_down_grace_seconds=max(
+                0,
+                _get_int(
+                    "IDLE_SCALE_DOWN_GRACE_SECONDS",
+                    DEFAULT_IDLE_SCALE_DOWN_GRACE_SECONDS,
+                ),
+            ),
+            ecs_cluster_name=_get_str("ECS_CLUSTER_NAME", ""),
+            ecs_service_name=_get_str("ECS_SERVICE_NAME", ""),
         )
 
 

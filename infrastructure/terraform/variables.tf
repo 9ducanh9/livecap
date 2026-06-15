@@ -3,7 +3,7 @@
 variable "aws_region" {
   description = "AWS region for resource deployment"
   type        = string
-  default     = "us-east-1"
+  default     = "ap-southeast-1"
 }
 
 variable "environment" {
@@ -50,20 +50,20 @@ variable "ecs_task_memory" {
   default     = 1024
 }
 
-variable "ecs_desired_count" {
-  description = "Desired number of ECS tasks to run"
+variable "backend_desired_count" {
+  description = "Desired number of ECS backend tasks. Use 0 outside active demo/use windows."
   type        = number
-  default     = 1
+  default     = 0
 }
 
-variable "ecs_min_capacity" {
-  description = "Minimum number of ECS tasks for autoscaling"
+variable "backend_min_capacity" {
+  description = "Minimum ECS backend tasks for autoscaling. Use 0 for scale-to-zero."
   type        = number
-  default     = 1
+  default     = 0
 }
 
-variable "ecs_max_capacity" {
-  description = "Maximum number of ECS tasks for autoscaling"
+variable "backend_max_capacity" {
+  description = "Maximum ECS backend tasks for autoscaling. Keep at 1 while session limits are in-memory."
   type        = number
   default     = 1
 }
@@ -139,6 +139,30 @@ variable "demo_scaling_timezone" {
   description = "Timezone used by the demo scheduled scaling expressions."
   type        = string
   default     = "Asia/Ho_Chi_Minh"
+}
+
+variable "enable_idle_scale_down" {
+  description = "Allow the backend process to request ECS desired_count=0 after the last session ends and the grace period expires."
+  type        = bool
+  default     = false
+}
+
+variable "idle_scale_down_grace_seconds" {
+  description = "Seconds to wait after the last active session ends before the backend requests ECS scale-to-zero."
+  type        = number
+  default     = 300
+}
+
+variable "enable_wake_endpoint" {
+  description = "Create a public Lambda Function URL that wakes the ECS backend from scale-to-zero. Keep disabled until reviewed because it can start paid ECS capacity."
+  type        = bool
+  default     = false
+}
+
+variable "wake_endpoint_timeout_seconds" {
+  description = "Lambda timeout for the ECS wake endpoint."
+  type        = number
+  default     = 15
 }
 
 # Health Check Configuration

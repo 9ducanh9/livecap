@@ -60,7 +60,7 @@ The application is deployed on AWS using a cloud-native architecture: the fronte
    aws configure
    # Enter your AWS Access Key ID
    # Enter your AWS Secret Access Key
-   # Enter your default region (e.g., us-east-1)
+   # Enter your default region (e.g., ap-southeast-1)
    # Enter output format (json recommended)
    ```
 
@@ -74,7 +74,7 @@ The application is deployed on AWS using a cloud-native architecture: the fronte
 Ensure you have permissions to authenticate to Amazon ECR:
 
 ```bash
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <your-account-id>.dkr.ecr.us-east-1.amazonaws.com
+aws ecr get-login-password --region ap-southeast-1 | docker login --username AWS --password-stdin <your-account-id>.dkr.ecr.ap-southeast-1.amazonaws.com
 ```
 
 ---
@@ -97,7 +97,7 @@ cd infrastructure/terraform
 
 **Terraform Example** (`terraform.tfvars`):
 ```hcl
-aws_region   = "us-east-1"
+aws_region   = "ap-southeast-1"
 environment  = "production"
 project_name = "livecap"
 
@@ -106,9 +106,11 @@ frontend_bucket_name   = "my-company-livecap-frontend"
 transcript_bucket_name = "my-company-livecap-transcripts"
 
 # Resource sizing
-ecs_task_cpu      = 512    # 0.5 vCPU
-ecs_task_memory   = 1024   # 1 GB RAM
-ecs_desired_count = 1      # Number of tasks
+ecs_task_cpu          = 512    # 0.5 vCPU
+ecs_task_memory       = 1024   # 1 GB RAM
+backend_desired_count = 0      # Scale to zero outside active use
+backend_min_capacity  = 0
+backend_max_capacity  = 1      # Keep max=1 while session limits are in-memory
 
 # Lifecycle
 transcript_retention_days = 30
@@ -153,21 +155,21 @@ The Dockerfile includes:
 ```bash
 # Get ECR repository URI from infrastructure outputs (after provisioning)
 # Or create ECR repository first:
-aws ecr create-repository --repository-name livecap-backend --region us-east-1
+aws ecr create-repository --repository-name livecap-backend --region ap-southeast-1
 
 # Authenticate Docker to ECR
-aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
+aws ecr get-login-password --region ap-southeast-1 | \
+  docker login --username AWS --password-stdin <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com
 ```
 
 #### Step 3: Tag and Push Image
 
 ```bash
 # Tag with ECR repository URI
-docker tag livecap-backend:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/livecap-backend:latest
+docker tag livecap-backend:latest <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com/livecap-backend:latest
 
 # Push to ECR
-docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/livecap-backend:latest
+docker push <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com/livecap-backend:latest
 ```
 
 **Tip:** Use `terraform output -raw ecr_repository_uri` to get the exact ECR URI.
@@ -240,10 +242,21 @@ cd frontend
 cat > .env.production << EOF
 VITE_API_BASE_URL=<alb_backend_base_url>
 VITE_WS_URL=<alb_websocket_url>
+VITE_WAKE_BACKEND_URL=<wake_backend_url_if_enabled>
+VITE_BACKEND_HEALTH_URL=<alb_backend_base_url>/api/health
+VITE_BACKEND_WAKE_TIMEOUT_SECONDS=120
+VITE_MAX_SESSION_SECONDS=1800
 EOF
 ```
 
 Use `terraform output -raw alb_backend_base_url` and `terraform output -raw alb_websocket_url`. Production should return `https`/`wss` using `backend_domain_name`; development without an ALB certificate returns `http`/`ws` on the ALB DNS name.
+
+`VITE_WAKE_BACKEND_URL` is optional. Leave it empty unless `enable_wake_endpoint`
+has been reviewed, applied, and the output `wake_backend_url` is available.
+The MVP wake endpoint uses a public Lambda Function URL (`authorization_type =
+NONE`) for demo convenience. Anyone who can call it can wake the ECS backend to
+one task. Before real production use, add authentication and rate limiting,
+preferably with AWS WAF or an authenticated API front door.
 
 #### Step 2: Build Production Bundle
 
@@ -294,13 +307,17 @@ Backend configuration is injected via ECS task definition environment variables:
 
 | Variable | Required | Description | Example |
 |----------|----------|-------------|---------|
-| `AWS_REGION` | Yes | AWS region for all services | `us-east-1` |
+| `AWS_REGION` | Yes | AWS region for all regional services | `ap-southeast-1` |
 | `S3_BUCKET` | Yes | S3 bucket for transcripts | `my-livecap-transcripts` |
 | `ALLOWED_ORIGIN` | Yes | Frontend CloudFront URL | `https://d123abc.cloudfront.net` |
 | `SESSION_TIMEOUT` | No | Max session duration (seconds) | `1800` |
 | `DOWNLOAD_LINK_EXPIRATION` | No | Pre-signed URL expiration (seconds) | `86400` |
 | `MAX_SPEAKERS` | No | Transcribe diarization max speakers | `5` |
 | `CLOUDWATCH_LOG_GROUP` | No | CloudWatch log group | `/ecs/livecap-backend` |
+| `ENABLE_IDLE_SCALE_DOWN` | No | Let backend request ECS desired count 0 after the last session ends | `false` |
+| `IDLE_SCALE_DOWN_GRACE_SECONDS` | No | Delay before idle scale-down | `300` |
+| `ECS_CLUSTER_NAME` | No | ECS cluster name for idle scale-down | `livecap-cluster-dev` |
+| `ECS_SERVICE_NAME` | No | ECS service name for idle scale-down | `livecap-backend-service-dev` |
 
 **Configuration in Terraform:**
 ```hcl
@@ -331,6 +348,10 @@ Frontend configuration is set at build time:
 |----------|----------|-------------|---------|
 | `VITE_API_BASE_URL` | Yes | Backend API endpoint | `https://alb-dns.elb.amazonaws.com` |
 | `VITE_WS_URL` | Yes | Backend WebSocket endpoint | `wss://alb-dns.elb.amazonaws.com/ws/transcribe` |
+| `VITE_WAKE_BACKEND_URL` | No | Optional Lambda Function URL that wakes ECS from scale-to-zero before capture starts | `https://abc.lambda-url.ap-southeast-1.on.aws/` |
+| `VITE_BACKEND_HEALTH_URL` | No | Health endpoint polled after wake | `https://api.livecap.example.com/api/health` |
+| `VITE_BACKEND_WAKE_TIMEOUT_SECONDS` | No | Max wait for backend readiness | `120` |
+| `VITE_MAX_SESSION_SECONDS` | No | UI max session countdown; keep aligned with `SESSION_TIMEOUT` | `1800` |
 
 Set in `.env.production` before running `npm run build`.
 
@@ -351,10 +372,10 @@ cd backend
 docker build -t livecap-backend:v2 .
 
 # Tag for ECR
-docker tag livecap-backend:v2 <account-id>.dkr.ecr.us-east-1.amazonaws.com/livecap-backend:v2
+docker tag livecap-backend:v2 <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com/livecap-backend:v2
 
 # Push to ECR
-docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/livecap-backend:v2
+docker push <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com/livecap-backend:v2
 ```
 
 #### 2. Update ECS Task Definition
@@ -421,21 +442,24 @@ Wait until `runningCount` equals `desiredCount` and the new deployment shows `PR
 Adjust the number of running tasks:
 
 ```bash
-# Scale to 3 tasks
+# Wake the backend for a demo session
 aws ecs update-service \
   --cluster <ecs-cluster-name> \
   --service <ecs-service-name> \
-  --desired-count 3
+  --desired-count 1
 ```
 
 **Terraform:**
 ```hcl
 # Update terraform.tfvars
-ecs_desired_count = 3
+backend_desired_count = 1
 
 # Apply
 terraform apply
 ```
+
+Keep `backend_max_capacity = 1` until the active session registry moves from
+process memory to a shared store such as DynamoDB or Redis.
 
 #### Auto-Scaling (Optional Enhancement)
 
@@ -882,13 +906,33 @@ The app opens at `http://localhost:5173`.
      --comparison-operator GreaterThanThreshold
    ```
 
-6. **Scale Down Off-Hours:** For development environments, manually scale to 0 tasks during non-working hours:
-   ```bash
-   aws ecs update-service \
-     --cluster <cluster> \
-     --service <service> \
-     --desired-count 0
-   ```
+6. **Scheduled Scale-to-Zero:** For demo environments, Terraform can scale the
+   ECS service to 0 outside demo hours and back to 1 during demo hours through
+   `enable_demo_scheduled_scaling`.
+
+7. **Optional Wake Endpoint:** If `enable_wake_endpoint=true` is reviewed and
+   applied, the frontend can call `VITE_WAKE_BACKEND_URL` before opening the
+   WebSocket. This lets a scaled-to-zero ECS service start on demand. It does
+   not remove ALB hourly cost because the ALB remains the stable backend entry
+   point.
+   The MVP Function URL is public (`authorization_type = NONE`) and can wake
+   ECS to one task. Add authentication, WAF, and rate limiting before real
+   production use.
+
+8. **Idle Backend Scale-Down:** If `ENABLE_IDLE_SCALE_DOWN=true`, the backend
+   waits for `IDLE_SCALE_DOWN_GRACE_SECONDS` after the last active session ends,
+   then requests ECS desired count 0. A new session cancels the pending
+   scale-down.
+
+9. **Budget Guardrail:** Terraform can create a `$50/month` AWS Budget alert
+   when `budget_notification_email` is set. AWS Budget alerts are not
+   real-time and can lag behind actual usage.
+
+The ALB is intentionally kept for stable ECS routing, HTTPS/WSS termination,
+health checks, and future WAF integration. ECS scale-to-zero reduces idle
+compute cost only; the ALB still has a fixed hourly cost. NAT Gateway or other
+VPC fixed costs, if present in the target account, should be reviewed
+separately.
 
 ---
 

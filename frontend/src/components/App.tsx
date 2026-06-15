@@ -21,6 +21,25 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import CaptionDisplay from './CaptionDisplay';
 import ExportPanel from './ExportPanel';
 import ControlPanel from './ControlPanel';
+import {
+  isWakeBackendConfigured,
+  wakeBackendIfConfigured,
+} from '../services/wakeService';
+
+const DEFAULT_MAX_SESSION_SECONDS = 1_800;
+const SESSION_TIMEOUT_WARNING_SECONDS = 60;
+
+function configuredMaxSessionSeconds(): number {
+  const raw = import.meta.env.VITE_MAX_SESSION_SECONDS;
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    return DEFAULT_MAX_SESSION_SECONDS;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_MAX_SESSION_SECONDS;
+  }
+  return Math.floor(parsed);
+}
 
 // ---------------------------------------------------------------------------
 // State management — useReducer
@@ -129,13 +148,15 @@ export default function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState(Date.now());
+  const [isStarting, setIsStarting] = useState(false);
+  const [startStatusLabel, setStartStatusLabel] = useState<string | null>(null);
   const stopCaptureRef = useRef<(() => void) | null>(null);
+  const maxSessionSeconds = configuredMaxSessionSeconds();
 
   // ------------------------------------------------------------------
   // WebSocket hook — message parsing → state updates
   // ------------------------------------------------------------------
   const {
-    isConnected,
     isConnectionLost,
     connectionStatus,
     connect,
@@ -213,22 +234,36 @@ export default function App() {
   // ------------------------------------------------------------------
   const handleStart = useCallback(async () => {
     dispatch({ type: 'CLEAR_ERROR' });
-    connect();
+    setIsStarting(true);
+    setStartStatusLabel(
+      isWakeBackendConfigured() ? 'Starting backend...' : 'Connecting...'
+    );
     try {
+      await wakeBackendIfConfigured();
+      setStartStatusLabel('Connecting...');
+      connect();
       await startCapture();
       setRecordingStartedAt(Date.now());
       dispatch({ type: 'SET_CAPTURING', value: true });
-    } catch {
+    } catch (err) {
       // Permission denied is exposed via permissionDenied; other errors
       // are surfaced here as a generic error message.
       if (!permissionDenied) {
         dispatch({
           type: 'SET_ERROR',
-          error: 'Failed to start audio capture. Please check your microphone.',
+          error:
+            err instanceof Error &&
+            (err.message.includes('Backend did not become healthy') ||
+              err.message.includes('Wake endpoint returned'))
+              ? 'Backend is still starting. Please try again shortly.'
+              : 'Failed to start audio capture. Please check your microphone.',
         });
       }
       setRecordingStartedAt(null);
       disconnect();
+    } finally {
+      setIsStarting(false);
+      setStartStatusLabel(null);
     }
   }, [connect, disconnect, startCapture, permissionDenied]);
 
@@ -243,27 +278,30 @@ export default function App() {
   }, [stopCapture, disconnect]);
 
   // ------------------------------------------------------------------
-  // Derive "isConnecting": WebSocket connecting but audio not yet flowing
+  // Derive "isConnecting": backend wake or WebSocket transition in progress
   // ------------------------------------------------------------------
-  // We treat the window between pressing Start and audio flowing as
-  // "connecting" to disable the button and show a spinner.
-  // Simpler heuristic: button is disabled only while the WebSocket is
-  // transitioning (between handleStart being called and isConnected toggling).
-  // We derive this from the hook itself — isConnected is false before open.
-  // The ControlPanel receives isConnecting so it can show the spinner.
   const wsIsConnecting =
-    !isCapturing && !isConnectionLost && !isConnected && state.sessionId === null &&
-    // Avoid showing "connecting" on initial load before the user presses Start:
-    // we rely on the component lifecycle — this flag will only be truthy
-    // in the brief window after connect() is called and before onopen fires.
-    // For simplicity, we let ControlPanel show normal "Start" state on first
-    // render and rely on the disabled flag only when explicitly needed.
-    false;
+    isStarting ||
+    connectionStatus === 'connecting' ||
+    connectionStatus === 'reconnecting';
 
   const recordingDurationSeconds =
     recordingStartedAt !== null && isCapturing
       ? Math.max(0, Math.floor((nowMs - recordingStartedAt) / 1_000))
       : 0;
+  const remainingSessionSeconds = Math.max(
+    0,
+    maxSessionSeconds - recordingDurationSeconds
+  );
+
+  useEffect(() => {
+    if (!isCapturing || recordingDurationSeconds < maxSessionSeconds) return;
+    handleStop();
+    dispatch({
+      type: 'SET_ERROR',
+      error: 'Maximum session duration reached. Please start a new session.',
+    });
+  }, [handleStop, isCapturing, maxSessionSeconds, recordingDurationSeconds]);
 
   // ---------------------------------------------------------------------------
   // Render helpers
@@ -379,6 +417,15 @@ export default function App() {
         {/* Status banners */}
         {isConnectionLost && <ConnectionLostBanner />}
         {connectionStatus === 'reconnected' && !isConnectionLost && <ReconnectedBanner />}
+        {isCapturing && remainingSessionSeconds <= SESSION_TIMEOUT_WARNING_SECONDS && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+          >
+            Session will stop automatically in {remainingSessionSeconds} seconds.
+          </div>
+        )}
         {state.error && <ErrorBanner message={state.error} />}
 
         {/* Control panel — start/stop + active indicator */}
@@ -386,8 +433,11 @@ export default function App() {
           <ControlPanel
             isCapturing={isCapturing}
             isConnecting={wsIsConnecting}
+            connectionStatusLabel={startStatusLabel}
             permissionDenied={permissionDenied}
             recordingDurationSeconds={recordingDurationSeconds}
+            maxSessionSeconds={maxSessionSeconds}
+            remainingSessionSeconds={remainingSessionSeconds}
             audioInputDevices={audioInputDevices}
             selectedDeviceId={selectedDeviceId}
             onSelectedDeviceChange={setSelectedDeviceId}

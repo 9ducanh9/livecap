@@ -61,7 +61,7 @@ terraform init -backend-config=backend.hcl
 ### 2. Create a terraform.tfvars file
 
 ```hcl
-aws_region    = "us-east-1"
+aws_region    = "ap-southeast-1"
 environment   = "dev"
 project_name  = "livecap"
 
@@ -70,11 +70,11 @@ project_name  = "livecap"
 # transcript_bucket_name = "my-livecap-transcript-bucket"
 
 # Optional: Configure ECS resources
-ecs_task_cpu      = 512
-ecs_task_memory   = 1024
-ecs_desired_count = 1
-ecs_min_capacity  = 1
-ecs_max_capacity  = 1
+ecs_task_cpu          = 512
+ecs_task_memory       = 1024
+backend_desired_count = 0
+backend_min_capacity  = 0
+backend_max_capacity  = 1
 
 # Optional: Configure retention periods
 transcript_retention_days = 30
@@ -146,7 +146,7 @@ export ECR_URI=$(terraform output -raw ecr_repository_uri)
 
 ```bash
 # Authenticate with ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(terraform output -raw ecr_repository_uri)
+aws ecr get-login-password --region ap-southeast-1 | docker login --username AWS --password-stdin $(terraform output -raw ecr_repository_uri)
 
 # Build the Docker image
 cd ../../backend
@@ -161,7 +161,7 @@ docker push $(terraform output -raw ecr_repository_uri):latest
 
 ```bash
 # Authenticate with ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(terraform output -raw ecr_repository_uri)
+aws ecr get-login-password --region ap-southeast-1 | docker login --username AWS --password-stdin $(terraform output -raw ecr_repository_uri)
 
 # Build the Docker image
 cd ../../backend
@@ -240,6 +240,10 @@ cd ../../frontend
 cat > .env.production << EOF
 VITE_API_BASE_URL=$(cd ../infrastructure/terraform && terraform output -raw alb_backend_base_url)
 VITE_WS_URL=$(cd ../infrastructure/terraform && terraform output -raw alb_websocket_url)
+VITE_WAKE_BACKEND_URL=$(cd ../infrastructure/terraform && terraform output -raw wake_backend_url)
+VITE_BACKEND_HEALTH_URL=$(cd ../infrastructure/terraform && terraform output -raw alb_backend_base_url)/api/health
+VITE_BACKEND_WAKE_TIMEOUT_SECONDS=120
+VITE_MAX_SESSION_SECONDS=1800
 EOF
 
 # Build the frontend
@@ -267,7 +271,7 @@ echo "Backend API: $(terraform output -raw alb_backend_base_url)"
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `aws_region` | AWS region for deployment | `us-east-1` |
+| `aws_region` | AWS region for deployment | `ap-southeast-1` |
 | `environment` | Environment name (dev/staging/prod) | `dev` |
 | `project_name` | Project name for resource naming | `livecap` |
 
@@ -285,9 +289,9 @@ echo "Backend API: $(terraform output -raw alb_backend_base_url)"
 |----------|-------------|---------|
 | `ecs_task_cpu` | CPU units (256, 512, 1024, 2048, 4096) | `512` |
 | `ecs_task_memory` | Memory in MiB (512, 1024, 2048, etc.) | `1024` |
-| `ecs_desired_count` | Initial number of tasks | `1` |
-| `ecs_min_capacity` | Minimum tasks for autoscaling | `1` |
-| `ecs_max_capacity` | Maximum tasks for autoscaling | `4` |
+| `backend_desired_count` | Initial backend task count; use `0` outside active demo/use windows | `0` |
+| `backend_min_capacity` | Minimum tasks for autoscaling and scale-to-zero | `0` |
+| `backend_max_capacity` | Maximum tasks; keep `1` while session limits are in-memory | `1` |
 | `container_port` | Backend container port | `8000` |
 
 ### Application Configuration
@@ -402,8 +406,20 @@ aws ecs list-tasks \
 aws ecs update-service \
   --cluster $(terraform output -raw ecs_cluster_name) \
   --service $(terraform output -raw ecs_service_name) \
-  --desired-count 2
+  --desired-count 1
 ```
+
+Keep desired count and autoscaling max at `1` while backend session limits are
+process-local. For demo cost control, prefer scheduled scale-to-zero through
+`enable_demo_scheduled_scaling`. If `enable_wake_endpoint=true` is reviewed and
+applied, the frontend can call `wake_backend_url` before capture starts to bring
+the ECS service back to one task. This still keeps the ALB running and does not
+remove ALB hourly cost.
+
+The MVP wake endpoint is a public Lambda Function URL with
+`authorization_type = NONE`. It is convenient for demo use, but anyone who can
+call it can wake ECS to one task. Use authentication, AWS WAF, and rate limiting
+before real production use.
 
 ## Updating the Infrastructure
 
@@ -472,10 +488,10 @@ terraform destroy
 aws acm request-certificate \
   --domain-name api.yourdomain.com \
   --validation-method DNS \
-  --region us-east-1
+  --region ap-southeast-1
 
 # Note the CertificateArn from output
-# ARN format: arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERT_ID
+# ARN format: arn:aws:acm:ap-southeast-1:ACCOUNT_ID:certificate/CERT_ID
 
 # Validate certificate by adding DNS record
 # Follow instructions in ACM console or:
@@ -487,7 +503,7 @@ aws acm describe-certificate \
 # Wait for validation (usually 5-10 minutes)
 
 # Update terraform.tfvars with backend certificate ARN:
-alb_ssl_certificate_arn = "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERT_ID"
+alb_ssl_certificate_arn = "arn:aws:acm:ap-southeast-1:ACCOUNT_ID:certificate/CERT_ID"
 backend_domain_name = "api.yourdomain.com"
 ```
 
@@ -498,7 +514,7 @@ aws acm import-certificate \
   --certificate fileb://certificate.pem \
   --private-key fileb://private-key.pem \
   --certificate-chain fileb://certificate-chain.pem \
-  --region us-east-1
+  --region ap-southeast-1
 ```
 
 #### Development Without Certificate

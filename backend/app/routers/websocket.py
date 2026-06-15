@@ -67,6 +67,7 @@ from app.services.logging_service import (
     log_websocket_connect,
     log_websocket_disconnect,
 )
+from app.services.idle_scaler import get_idle_scale_down_scheduler
 from app.services.session_registry import active_session_registry
 from app.services.transcription import TranscriptionService
 from app.services.translation import translate_segment
@@ -586,6 +587,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         await websocket.close(code=1008)
         return
     session_registered = True
+    get_idle_scale_down_scheduler(active_session_registry).cancel_pending()
 
     log_websocket_connect(session_id)
 
@@ -940,6 +942,9 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         finally:
             if session_registered:
                 active_session_registry.unregister(session_id)
+                get_idle_scale_down_scheduler(
+                    active_session_registry
+                ).schedule_if_idle(settings=settings)
             try:
                 await websocket.close()
             except Exception:

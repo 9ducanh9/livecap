@@ -122,6 +122,25 @@ resource "aws_iam_role_policy" "translate_access" {
   })
 }
 
+# Policy for optional backend idle scale-to-zero.
+resource "aws_iam_role_policy" "ecs_idle_scale_down_access" {
+  name = "${var.project_name}-ecs-idle-scale-down-access"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:UpdateService"
+        ]
+        Resource = aws_ecs_service.backend.id
+      }
+    ]
+  })
+}
+
 # Policy for CloudWatch Logs (application logging)
 resource "aws_iam_role_policy" "cloudwatch_logs_access" {
   name = "${var.project_name}-cloudwatch-logs-access"
