@@ -322,6 +322,13 @@ echo "Backend API: $(terraform output -raw alb_backend_base_url)"
 | `cloudfront_ssl_certificate_arn` | ACM certificate ARN for a CloudFront custom domain. Must be in `us-east-1`. | `""` |
 | `custom_domain` | Custom domain name | `""` |
 
+### WAF Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `enable_waf` | Create COUNT-mode AWS WAFv2 Web ACLs for CloudFront and ALB | `true` |
+| `waf_rate_limit` | Requests per IP per 5-minute window for COUNT-mode rate rules | `2000` |
+
 ### Network Configuration
 
 | Variable | Description | Default |
@@ -337,6 +344,13 @@ echo "Backend API: $(terraform output -raw alb_backend_base_url)"
 | `autoscaling_target_cpu` | Target CPU % for scaling | `70` |
 | `autoscaling_target_memory` | Target memory % for scaling | `80` |
 
+### CloudWatch Dashboard Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `enable_cloudwatch_dashboard` | Create the LiveCap operations dashboard | `true` |
+| `cloudwatch_dashboard_name` | Optional dashboard name. Empty generates `<project>-<environment>-operations` | `""` |
+
 ## File Structure
 
 ```
@@ -348,6 +362,8 @@ infrastructure/terraform/
 â”œâ”€â”€ s3.tf                # S3 buckets and lifecycle policies
 â”œâ”€â”€ cloudfront.tf        # CloudFront distribution
 â”œâ”€â”€ alb.tf               # Application Load Balancer
+â”œâ”€â”€ waf.tf               # AWS WAFv2 Web ACLs in COUNT mode
+â”œâ”€â”€ cloudwatch_dashboard.tf # CloudWatch operations dashboard
 â”œâ”€â”€ ecs.tf               # ECS cluster, service, task definition
 â”œâ”€â”€ iam.tf               # IAM roles and policies
 â”œâ”€â”€ ecr.tf               # Elastic Container Registry
@@ -379,6 +395,64 @@ These retention policies support AWS Well-Architected Framework pillars:
 - **Sustainability**: Reduce environmental impact by limiting unnecessary data retention
 
 ## Monitoring and Operations
+
+### WAF COUNT Mode
+
+Terraform can create AWS WAFv2 Web ACLs for both public entrypoints when
+`enable_waf=true`:
+
+- **CloudFront WAF (`scope = CLOUDFRONT`)** protects frontend edge traffic.
+- **ALB WAF (`scope = REGIONAL`)** protects the backend API and WebSocket
+  entrypoint.
+
+This batch uses COUNT mode only:
+
+- AWS Managed Rules Common Rule Set is counted, not blocked.
+- AWS Managed Rules Known Bad Inputs is counted, not blocked.
+- Rate-based rules are counted, not blocked.
+
+COUNT mode observes traffic and emits WAF metrics without blocking requests, so
+it should not break WebSocket traffic. Review WAF metrics and sampled requests
+before changing any rule to BLOCK mode. BLOCK mode should be enabled only after
+the observed traffic patterns are understood.
+
+### CloudWatch Operations Dashboard
+
+Terraform creates a CloudWatch dashboard when `enable_cloudwatch_dashboard=true`
+(default). The generated dashboard name is
+`<project_name>-<environment>-operations` unless `cloudwatch_dashboard_name` is
+set.
+
+The dashboard is intended for LiveCap demo/MVP observability:
+
+- **ECS backend service health and resource usage**
+  - CPU utilization
+  - memory utilization
+  - note explaining why `RunningTaskCount` and `DesiredTaskCount` are omitted
+- **ALB traffic and target health**
+  - request count
+  - target 2XX, 4XX, and 5XX counts
+  - target response time
+  - healthy and unhealthy host counts
+- **Wake Lambda activity**
+  - invocations
+  - errors
+  - duration
+- **Operational notes**
+  - ECS may intentionally sit at zero tasks outside active demo/use windows.
+  - ALB metrics continue while the environment exists because ALB is kept as
+    the stable backend entrypoint.
+  - Wake Lambda widgets populate only when `enable_wake_endpoint=true`.
+  - ECS Container Insights is intentionally disabled by default for cost
+    control; `RunningTaskCount` and `DesiredTaskCount` require Container
+    Insights and are omitted in this batch.
+
+This dashboard supports AWS Well-Architected pillars:
+
+- **Operational Excellence:** centralizes the key demo/MVP runtime signals.
+- **Reliability:** surfaces backend task health, target health, and errors.
+- **Performance Efficiency:** tracks CPU, memory, and ALB response time.
+- **Cost Optimization:** makes scale-to-zero behavior and wake activity visible.
 
 ### View Logs
 

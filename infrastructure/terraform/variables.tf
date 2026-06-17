@@ -289,6 +289,30 @@ variable "log_retention_days" {
   default     = 14
 }
 
+variable "enable_cloudwatch_dashboard" {
+  description = "Create a CloudWatch dashboard for LiveCap operational observability."
+  type        = bool
+  default     = true
+}
+
+variable "cloudwatch_dashboard_name" {
+  description = "Optional CloudWatch dashboard name. If empty, a name is generated from project and environment."
+  type        = string
+  default     = ""
+}
+
+variable "enable_waf" {
+  description = "Create AWS WAFv2 Web ACLs for CloudFront and ALB in COUNT mode."
+  type        = bool
+  default     = true
+}
+
+variable "waf_rate_limit" {
+  description = "Request rate limit per 5-minute window for WAF rate-based COUNT rules."
+  type        = number
+  default     = 2000
+}
+
 # Autoscaling Configuration
 variable "autoscaling_target_cpu" {
   description = "Target CPU utilization percentage for autoscaling"

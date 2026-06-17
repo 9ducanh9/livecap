@@ -65,6 +65,10 @@ log_retention_days = 14  # Retain logs for 14 days
 # CloudFront Configuration
 cloudfront_price_class = "PriceClass_100"  # Use edge locations in North America and Europe
 
+# WAF Configuration. Rules are COUNT-only in this batch.
+enable_waf     = true
+waf_rate_limit = 2000
+
 # TLS/SSL Configuration
 # Provide an ACM certificate ARN for the backend ALB in the same region as the ALB.
 # Leave empty only for development HTTP mode.
