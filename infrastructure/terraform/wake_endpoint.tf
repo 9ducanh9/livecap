@@ -1,13 +1,29 @@
 # Optional wake-on-demand endpoint for scale-to-zero demo environments.
-# Disabled by default because a public wake URL can start paid ECS capacity.
+# The Function URL requires AWS_IAM and is reachable by the browser only through
+# the signed CloudFront /api/wake behavior.
 
 locals {
-  wake_endpoint_allowed_origins = concat(
-    ["https://${aws_cloudfront_distribution.frontend.domain_name}"],
-    var.custom_domain != "" ? ["https://${var.custom_domain}"] : []
-  )
+  wake_endpoint_allowed_origins = var.custom_domain != "" ? ["https://${var.custom_domain}"] : []
 
   wake_endpoint_allowed_origin = join(",", local.wake_endpoint_allowed_origins)
+  wake_backend_service_name = (
+    var.route_backend_to_target
+    ? "${var.project_name}-target-service-${var.environment}"
+    : "${var.project_name}-backend-service-${var.environment}"
+  )
+  wake_backend_service_arn = "arn:${data.aws_partition.current.partition}:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.main.name}/${local.wake_backend_service_name}"
+}
+
+data "aws_partition" "current" {}
+
+resource "aws_cloudfront_origin_access_control" "wake_backend" {
+  count = var.enable_wake_endpoint ? 1 : 0
+
+  name                              = "${var.project_name}-wake-${var.environment}-oac"
+  description                       = "SigV4 access from CloudFront to the LiveCap wake Lambda Function URL"
+  origin_access_control_origin_type = "lambda"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
 }
 
 data "archive_file" "wake_backend" {
@@ -126,7 +142,7 @@ resource "aws_iam_role_policy" "wake_backend" {
           "ecs:DescribeServices",
           "ecs:UpdateService"
         ]
-        Resource = aws_ecs_service.backend.id
+        Resource = local.wake_backend_service_arn
       }
     ]
   })
@@ -152,7 +168,7 @@ resource "aws_lambda_function" "wake_backend" {
   environment {
     variables = {
       CLUSTER_NAME   = aws_ecs_cluster.main.name
-      SERVICE_NAME   = aws_ecs_service.backend.name
+      SERVICE_NAME   = local.wake_backend_service_name
       ALLOWED_ORIGIN = local.wake_endpoint_allowed_origin
     }
   }
@@ -166,22 +182,26 @@ resource "aws_lambda_function" "wake_backend" {
 resource "aws_lambda_function_url" "wake_backend" {
   count              = var.enable_wake_endpoint ? 1 : 0
   function_name      = aws_lambda_function.wake_backend[0].function_name
-  authorization_type = "NONE"
-
-  cors {
-    allow_origins = local.wake_endpoint_allowed_origins
-    allow_methods = ["POST", "OPTIONS"]
-    allow_headers = ["content-type"]
-    max_age       = 300
-  }
+  authorization_type = "AWS_IAM"
 }
 
 resource "aws_lambda_permission" "wake_backend_function_url" {
   count = var.enable_wake_endpoint ? 1 : 0
 
-  statement_id           = "AllowPublicFunctionUrlInvoke"
+  statement_id           = "AllowCloudFrontFunctionUrlInvoke"
   action                 = "lambda:InvokeFunctionUrl"
   function_name          = aws_lambda_function.wake_backend[0].function_name
-  principal              = "*"
-  function_url_auth_type = "NONE"
+  principal              = "cloudfront.amazonaws.com"
+  source_arn             = aws_cloudfront_distribution.frontend.arn
+  function_url_auth_type = "AWS_IAM"
+}
+
+resource "aws_lambda_permission" "wake_backend_function" {
+  count = var.enable_wake_endpoint ? 1 : 0
+
+  statement_id  = "AllowCloudFrontFunctionInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.wake_backend[0].function_name
+  principal     = "cloudfront.amazonaws.com"
+  source_arn    = aws_cloudfront_distribution.frontend.arn
 }

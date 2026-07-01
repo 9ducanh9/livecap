@@ -68,6 +68,45 @@ variable "backend_max_capacity" {
   default     = 1
 }
 
+variable "backend_image_tag" {
+  description = "Immutable Git SHA tag already pushed to ECR for the target Fargate task."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9a-f]{7,40}$", var.backend_image_tag))
+    error_message = "backend_image_tag must be a 7-40 character lowercase hexadecimal Git SHA."
+  }
+}
+
+variable "route_backend_to_target" {
+  description = "Route CloudFront /api/* and /ws/* traffic to the target ALB. Keep false for the first blue/green apply."
+  type        = bool
+  default     = false
+}
+
+variable "target_backend_desired_count" {
+  description = "Initial target service task count. Use 1 for migration validation, then return to 0 after wake/idle checks."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = contains([0, 1], var.target_backend_desired_count)
+    error_message = "target_backend_desired_count must be 0 or 1."
+  }
+}
+
+variable "legacy_backend_min_capacity" {
+  description = "Minimum capacity for the legacy service during the rollback window."
+  type        = number
+  default     = 1
+}
+
+variable "legacy_backend_max_capacity" {
+  description = "Maximum capacity for the legacy service during migration. Keep at 1 for the in-memory session registry."
+  type        = number
+  default     = 1
+}
+
 variable "container_port" {
   description = "Port exposed by the backend container"
   type        = number
@@ -123,6 +162,12 @@ variable "enable_demo_scheduled_scaling" {
   default     = true
 }
 
+variable "enable_legacy_scheduled_scaling" {
+  description = "Keep scheduled scaling on the legacy rollback service during migration."
+  type        = bool
+  default     = false
+}
+
 variable "demo_scale_up_schedule_expression" {
   description = "Application Auto Scaling schedule expression for demo hours. Default is 08:00 Asia/Saigon, Monday-Friday."
   type        = string
@@ -147,6 +192,12 @@ variable "enable_idle_scale_down" {
   default     = false
 }
 
+variable "target_enable_idle_scale_down" {
+  description = "Enable idle scale-down for the private target service. Local/dev .env safety remains disabled."
+  type        = bool
+  default     = true
+}
+
 variable "idle_scale_down_grace_seconds" {
   description = "Seconds to wait after the last active session ends before the backend requests ECS scale-to-zero."
   type        = number
@@ -154,7 +205,7 @@ variable "idle_scale_down_grace_seconds" {
 }
 
 variable "enable_wake_endpoint" {
-  description = "Create a public Lambda Function URL that wakes the ECS backend from scale-to-zero. Keep disabled until reviewed because it can start paid ECS capacity."
+  description = "Create an AWS_IAM Lambda Function URL exposed through the signed CloudFront /api/wake origin."
   type        = bool
   default     = false
 }
@@ -231,6 +282,12 @@ variable "backend_domain_name" {
   default     = ""
 }
 
+variable "target_backend_domain_name" {
+  description = "DNS name covered by alb_ssl_certificate_arn and pointed at the target ALB during blue/green migration."
+  type        = string
+  default     = ""
+}
+
 variable "custom_domain" {
   description = "Custom domain name for CloudFront distribution (optional)"
   type        = string
@@ -238,6 +295,17 @@ variable "custom_domain" {
 }
 
 # VPC Configuration
+variable "legacy_availability_zones" {
+  description = "Availability Zones retained by the legacy ALB/ECS rollback stack."
+  type        = list(string)
+  default     = ["ap-southeast-1a", "ap-southeast-1b"]
+
+  validation {
+    condition     = length(var.legacy_availability_zones) >= 2
+    error_message = "legacy_availability_zones must contain at least two AZs because the ALB requires two Availability Zones."
+  }
+}
+
 variable "vpc_id" {
   description = "VPC ID for resource deployment (if not provided, will use default VPC)"
   type        = string
@@ -254,6 +322,59 @@ variable "private_subnet_ids" {
   description = "List of private subnet IDs for ECS tasks"
   type        = list(string)
   default     = []
+}
+
+variable "target_vpc_cidr" {
+  description = "CIDR for the dedicated LiveCap target VPC."
+  type        = string
+  default     = "10.20.0.0/16"
+}
+
+variable "target_public_subnets" {
+  description = "Two public subnets used by the target ALB and NAT gateway."
+  type = map(object({
+    availability_zone = string
+    cidr_block        = string
+  }))
+  default = {
+    a = {
+      availability_zone = "ap-southeast-1a"
+      cidr_block        = "10.20.0.0/24"
+    }
+    b = {
+      availability_zone = "ap-southeast-1b"
+      cidr_block        = "10.20.1.0/24"
+    }
+  }
+}
+
+variable "target_private_subnets" {
+  description = "Two private subnets used by target Fargate tasks."
+  type = map(object({
+    availability_zone = string
+    cidr_block        = string
+  }))
+  default = {
+    a = {
+      availability_zone = "ap-southeast-1a"
+      cidr_block        = "10.20.10.0/24"
+    }
+    b = {
+      availability_zone = "ap-southeast-1b"
+      cidr_block        = "10.20.11.0/24"
+    }
+  }
+}
+
+variable "target_nat_gateway_subnet_key" {
+  description = "Public subnet key that hosts the single cost-optimized NAT gateway."
+  type        = string
+  default     = "a"
+
+  validation {
+    condition     = contains(keys(var.target_public_subnets), var.target_nat_gateway_subnet_key)
+    error_message = "target_nat_gateway_subnet_key must match a key in target_public_subnets."
+  }
 }
 
 # Tags
@@ -273,7 +394,7 @@ variable "ecr_repository_name" {
 variable "ecr_image_tag_mutability" {
   description = "Image tag mutability setting for ECR (MUTABLE or IMMUTABLE)"
   type        = string
-  default     = "MUTABLE"
+  default     = "IMMUTABLE"
 }
 
 variable "ecr_scan_on_push" {

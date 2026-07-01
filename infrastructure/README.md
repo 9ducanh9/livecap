@@ -139,7 +139,7 @@ infrastructure/
 
 ### Cost Optimization
 - ✅ Fargate pay-per-use (no idle EC2)
-- ✅ S3 lifecycle policies (30-day retention)
+- ✅ S3 lifecycle policies (14-day retention by default)
 - ✅ CloudFront caching reduces origin load
 - ✅ ECR image cleanup policies
 - ✅ Configurable log retention
@@ -152,19 +152,21 @@ Edit `terraform/terraform.tfvars`:
 
 ```hcl
 # AWS Configuration
-aws_region   = "us-east-1"
+aws_region   = "ap-southeast-1"
 environment  = "dev"
 project_name = "livecap"
 
-# ECS Configuration
-ecs_task_cpu      = 512    # 0.5 vCPU
-ecs_task_memory   = 1024   # 1 GB
-ecs_desired_count = 1      # Initial tasks
-ecs_max_capacity  = 4      # Auto-scale limit
+# Target ECS configuration
+ecs_task_cpu                 = 512       # 0.5 vCPU
+ecs_task_memory              = 1024      # 1 GB
+backend_image_tag            = "54c423b" # Immutable Git SHA already in ECR
+target_backend_desired_count = 0
+backend_min_capacity         = 0
+backend_max_capacity         = 1         # In-memory session registry
 
 # Retention Policies
-transcript_retention_days = 30  # S3 lifecycle
-log_retention_days        = 7   # CloudWatch
+transcript_retention_days = 14  # S3 lifecycle
+log_retention_days        = 14  # CloudWatch
 
 # Application Settings
 session_timeout_seconds          = 1800   # 30 minutes

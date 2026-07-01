@@ -70,30 +70,27 @@ outputs:
 # Use this during first-time deployment after creating the ECR repository.
 push-backend-image:
 	@echo "Building and pushing backend Docker image..."
+	@test -n "$(GIT_SHA)" || (echo "GIT_SHA is required, for example: make push-backend-image GIT_SHA=$$(git rev-parse --short HEAD)" && exit 1)
 	@aws ecr get-login-password --region $$(terraform output -raw region) | \
 		docker login --username AWS --password-stdin $$(terraform output -raw ecr_repository_uri)
 	@cd ../../backend && docker build -t livecap-backend .
-	@docker tag livecap-backend:latest $$(terraform output -raw ecr_repository_uri):latest
-	@docker push $$(terraform output -raw ecr_repository_uri):latest
+	@docker tag livecap-backend:latest $$(terraform output -raw ecr_repository_uri):$(GIT_SHA)
+	@docker push $$(terraform output -raw ecr_repository_uri):$(GIT_SHA)
 
-# Deploy backend Docker image and force ECS service to pull it.
-# Use this only after the ECS service has already been created.
+# Push the image, then apply the reviewed task-definition change that references
+# the same GIT_SHA. Immutable tags are never replaced in place.
 deploy-backend: push-backend-image
-	@echo "Forcing ECS service update..."
-	@aws ecs update-service \
-		--cluster $$(terraform output -raw ecs_cluster_name) \
-		--service $$(terraform output -raw ecs_service_name) \
-		--force-new-deployment \
-		--region $$(terraform output -raw region)
-	@echo "Backend deployment initiated!"
+	@echo "Image pushed. Set backend_image_tag=$(GIT_SHA), review terraform plan, then apply."
 
 # Deploy frontend to S3
 deploy-frontend:
 	@echo "Building frontend..."
 	@cd ../../frontend && \
-		printf "VITE_API_BASE_URL=%s\nVITE_WS_URL=%s\n" \
-			"$$(cd ../infrastructure/terraform && terraform output -raw alb_backend_base_url)" \
-			"$$(cd ../infrastructure/terraform && terraform output -raw alb_websocket_url)" > .env.production && \
+		printf "VITE_API_BASE_URL=%s\nVITE_WS_URL=%s\nVITE_WAKE_BACKEND_URL=%s\nVITE_BACKEND_HEALTH_URL=%s/api/health\n" \
+			"$$(cd ../infrastructure/terraform && terraform output -raw frontend_api_base_url)" \
+			"$$(cd ../infrastructure/terraform && terraform output -raw frontend_websocket_url)" \
+			"$$(cd ../infrastructure/terraform && terraform output -raw wake_backend_url)" \
+			"$$(cd ../infrastructure/terraform && terraform output -raw frontend_api_base_url)" > .env.production && \
 		npm run build
 	@echo "Uploading to S3..."
 	@aws s3 sync ../../frontend/dist/ s3://$$(terraform output -raw frontend_bucket_name)/ --delete

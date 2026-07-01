@@ -7,11 +7,24 @@ This directory contains Terraform Infrastructure as Code (IaC) templates for dep
 The infrastructure provisions:
 
 - **Frontend Hosting**: S3 bucket + CloudFront CDN with HTTPS
-- **Backend Services**: ECS Fargate cluster with Application Load Balancer
+- **Target Network**: dedicated VPC across two Availability Zones, with two
+  public subnets, two private subnets, and one cost-optimized NAT Gateway
+- **Backend Services**: ECS Fargate behind a multi-AZ Application Load Balancer
 - **Storage**: Isolated S3 buckets for frontend assets and transcript storage
 - **Container Registry**: Amazon ECR for Docker images
-- **Monitoring**: CloudWatch Logs with configurable retention
-- **Security**: IAM roles, security groups, TLS termination, bucket isolation
+- **Monitoring**: CloudWatch Logs and an operations dashboard
+- **Security**: CloudFront/ALB WAF in COUNT mode, IAM-protected wake Lambda,
+  security groups, TLS termination, and bucket isolation
+
+The current backend resources are retained as the blue environment during
+migration. The new target VPC, ALB, and ECS service form the green environment.
+`route_backend_to_target=false` keeps CloudFront on the current ALB; switch it
+to `true` only after the target service has passed health and smoke checks.
+
+The target backend is self-healing but not active-active. ECS replaces an
+unhealthy task, potentially in the other configured AZ, but `max_capacity=1`
+means a task/AZ failure causes a short outage and terminates active WebSocket
+sessions. Two-task HA is deferred until session state moves out of process.
 
 ## Prerequisites
 
@@ -75,6 +88,12 @@ ecs_task_memory       = 1024
 backend_desired_count = 0
 backend_min_capacity  = 0
 backend_max_capacity  = 1
+backend_image_tag     = "54c423b" # Replace with a Git SHA already pushed to ECR.
+
+# Blue/green migration gates.
+route_backend_to_target      = false
+target_backend_desired_count = 1
+target_enable_idle_scale_down = true
 
 # Optional: Configure retention periods
 transcript_retention_days = 14
@@ -91,6 +110,7 @@ max_sessions_per_ip     = 1
 # Optional: Provide backend ALB TLS certificate (REQUIRED for production)
 # alb_ssl_certificate_arn = "arn:aws:acm:REGION:ACCOUNT_ID:certificate/BACKEND_CERT_ID"
 # backend_domain_name = "api.livecap.example.com"
+# target_backend_domain_name = "api-green.livecap.example.com"
 
 # Optional: Provide CloudFront custom domain and certificate
 # cloudfront_ssl_certificate_arn = "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/FRONTEND_CERT_ID"
@@ -98,6 +118,18 @@ max_sessions_per_ip     = 1
 
 # WARNING: Without alb_ssl_certificate_arn, ALB uses insecure HTTP on port 80 (development only)
 ```
+
+The target VPC defaults are:
+
+- VPC: `10.20.0.0/16`
+- Public: `10.20.0.0/24` in `1a`, `10.20.1.0/24` in `1b`
+- Private: `10.20.10.0/24` in `1a`, `10.20.11.0/24` in `1b`
+- One NAT Gateway in public subnet `1a`
+
+The single NAT Gateway is an explicit MVP cost tradeoff. If that NAT Gateway or
+its AZ fails, private Fargate tasks lose outbound access to ECR, CloudWatch,
+Transcribe, Translate, and S3 until connectivity recovers. A later HA phase can
+add a second NAT Gateway or adopt the required VPC endpoints.
 
 ### 3. Review the Execution Plan
 
@@ -126,7 +158,9 @@ After deployment, Terraform will output important values:
 
 ## Deployment Workflow
 
-**IMPORTANT:** For first-time deployment, you must push a Docker image to ECR before applying the full Terraform infrastructure, as the ECS service will try to pull the `:latest` image immediately.
+**IMPORTANT:** Build and push the backend image with an immutable Git SHA tag
+before creating the target service. Set the same SHA in `backend_image_tag`.
+Do not overwrite or deploy `latest` for the target environment.
 
 ### Initial Deployment (First Time)
 
@@ -334,6 +368,7 @@ echo "Backend API: $(terraform output -raw alb_backend_base_url)"
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `vpc_id` | VPC ID (uses default if empty) | `""` |
+| `legacy_availability_zones` | AZs retained by the legacy ALB/ECS rollback stack | `["ap-southeast-1a", "ap-southeast-1b"]` |
 | `public_subnet_ids` | Public subnet IDs for ALB | `[]` (auto-discovered) |
 | `private_subnet_ids` | Private subnet IDs for ECS | `[]` (auto-discovered) |
 
@@ -378,7 +413,8 @@ infrastructure/terraform/
 3. **IAM Task Roles**: No embedded credentials; automatic rotation
 4. **Security Groups**: Least-privilege network access
 5. **Encryption**: S3 server-side encryption enabled by default
-6. **Private Backend**: ECS tasks optionally run in private subnets
+6. **Private Backend**: target Fargate tasks always run in dedicated private
+   subnets without public IP addresses
 
 ## Cost Optimization
 
@@ -386,6 +422,9 @@ infrastructure/terraform/
 - **CloudWatch Log Retention**: Logs retained for 14 days (configurable via `log_retention_days`)
 - **No Raw Audio Storage**: LiveCap MVP does not store raw audio; only exported transcript TXT files are retained
 - **Fargate Pay-per-Use**: No idle EC2 costs
+- **Scale-to-Zero**: target ECS capacity remains bounded to `0-1` tasks
+- **Fixed-Cost Warning**: ALB, NAT Gateway, and enabled WAF Web ACL/rules still
+  incur cost while ECS is at zero
 - **CloudFront Caching**: Reduces S3 GET requests and improves performance
 - **ECR Lifecycle**: Cleans up old container images
 - **Right-Sizing**: Configurable CPU/memory for cost efficiency
@@ -438,6 +477,9 @@ The dashboard is intended for LiveCap demo/MVP observability:
   - invocations
   - errors
   - duration
+- **WAF observation**
+  - CloudFront WAF COUNT metrics in `us-east-1`
+  - ALB WAF COUNT metrics in `ap-southeast-1`
 - **Operational notes**
   - ECS may intentionally sit at zero tasks outside active demo/use windows.
   - ALB metrics continue while the environment exists because ALB is kept as
@@ -490,16 +532,35 @@ aws ecs update-service \
 ```
 
 Keep desired count and autoscaling max at `1` while backend session limits are
-process-local. For demo cost control, prefer scheduled scale-to-zero through
-`enable_demo_scheduled_scaling`. If `enable_wake_endpoint=true` is reviewed and
-applied, the frontend can call `wake_backend_url` before capture starts to bring
-the ECS service back to one task. This still keeps the ALB running and does not
-remove ALB hourly cost.
+process-local. Scheduled scaling raises the target minimum to one during demo
+hours and lowers it to zero outside that window; backend idle scale-down is what
+requests `desired_count=0`.
 
-The MVP wake endpoint is a public Lambda Function URL with
-`authorization_type = NONE`. It is convenient for demo use, but anyone who can
-call it can wake ECS to one task. Use authentication, AWS WAF, and rate limiting
-before real production use.
+When `enable_wake_endpoint=true`, the frontend calls the same-origin
+`/api/wake` CloudFront behavior. CloudFront signs the origin request with OAC
+and invokes an `AWS_IAM` Lambda Function URL. Direct anonymous invocation of the
+Function URL is not allowed. The browser includes the SHA-256 header required
+for signed POST requests, Lambda raises the selected ECS service to one task,
+and the frontend polls `/api/health` before opening the WebSocket.
+
+### Blue/Green Migration Sequence
+
+1. Create a fresh untracked `terraform.tfvars` from
+   `terraform.tfvars.example`. Do not reuse the June 2026 backup unchanged; it
+   contains retired `ecs_*` variable names and old 30/7-day retention values.
+2. Push the target image under `backend_image_tag`.
+3. Apply with `route_backend_to_target=false` and
+   `target_backend_desired_count=1`.
+4. Confirm the target is healthy, has no public IP, and can reach ECR,
+   CloudWatch, Transcribe, Translate, and S3 through NAT.
+5. Set `route_backend_to_target=true` and review the CloudFront origin change.
+6. Smoke-test frontend, API, WebSocket, translation, and transcript export.
+7. Enable and test wake `0 -> 1`, then idle scale-down `1 -> 0`.
+8. Keep the legacy stack for at least 24 hours. Its deletion requires a
+   separate reviewed plan.
+
+Do not delete the stopped legacy EC2 instance, EBS volume, old security group,
+or `livecaptranscripts` bucket as part of this migration.
 
 ## Updating the Infrastructure
 

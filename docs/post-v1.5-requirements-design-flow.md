@@ -1,7 +1,8 @@
 # LiveCap Post-v1.5 Requirements, Design, and Flow
 
-Status: current as of branch `v1.5-production-ready-mvp`, after commit `817e037`
-plus uncommitted wake-on-demand cost-optimization work.
+Status: target architecture design for branch `v1.5-production-ready-mvp`.
+Terraform implementation is review-gated and must not be described as deployed
+until an approved plan has been applied and verified.
 
 This document supplements the original Kiro MVP specification in
 `D:\Project\final-project\.kiro\specs\livecap`. It records the post-v1.5
@@ -114,11 +115,14 @@ when the service has been scaled to zero.
 Acceptance criteria:
 
 - Wake support is opt-in through Terraform variable `enable_wake_endpoint`.
-- The default remains disabled to avoid exposing a public URL that can start
-  paid ECS capacity before review.
-- When enabled, Terraform creates a Lambda Function URL that sets the ECS
-  service desired count to `1` and keeps the Application Auto Scaling target at
-  min/max `1`.
+- The default remains disabled until the CloudFront/Lambda origin and cost
+  impact have been reviewed.
+- When enabled, Terraform creates an `AWS_IAM` Lambda Function URL behind the
+  same CloudFront distribution at `/api/wake`.
+- CloudFront OAC signs the Lambda origin request. Anonymous direct Function URL
+  calls are not permitted.
+- Lambda sets the selected ECS service desired count to `1`; target Application
+  Auto Scaling remains bounded to `0-1`.
 - The frontend reads `VITE_WAKE_BACKEND_URL`. If it is empty, startup behavior is
   unchanged.
 - If `VITE_WAKE_BACKEND_URL` is set, the frontend calls it before WebSocket connect
@@ -128,11 +132,10 @@ Acceptance criteria:
 
 Limitations:
 
-- This does not remove idle ALB cost. The ALB still exists so the frontend has a
-  stable backend health and WebSocket target.
-- The wake endpoint is public when enabled (`authorization_type = NONE`). It can
-  only wake ECS to one task, but it can still trigger paid capacity. Add
-  authentication, WAF, and rate limiting before real production use.
+- This does not remove idle ALB, NAT Gateway, or WAF fixed costs.
+- The wake path is protected by CloudFront WAF and IAM-signed origin access,
+  but it can still start paid ECS capacity when an allowed edge request reaches
+  `/api/wake`.
 
 ### R7. CI Hygiene
 
@@ -186,23 +189,100 @@ PCM chunks. Post-v1.5 adds limited connection resilience:
 
 ### Infrastructure Components
 
-The deployed architecture remains:
+The legacy rollback architecture remains:
 
 - Frontend: S3 + CloudFront.
-- Backend: ECS Fargate behind ALB.
+- Backend: ECS Fargate behind the existing ALB/default VPC path.
 - Container image: ECR.
 - Transcript storage: private S3 bucket.
 - Logs: CloudWatch.
 
-Post-v1.5 infrastructure additions:
+The target architecture uses **Parallel Stack Migration with Blue/Green-style
+Cutover**. The legacy backend path remains available while the target network,
+ALB, and ECS service are created and validated in parallel.
 
 - Remote-state bootstrap stack under `infrastructure/bootstrap/remote-state`.
 - Main Terraform S3 backend with native lockfile support.
+- Dedicated target VPC in `ap-southeast-1` across two Availability Zones.
+- Two public subnets for the internet-facing ALB.
+- Two private subnets for ECS Fargate tasks with
+  `assign_public_ip=false`.
+- One NAT Gateway in a public subnet as an explicit cost-sensitive tradeoff.
+- Target ECS desired/min capacity can reach `0`, while maximum capacity remains
+  `1` because session state is process-local.
+- A target ALB and ECS service are validated before CloudFront cutover.
+- CloudFront origin selection through `route_backend_to_target`.
 - AWS Budget resource, gated by `budget_notification_email`.
 - ECS scheduled scaling actions for demo-safe scale-to-zero windows.
-- ECS max capacity default set to `1` while session limits are in-memory.
-- Optional Lambda Function URL wake endpoint, gated by `enable_wake_endpoint`.
+- IAM-protected Lambda Function URL exposed only through CloudFront
+  `/api/wake`, gated by `enable_wake_endpoint`.
 - Optional backend idle scale-down, gated by `ENABLE_IDLE_SCALE_DOWN`.
+- CloudFront and ALB WAF Web ACLs in COUNT mode.
+- CloudWatch dashboard covering target ECS/ALB, wake Lambda, and WAF metrics.
+- ECR backend images use immutable Git SHA tags rather than `latest`.
+- Frontend assets remain in the private frontend S3 bucket behind CloudFront.
+- Exported transcripts remain in the private transcript S3 bucket.
+- Raw audio is not stored in the MVP.
+- Transcript objects and CloudWatch logs are retained for 14 days.
+
+Resource scope is intentionally explicit:
+
+- CloudFront and its `CLOUDFRONT` WAF Web ACL are global services. Terraform
+  manages the CloudFront WAF through `us-east-1` as required by AWS.
+- The VPC, public/private subnets, NAT Gateway, ALB, `REGIONAL` ALB WAF, ECS
+  Fargate, ECR, S3 buckets, Lambda, and CloudWatch resources belong to the
+  LiveCap deployment in `ap-southeast-1`.
+
+The main application runtime does not pass through Lambda:
+
+```text
+User browser
+  -> CloudFront WAF (COUNT)
+  -> CloudFront
+  -> ALB WAF (COUNT)
+  -> ALB in public subnets
+  -> ECS Fargate task in private subnets
+```
+
+Lambda is used only for backend wake-up:
+
+```text
+User clicks Start
+  -> CloudFront /api/wake
+  -> IAM-protected wake Lambda
+  -> ECS UpdateService desired_count=1
+  -> Frontend polls CloudFront /api/health
+  -> Main CloudFront -> ALB -> ECS runtime path begins
+```
+
+The target service is self-healing rather than active-active. ECS replaces an
+unhealthy task, but because only one task is allowed, replacement causes a
+short outage and terminates active WebSocket sessions. Two-task HA requires a
+shared session registry before `backend_max_capacity` can increase.
+
+Scale-to-zero removes idle Fargate compute cost, but it does not remove the
+fixed or baseline costs of the ALB, NAT Gateway, or enabled WAF Web ACLs and
+rules. The single NAT Gateway also remains a single-AZ outbound dependency
+accepted for this cost-sensitive MVP.
+
+### Parallel Stack Migration with Blue/Green-style Cutover
+
+1. Keep the legacy ALB/ECS path running as the rollback stack.
+2. Create the target VPC, two public subnets, two private subnets, NAT Gateway,
+   target ALB, and target ECS service in parallel.
+3. Push the backend image to ECR using an immutable Git SHA.
+4. Start one target Fargate task and verify that it has no public IP, passes ALB
+   health checks, and reaches required AWS services through NAT.
+5. Validate wake-up, API, WebSocket, Transcribe, Translate, transcript export,
+   CloudWatch metrics, and WAF COUNT observations.
+6. Change CloudFront `/api/*` and `/ws/*` routing to the target ALB only after
+   the target path passes review.
+7. Validate ECS wake `0 -> 1` and idle scale-down `1 -> 0`, with maximum capacity
+   fixed at one task.
+8. Keep legacy resources during the rollback observation window.
+9. Do not destroy the stopped EC2 instance, EBS volume, legacy security group,
+   old S3 bucket, legacy ALB/ECS resources, or any other pre-existing resource
+   until ownership and removal are explicitly confirmed in a separate review.
 
 ### CI and Safety Design
 
@@ -221,11 +301,12 @@ CI is intentionally validation-only:
 ```text
 User clicks Start
   -> If VITE_WAKE_BACKEND_URL is configured:
-       - frontend POSTs to wake endpoint
+       - frontend POSTs to CloudFront /api/wake
        - Lambda sets ECS desired count to 1
-       - frontend polls /api/health until backend is ready
+       - frontend polls CloudFront /api/health until backend is ready
   -> Frontend requests microphone permission
-  -> Frontend opens WebSocket /ws/transcribe
+  -> Frontend opens CloudFront WebSocket /ws/transcribe
+  -> CloudFront routes /ws/* through the ALB to the ECS Fargate task
   -> Backend accepts socket and resolves client IP
   -> Backend checks active-session registry limits
   -> Backend sends session_start with Session_ID
@@ -309,16 +390,18 @@ Main infrastructure phase
 
 ```text
 Outside demo hours
-  -> ECS scheduled scaling can set service capacity to 0
+  -> ECS minimum capacity can remain 0
 
 User clicks Start in frontend
-  -> Frontend calls VITE_WAKE_BACKEND_URL if configured
+  -> Frontend calls CloudFront /api/wake if configured
+  -> CloudFront invokes the IAM-protected wake Lambda
   -> Lambda updates ECS desired count to 1
-  -> Frontend polls backend /api/health
-  -> Once healthy, frontend opens WebSocket and starts microphone capture
+  -> Frontend polls CloudFront /api/health
+  -> Once healthy, CloudFront routes WebSocket traffic through ALB to ECS
+  -> Frontend starts microphone capture
 
-Later off-hours schedule
-  -> ECS scheduled scaling can return min to 0 while max stays 1
+After the last active session
+  -> Idle scale-down can return desired count to 0 while max stays 1
 ```
 
 ### Idle Scale-Down Flow
@@ -351,7 +434,7 @@ Push or pull request
 The latest local pre-commit gate passed with:
 
 - `python -m compileall app`
-- `python -m pytest` with 196 tests passing
+- `python -m pytest` with 201 tests passing
 - `npm run build`
 - Docker-based `gitleaks detect --source=/repo --redact`
 - Docker-based `gitleaks dir /repo --redact`

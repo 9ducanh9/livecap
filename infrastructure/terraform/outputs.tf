@@ -5,8 +5,10 @@ locals {
     var.alb_ssl_certificate_arn != "" && var.backend_domain_name != ""
   ) ? var.backend_domain_name : aws_lb.main.dns_name
 
-  backend_base_url = var.alb_ssl_certificate_arn != "" ? "https://${local.backend_host}" : "http://${local.backend_host}"
-  backend_ws_url   = var.alb_ssl_certificate_arn != "" ? "wss://${local.backend_host}/ws/transcribe" : "ws://${local.backend_host}/ws/transcribe"
+  backend_base_url  = var.alb_ssl_certificate_arn != "" ? "https://${local.backend_host}" : "http://${local.backend_host}"
+  backend_ws_url    = var.alb_ssl_certificate_arn != "" ? "wss://${local.backend_host}/ws/transcribe" : "ws://${local.backend_host}/ws/transcribe"
+  frontend_base_url = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+  frontend_ws_url   = "wss://${aws_cloudfront_distribution.frontend.domain_name}/ws/transcribe"
 }
 
 output "cloudfront_url" {
@@ -35,8 +37,18 @@ output "alb_websocket_url" {
 }
 
 output "wake_backend_url" {
-  description = "Optional Lambda Function URL for frontend VITE_WAKE_BACKEND_URL when enable_wake_endpoint is true."
-  value       = var.enable_wake_endpoint ? aws_lambda_function_url.wake_backend[0].function_url : ""
+  description = "Same-origin CloudFront path for frontend VITE_WAKE_BACKEND_URL when enable_wake_endpoint is true."
+  value       = var.enable_wake_endpoint ? "/api/wake" : ""
+}
+
+output "frontend_api_base_url" {
+  description = "Same-origin CloudFront base URL for frontend API requests."
+  value       = local.frontend_base_url
+}
+
+output "frontend_websocket_url" {
+  description = "CloudFront WebSocket URL for the frontend."
+  value       = local.frontend_ws_url
 }
 
 output "alb_arn" {
@@ -85,8 +97,13 @@ output "ecs_cluster_arn" {
 }
 
 output "ecs_service_name" {
-  description = "ECS service name"
+  description = "Legacy rollback ECS service name."
   value       = aws_ecs_service.backend.name
+}
+
+output "target_ecs_service_name" {
+  description = "Target private-subnet ECS service name."
+  value       = aws_ecs_service.target_backend.name
 }
 
 output "ecs_task_definition_family" {
@@ -110,8 +127,23 @@ output "cloudwatch_log_group_name" {
 }
 
 output "vpc_id" {
-  description = "VPC ID used for deployment"
+  description = "Dedicated target VPC ID."
+  value       = aws_vpc.target.id
+}
+
+output "legacy_vpc_id" {
+  description = "Legacy rollback VPC ID."
   value       = data.aws_vpc.selected.id
+}
+
+output "target_alb_dns_name" {
+  description = "Blue/green target ALB DNS name."
+  value       = aws_lb.target.dns_name
+}
+
+output "target_private_subnet_ids" {
+  description = "Private subnet IDs used by target Fargate tasks."
+  value       = [for subnet in aws_subnet.target_private : subnet.id]
 }
 
 output "alb_security_group_id" {
@@ -145,16 +177,16 @@ output "deployment_instructions" {
     1. Build and push Docker image:
        aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${aws_ecr_repository.backend.repository_url}
        docker build -t ${aws_ecr_repository.backend.name} ./backend
-       docker tag ${aws_ecr_repository.backend.name}:latest ${aws_ecr_repository.backend.repository_url}:latest
-       docker push ${aws_ecr_repository.backend.repository_url}:latest
+       docker tag ${aws_ecr_repository.backend.name}:${var.backend_image_tag} ${aws_ecr_repository.backend.repository_url}:${var.backend_image_tag}
+       docker push ${aws_ecr_repository.backend.repository_url}:${var.backend_image_tag}
     
     2. Deploy frontend to S3:
        cd frontend
        cat > .env.production << EOF
-       VITE_API_BASE_URL=${local.backend_base_url}
-       VITE_WS_URL=${local.backend_ws_url}
-       VITE_WAKE_BACKEND_URL=${var.enable_wake_endpoint ? aws_lambda_function_url.wake_backend[0].function_url : ""}
-       VITE_BACKEND_HEALTH_URL=${local.backend_base_url}/api/health
+       VITE_API_BASE_URL=${local.frontend_base_url}
+       VITE_WS_URL=${local.frontend_ws_url}
+       VITE_WAKE_BACKEND_URL=${var.enable_wake_endpoint ? "/api/wake" : ""}
+       VITE_BACKEND_HEALTH_URL=${local.frontend_base_url}/api/health
        VITE_BACKEND_WAKE_TIMEOUT_SECONDS=120
        VITE_MAX_SESSION_SECONDS=${var.session_timeout_seconds}
        EOF
@@ -166,7 +198,7 @@ output "deployment_instructions" {
     
     4. Access the application:
        Frontend: https://${aws_cloudfront_distribution.frontend.domain_name}
-       Backend API: https://${aws_lb.main.dns_name}
+       Backend API: ${local.frontend_base_url}/api/
     
   EOT
 }

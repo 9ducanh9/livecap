@@ -151,8 +151,13 @@ resource "aws_wafv2_web_acl" "alb" {
 
     statement {
       rate_based_statement {
-        aggregate_key_type = "IP"
+        aggregate_key_type = "FORWARDED_IP"
         limit              = var.waf_rate_limit
+
+        forwarded_ip_config {
+          fallback_behavior = "MATCH"
+          header_name       = "X-Forwarded-For"
+        }
       }
     }
 
@@ -174,5 +179,12 @@ resource "aws_wafv2_web_acl_association" "alb" {
   count = var.enable_waf ? 1 : 0
 
   resource_arn = aws_lb.main.arn
+  web_acl_arn  = aws_wafv2_web_acl.alb[0].arn
+}
+
+resource "aws_wafv2_web_acl_association" "target_alb" {
+  count = var.enable_waf ? 1 : 0
+
+  resource_arn = aws_lb.target.arn
   web_acl_arn  = aws_wafv2_web_acl.alb[0].arn
 }

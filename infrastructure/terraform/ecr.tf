@@ -29,12 +29,12 @@ resource "aws_ecr_lifecycle_policy" "backend" {
     rules = [
       {
         rulePriority = 1
-        description  = "Keep last 10 images"
+        description  = "Keep the latest 20 immutable tagged images"
         selection = {
-          tagStatus     = "tagged"
-          tagPrefixList = ["v"]
-          countType     = "imageCountMoreThan"
-          countNumber   = 10
+          tagStatus      = "tagged"
+          tagPatternList = ["*"]
+          countType      = "imageCountMoreThan"
+          countNumber    = 20
         }
         action = {
           type = "expire"

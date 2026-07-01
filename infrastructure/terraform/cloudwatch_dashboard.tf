@@ -3,10 +3,12 @@
 locals {
   cloudwatch_dashboard_name = var.cloudwatch_dashboard_name != "" ? var.cloudwatch_dashboard_name : "${var.project_name}-${var.environment}-operations"
 
-  alb_full_name         = aws_lb.main.arn_suffix
-  alb_target_group_name = aws_lb_target_group.backend.arn_suffix
+  alb_full_name         = aws_lb.target.arn_suffix
+  alb_target_group_name = aws_lb_target_group.target_backend.arn_suffix
 
   wake_lambda_function_name = var.enable_wake_endpoint ? aws_lambda_function.wake_backend[0].function_name : "${var.project_name}-wake-backend-${var.environment}"
+  cloudfront_waf_name       = "${var.project_name}-cloudfront-waf-${var.environment}"
+  alb_waf_name              = "${var.project_name}-alb-waf-${var.environment}"
 }
 
 resource "aws_cloudwatch_dashboard" "livecap_operations" {
@@ -65,7 +67,7 @@ resource "aws_cloudwatch_dashboard" "livecap_operations" {
             }
           }
           metrics = [
-            ["AWS/ECS", "CPUUtilization", "ClusterName", aws_ecs_cluster.main.name, "ServiceName", aws_ecs_service.backend.name],
+            ["AWS/ECS", "CPUUtilization", "ClusterName", aws_ecs_cluster.main.name, "ServiceName", aws_ecs_service.target_backend.name],
             [".", "MemoryUtilization", ".", ".", ".", "."]
           ]
         }
@@ -180,6 +182,44 @@ resource "aws_cloudwatch_dashboard" "livecap_operations" {
             - Wake Lambda metrics are populated only when `enable_wake_endpoint=true`.
             - Transcribe and Translate are usage-based and mainly cost during active capture sessions.
           MD
+        }
+      },
+      {
+        type   = "metric"
+        x      = 0
+        y      = 27
+        width  = 12
+        height = 6
+        properties = {
+          title   = "CloudFront WAF COUNT Activity"
+          region  = "us-east-1"
+          view    = "timeSeries"
+          stacked = false
+          stat    = "Sum"
+          period  = 300
+          metrics = [
+            ["AWS/WAFV2", "CountedRequests", "WebACL", local.cloudfront_waf_name, "Region", "Global", "Rule", "ALL"],
+            [".", "AllowedRequests", ".", ".", ".", ".", ".", "."]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 27
+        width  = 12
+        height = 6
+        properties = {
+          title   = "ALB WAF COUNT Activity"
+          region  = var.aws_region
+          view    = "timeSeries"
+          stacked = false
+          stat    = "Sum"
+          period  = 300
+          metrics = [
+            ["AWS/WAFV2", "CountedRequests", "WebACL", local.alb_waf_name, "Region", var.aws_region, "Rule", "ALL"],
+            [".", "AllowedRequests", ".", ".", ".", ".", ".", "."]
+          ]
         }
       }
     ]

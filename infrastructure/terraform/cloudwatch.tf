@@ -13,7 +13,8 @@ resource "aws_cloudwatch_log_group" "backend" {
   )
 }
 
-# Optional: CloudWatch Log Group for ALB access logs
+# Legacy placeholder log group. ALB access logs are not enabled by this
+# resource; real ALB access logging requires an S3 bucket configuration.
 resource "aws_cloudwatch_log_group" "alb" {
   name              = "/aws/alb/${var.project_name}-${var.environment}"
   retention_in_days = var.log_retention_days

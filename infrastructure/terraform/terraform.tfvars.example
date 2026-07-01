@@ -23,6 +23,14 @@ backend_desired_count = 0
 backend_min_capacity  = 0
 backend_max_capacity  = 1
 
+# Target backend image must already exist in ECR under an immutable Git SHA.
+backend_image_tag = "54c423b" # Replace with the SHA built and pushed for migration.
+
+# Blue/green gate. First apply with false and target_backend_desired_count=1,
+# verify the target, then switch route_backend_to_target=true.
+route_backend_to_target      = false
+target_backend_desired_count = 1
+
 autoscaling_target_cpu    = 70  # Scale out when CPU > 70%
 autoscaling_target_memory = 80  # Scale out when memory > 80%
 
@@ -46,6 +54,7 @@ demo_scaling_timezone               = "Asia/Ho_Chi_Minh"
 # Optional backend self scale-down after the last session ends.
 # Keep disabled until the ECS task role/plan are reviewed.
 enable_idle_scale_down         = false
+target_enable_idle_scale_down  = true
 idle_scale_down_grace_seconds = 300
 
 # Optional wake-on-demand endpoint. Keep disabled until the Terraform plan is reviewed.
@@ -74,20 +83,27 @@ waf_rate_limit = 2000
 # Leave empty only for development HTTP mode.
 # alb_ssl_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/backend-cert-id"
 # backend_domain_name = "api.livecap.example.com"
+# target_backend_domain_name = "api-green.livecap.example.com"
 
 # Provide your ACM certificate ARN for a CloudFront custom domain (certificate must be in us-east-1)
 # cloudfront_ssl_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/abc123..."
 # custom_domain = "livecap.example.com"
 
-# Network Configuration (optional)
-# If not provided, Terraform will use the default VPC and auto-discover subnets
+# Legacy network discovery remains only for the rollback stack.
+legacy_availability_zones = ["ap-southeast-1a", "ap-southeast-1b"]
 # vpc_id             = "vpc-xxxxx"
 # public_subnet_ids  = ["subnet-xxxxx", "subnet-yyyyy"]
 # private_subnet_ids = ["subnet-aaaaa", "subnet-bbbbb"]
 
+# Dedicated target VPC defaults:
+# VPC 10.20.0.0/16
+# Public: 10.20.0.0/24 (1a), 10.20.1.0/24 (1b)
+# Private: 10.20.10.0/24 (1a), 10.20.11.0/24 (1b)
+# One NAT Gateway is placed in public subnet "a".
+
 # ECR Configuration
 ecr_repository_name      = "livecap-backend"
-ecr_image_tag_mutability = "MUTABLE"
+ecr_image_tag_mutability = "IMMUTABLE"
 ecr_scan_on_push         = true
 
 # Additional Resource Tags

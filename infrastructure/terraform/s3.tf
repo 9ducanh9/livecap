@@ -95,7 +95,7 @@ resource "aws_s3_bucket_versioning" "transcript" {
   }
 }
 
-# S3 Lifecycle Policy for 30-day transcript retention
+# S3 lifecycle policy for configurable transcript retention (14 days by default).
 resource "aws_s3_bucket_lifecycle_configuration" "transcript_retention" {
   bucket = aws_s3_bucket.transcript.id
 

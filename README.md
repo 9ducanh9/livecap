@@ -105,15 +105,16 @@ project_name = "livecap"
 frontend_bucket_name   = "my-company-livecap-frontend"
 transcript_bucket_name = "my-company-livecap-transcripts"
 
-# Resource sizing
-ecs_task_cpu          = 512    # 0.5 vCPU
-ecs_task_memory       = 1024   # 1 GB RAM
-backend_desired_count = 0      # Scale to zero outside active use
-backend_min_capacity  = 0
-backend_max_capacity  = 1      # Keep max=1 while session limits are in-memory
+# Target backend sizing and scale-to-zero
+ecs_task_cpu                = 512    # 0.5 vCPU
+ecs_task_memory             = 1024   # 1 GB RAM
+backend_image_tag           = "54c423b" # Immutable Git SHA already in ECR
+target_backend_desired_count = 0
+backend_min_capacity        = 0
+backend_max_capacity        = 1      # Keep max=1 while session limits are in-memory
 
 # Lifecycle
-transcript_retention_days = 30
+transcript_retention_days = 14
 session_timeout_seconds   = 1800
 
 # Production backend TLS:
@@ -249,14 +250,15 @@ VITE_MAX_SESSION_SECONDS=1800
 EOF
 ```
 
-Use `terraform output -raw alb_backend_base_url` and `terraform output -raw alb_websocket_url`. Production should return `https`/`wss` using `backend_domain_name`; development without an ALB certificate returns `http`/`ws` on the ALB DNS name.
+Use `terraform output -raw frontend_api_base_url` and
+`terraform output -raw frontend_websocket_url` so browser traffic stays behind
+CloudFront.
 
 `VITE_WAKE_BACKEND_URL` is optional. Leave it empty unless `enable_wake_endpoint`
 has been reviewed, applied, and the output `wake_backend_url` is available.
-The MVP wake endpoint uses a public Lambda Function URL (`authorization_type =
-NONE`) for demo convenience. Anyone who can call it can wake the ECS backend to
-one task. Before real production use, add authentication and rate limiting,
-preferably with AWS WAF or an authenticated API front door.
+The hardened target uses `/api/wake`: CloudFront signs the origin request with
+OAC and invokes an `AWS_IAM` Lambda Function URL. Anonymous direct Function URL
+access is not allowed.
 
 #### Step 2: Build Production Bundle
 
@@ -745,7 +747,7 @@ aws cloudwatch put-metric-alarm \
 **Optimization Strategies:**
 - Set shorter `SESSION_TIMEOUT` to prevent abandoned sessions
 - Use AWS Free Tier during testing (S3, CloudWatch)
-- Set S3 lifecycle retention to 7 days instead of 30
+- Keep transcript retention at 14 days, or shorten it further if the product requirements allow
 - Monitor usage in AWS Cost Explorer
 - Consider single-language Transcribe stream if accuracy permits (50% cost reduction)
 
@@ -922,11 +924,9 @@ The app opens at `http://localhost:5173`.
 8. **Optional Wake Endpoint:** If `enable_wake_endpoint=true` is reviewed and
    applied, the frontend can call `VITE_WAKE_BACKEND_URL` before opening the
    WebSocket. This lets a scaled-to-zero ECS service start on demand. It does
-   not remove ALB hourly cost because the ALB remains the stable backend entry
-   point.
-   The MVP Function URL is public (`authorization_type = NONE`) and can wake
-   ECS to one task. Add authentication, WAF, and rate limiting before real
-   production use.
+   not remove ALB, NAT Gateway, or WAF fixed costs. The browser calls
+   `/api/wake` through CloudFront; OAC signs the request to the IAM-protected
+   Lambda Function URL.
 
 9. **Idle Backend Scale-Down:** If `ENABLE_IDLE_SCALE_DOWN=true`, the backend
    waits for `IDLE_SCALE_DOWN_GRACE_SECONDS` after the last active session ends,
@@ -937,11 +937,11 @@ The app opens at `http://localhost:5173`.
    when `budget_notification_email` is set. AWS Budget alerts are not
    real-time and can lag behind actual usage.
 
-The ALB is intentionally kept for stable ECS routing, HTTPS/WSS termination,
-health checks, and future WAF integration. ECS scale-to-zero reduces idle
-compute cost only; the ALB still has a fixed hourly cost. NAT Gateway or other
-VPC fixed costs, if present in the target account, should be reviewed
-separately.
+The target architecture keeps a multi-AZ ALB for stable ECS routing and health
+checks, while Fargate tasks run without public IPs in two private subnets. One
+NAT Gateway provides outbound access as an MVP cost tradeoff. ECS scale-to-zero
+reduces idle compute cost only; ALB, NAT Gateway, and enabled WAF resources
+retain fixed cost.
 
 ---
 
