@@ -1,162 +1,72 @@
-// Two-column bilingual caption display component.
-// Left column: Vietnamese text. Right column: English text.
-// Partial segments are replaced in-place; finalized segments are appended
-// in the order received.
-//
-// Requirements: 4.3, 6.1, 6.2, 6.3, 6.4
-
 import type { Segment } from '../types/index';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 
 interface CaptionDisplayProps {
-  /** Ordered list of finalized segments (append-only from the WebSocket layer). */
   segments: Segment[];
-  /** The current in-flight partial segment, or null when there is none. */
   currentPartial: Segment | null;
 }
 
-// ---------------------------------------------------------------------------
-// SegmentRow — renders one caption row with speaker label + both language columns
-// ---------------------------------------------------------------------------
-
-interface SegmentRowProps {
-  segment: Segment;
-  isPartial?: boolean;
-}
-
-function SegmentRow({ segment, isPartial = false }: SegmentRowProps) {
-  return (
-    <div
-      className={`grid grid-cols-2 gap-4 px-4 py-3 border-b border-slate-100 last:border-b-0 ${
-        isPartial ? 'opacity-70' : ''
-      }`}
-      // Announce updates to screen readers when a partial segment changes
-      aria-live={isPartial ? 'polite' : undefined}
-      aria-atomic={isPartial ? 'true' : undefined}
-    >
-      {/* Left column — Vietnamese */}
-      <div className="flex flex-col gap-1">
-        <span className="text-xs font-semibold text-indigo-600 select-none">
-          {segment.speakerLabel}
-          {isPartial && (
-            <span className="ml-1 text-slate-400 font-normal" aria-label="transcribing">
-              …
-            </span>
-          )}
-        </span>
-        <p
-          lang="vi"
-          className={`text-sm leading-relaxed text-slate-800 ${
-            !segment.textVi ? 'text-slate-400 italic' : ''
-          }`}
-        >
-          {segment.textVi || '\u00A0' /* non-breaking space keeps row height */}
-        </p>
-      </div>
-
-      {/* Right column — English */}
-      <div className="flex flex-col gap-1">
-        {/* Invisible speaker label placeholder so English column aligns with
-            the Vietnamese speaker label on the same row */}
-        <span className="text-xs font-semibold text-transparent select-none" aria-hidden="true">
-          {segment.speakerLabel}
-        </span>
-        <p
-          lang="en"
-          className={`text-sm leading-relaxed text-slate-800 ${
-            !segment.textEn ? 'text-slate-400 italic' : ''
-          }`}
-        >
-          {segment.textEn || '\u00A0'}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Column headers
-// ---------------------------------------------------------------------------
-
-function ColumnHeaders() {
-  return (
-    <div className="grid grid-cols-2 gap-4 px-4 py-2 bg-slate-100 border-b border-slate-200 sticky top-0 z-10">
-      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-        Vietnamese
-      </div>
-      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-        English
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// CaptionDisplay
-// ---------------------------------------------------------------------------
-
-export default function CaptionDisplay({ segments, currentPartial }: CaptionDisplayProps) {
-  // Auto-scroll: pass segments.length so the hook re-runs whenever a new
-  // segment is appended. The hook only scrolls when the user is at the bottom.
-  const { containerRef, isAtBottom } = useAutoScroll(segments.length);
-
-  // Determine whether the partial segment is already represented in the
-  // finalized list (i.e. it was just finalized and should not be shown again).
-  const partialIsAlreadyFinalized =
-    currentPartial !== null &&
-    segments.some((s) => s.segmentId === currentPartial.segmentId);
-
-  const showPartial = currentPartial !== null && !partialIsAlreadyFinalized;
-
-  const isEmpty = segments.length === 0 && !showPartial;
+export default function CaptionDisplay({
+  segments,
+  currentPartial,
+}: CaptionDisplayProps) {
+  const scrollDependency = `${segments.length}:${currentPartial?.segmentId ?? ''}:${currentPartial?.textVi ?? ''}:${currentPartial?.textEn ?? ''}`;
+  const { containerRef, isAtBottom } = useAutoScroll(scrollDependency);
 
   return (
     <section
       aria-label="Bilingual captions"
-      className="flex flex-col h-full bg-white rounded-lg border border-slate-200 overflow-hidden"
+      className="flex h-full min-h-[620px] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm"
     >
-      <ColumnHeaders />
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-white px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-950">Live Caption</h2>
+          <p className="mt-0.5 text-sm text-zinc-500">
+            Finalized lines are appended. The current partial is shown as a live draft.
+          </p>
+        </div>
+        <span className="rounded-full bg-zinc-100 px-3 py-1 font-mono text-xs font-semibold text-zinc-700">
+          {segments.length} finalized
+        </span>
+      </div>
 
-      {/* "New captions" indicator — shown when the user has scrolled up and new
-          segments have arrived. Clicking it is not wired here; callers can add
-          an onClick to the containerRef to scroll to bottom if desired. */}
-      {!isAtBottom && segments.length > 0 && (
+      <div className="grid border-b border-zinc-200 bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500 md:grid-cols-2">
+        <div className="border-b border-zinc-200 px-4 py-3 md:border-b-0 md:border-r">
+          Original
+        </div>
+        <div className="px-4 py-3">Translated</div>
+      </div>
+
+      {!isAtBottom && (segments.length > 0 || currentPartial !== null) && (
         <div
-          className="flex justify-center py-1 bg-indigo-50 border-b border-indigo-100"
+          className="border-b border-emerald-100 bg-emerald-50 px-4 py-2 text-center text-xs font-semibold text-emerald-700"
           aria-live="polite"
           aria-atomic="true"
         >
-          <span className="text-xs text-indigo-600 select-none">↓ New captions</span>
+          New captions below
         </div>
       )}
 
-      {/* Scrollable caption list */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-auto"
+        className="flex-1 overflow-y-auto bg-white"
         role="log"
         aria-live="polite"
-        aria-relevant="additions"
+        aria-relevant="additions text"
         aria-label="Caption log"
       >
-        {isEmpty ? (
-          <div className="flex items-center justify-center h-32 text-slate-400 text-sm select-none">
-            Captions will appear here once the session starts.
-          </div>
+        {segments.length === 0 && currentPartial === null ? (
+          <EmptyState />
         ) : (
           <>
-            {/* Finalized segments — rendered in the order they were received */}
             {segments.map((segment) => (
-              <SegmentRow key={segment.segmentId} segment={segment} isPartial={false} />
+              <SegmentRow key={segment.segmentId} segment={segment} />
             ))}
-
-            {/* Current partial segment — shown below the finalized list and
-                replaced in-place as updates arrive for the same Segment_ID */}
-            {showPartial && (
+            {currentPartial && (
               <SegmentRow
-                key={`partial-${currentPartial!.segmentId}`}
-                segment={currentPartial!}
-                isPartial={true}
+                key={`partial-${currentPartial.segmentId}`}
+                segment={currentPartial}
+                isPartial
               />
             )}
           </>
@@ -164,4 +74,114 @@ export default function CaptionDisplay({ segments, currentPartial }: CaptionDisp
       </div>
     </section>
   );
+}
+
+function SegmentRow({
+  segment,
+  isPartial = false,
+}: {
+  segment: Segment;
+  isPartial?: boolean;
+}) {
+  const originalText =
+    segment.spokenLanguage === 'vi' ? segment.textVi : segment.textEn;
+  const translatedText =
+    segment.spokenLanguage === 'vi' ? segment.textEn : segment.textVi;
+  const originalLanguage =
+    segment.spokenLanguage === 'vi' ? 'Vietnamese' : 'English';
+  const translatedLanguage =
+    segment.spokenLanguage === 'vi' ? 'English' : 'Vietnamese';
+
+  return (
+    <article
+      className={`grid border-b border-zinc-100 last:border-b-0 md:grid-cols-2 ${
+        isPartial ? 'bg-emerald-50/50' : ''
+      }`}
+    >
+      <CaptionCell
+        speakerLabel={segment.speakerLabel}
+        timestamp={formatTimestamp(segment.timestampStart)}
+        language={originalLanguage}
+        text={originalText}
+        accent="zinc"
+        isPartial={isPartial}
+      />
+      <CaptionCell
+        speakerLabel={segment.speakerLabel}
+        timestamp={formatTimestamp(segment.timestampEnd)}
+        language={translatedLanguage}
+        text={translatedText}
+        accent="emerald"
+        isPartial={isPartial}
+      />
+    </article>
+  );
+}
+
+function CaptionCell({
+  speakerLabel,
+  timestamp,
+  language,
+  text,
+  accent,
+  isPartial,
+}: {
+  speakerLabel: string;
+  timestamp: string;
+  language: string;
+  text: string;
+  accent: 'zinc' | 'emerald';
+  isPartial: boolean;
+}) {
+  const languageClass =
+    accent === 'emerald' ? 'text-emerald-700' : 'text-zinc-600';
+
+  return (
+    <div className="min-w-0 border-b border-zinc-100 px-4 py-4 md:border-b-0 md:border-r md:last:border-r-0">
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+        <span className="rounded-full bg-zinc-100 px-2.5 py-1 font-semibold text-zinc-700">
+          {speakerLabel}
+        </span>
+        <span className="font-mono text-zinc-400">{timestamp}</span>
+        <span className={`font-semibold ${languageClass}`}>{language}</span>
+        {isPartial && (
+          <span className="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-700">
+            Live draft
+          </span>
+        )}
+      </div>
+      <p className="whitespace-pre-wrap break-words text-base leading-7 text-zinc-950">
+        {text || 'No text returned.'}
+      </p>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="flex h-full min-h-[420px] items-center justify-center p-6">
+      <div className="max-w-sm text-center">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-zinc-200 bg-zinc-50 font-mono text-sm font-semibold text-zinc-500">
+          VI/EN
+        </div>
+        <p className="mt-4 text-sm font-semibold text-zinc-900">
+          No finalized captions yet
+        </p>
+        <p className="mt-1 text-sm text-zinc-500">
+          Start a session. Finalized transcript lines will appear here in two
+          columns.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function formatTimestamp(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '00:00';
+  const totalSeconds = Math.floor(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainder = totalSeconds % 60;
+  return `${minutes.toString().padStart(2, '0')}:${remainder
+    .toString()
+    .padStart(2, '0')}`;
 }

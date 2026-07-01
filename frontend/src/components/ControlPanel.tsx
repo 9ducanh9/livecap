@@ -1,38 +1,25 @@
 /**
- * ControlPanel.tsx
- *
- * Start/stop capture controls, recording timer, and microphone input selection.
+ * Start/stop capture controls, recording timer, and microphone selection.
  */
 
 import type { AudioInputDevice } from '../hooks/useAudioCapture';
 
 interface ControlPanelProps {
-  /** Whether capture is currently active. */
   isCapturing: boolean;
-  /** Whether the WebSocket is in the process of connecting. */
   isConnecting: boolean;
-  /** Optional label shown while startup is in progress. */
   connectionStatusLabel?: string | null;
-  /** Whether microphone permission was denied. */
   permissionDenied: boolean;
-  /** Current recording length in seconds. */
   recordingDurationSeconds: number;
-  /** Maximum recording length in seconds. */
   maxSessionSeconds: number;
-  /** Remaining recording time in seconds. */
   remainingSessionSeconds: number;
-  /** Browser microphone input devices. */
   audioInputDevices: AudioInputDevice[];
-  /** Selected microphone deviceId. */
   selectedDeviceId: string;
-  /** Select the microphone for the next capture session. */
+  canClear: boolean;
   onSelectedDeviceChange: (deviceId: string) => void;
-  /** Refresh available microphone devices. */
   onRefreshAudioInputDevices: () => void;
-  /** Start capture. */
   onStart: () => void;
-  /** Stop capture. */
   onStop: () => void;
+  onClear: () => void;
 }
 
 export default function ControlPanel({
@@ -45,115 +32,116 @@ export default function ControlPanel({
   remainingSessionSeconds,
   audioInputDevices,
   selectedDeviceId,
+  canClear,
   onSelectedDeviceChange,
   onRefreshAudioInputDevices,
   onStart,
   onStop,
+  onClear,
 }: ControlPanelProps) {
-  const isDisabled = isConnecting;
   const deviceControlsDisabled = isCapturing || isConnecting;
+  const progress =
+    maxSessionSeconds > 0
+      ? Math.min(100, (recordingDurationSeconds / maxSessionSeconds) * 100)
+      : 0;
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        {isCapturing && (
-          <span aria-label="Capture active" className="relative flex h-3 w-3">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-          </span>
-        )}
-
-        {isCapturing && (
-          <span className="font-mono text-sm font-medium tabular-nums text-slate-600">
-            REC {formatDuration(recordingDurationSeconds)}
-          </span>
-        )}
-
-        {isCapturing ? (
-          <button
-            onClick={onStop}
-            disabled={isDisabled}
-            aria-label="Stop capture"
-            className={[
-              'inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2',
-              isDisabled
-                ? 'cursor-not-allowed bg-slate-100 text-slate-400'
-                : 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
-            ].join(' ')}
-          >
-            <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <rect x="4" y="4" width="12" height="12" rx="1" />
-            </svg>
-            Stop
-          </button>
-        ) : (
-          <button
-            onClick={onStart}
-            disabled={isDisabled}
-            aria-label={isConnecting ? connectionStatusLabel ?? 'Connecting...' : 'Start capture'}
-            aria-busy={isConnecting}
-            className={[
-              'inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2',
-              isDisabled
-                ? 'cursor-not-allowed bg-slate-100 text-slate-400'
-                : 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500',
-            ].join(' ')}
-          >
-            {isConnecting ? (
-              <>
-                <svg
-                  aria-hidden="true"
-                  className="h-4 w-4 animate-spin"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                  />
-                </svg>
-                {connectionStatusLabel ?? 'Connecting...'}
-              </>
-            ) : (
-              <>
-                <svg
-                  aria-hidden="true"
-                  className="h-4 w-4"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                Start
-              </>
-            )}
-          </button>
-        )}
+    <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-950">Controls</h2>
+          <p className="mt-1 text-sm text-zinc-600">
+            Start opens the backend stream before microphone capture begins.
+          </p>
+        </div>
+        <LiveBadge isLive={isCapturing} />
       </div>
 
-      <div className="flex w-full max-w-md flex-col gap-2 sm:flex-row sm:items-end">
-        <label className="flex flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <div className="mt-5 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+              Timer
+            </div>
+            <div className="mt-1 font-mono text-3xl font-semibold tabular-nums text-zinc-950">
+              {formatDuration(recordingDurationSeconds)}
+            </div>
+          </div>
+          <div className="text-right text-xs text-zinc-500">
+            <div>Max {formatDuration(maxSessionSeconds)}</div>
+            <div>
+              {isCapturing
+                ? `${formatDuration(remainingSessionSeconds)} left`
+                : 'Ready'}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-zinc-200">
+          <div
+            className="h-full rounded-full bg-emerald-500 transition-[width]"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={onStart}
+          disabled={isCapturing || isConnecting}
+          aria-busy={isConnecting}
+          className={[
+            'inline-flex min-h-12 items-center justify-center rounded-lg px-4 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2',
+            isCapturing || isConnecting
+              ? 'cursor-not-allowed bg-zinc-100 text-zinc-400'
+              : 'bg-emerald-600 text-white hover:bg-emerald-700',
+          ].join(' ')}
+        >
+          {isConnecting ? connectionStatusLabel ?? 'Starting' : 'Start'}
+        </button>
+
+        <button
+          type="button"
+          onClick={onStop}
+          disabled={!isCapturing || isConnecting}
+          className={[
+            'inline-flex min-h-12 items-center justify-center rounded-lg px-4 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-rose-400 focus:ring-offset-2',
+            !isCapturing || isConnecting
+              ? 'cursor-not-allowed border border-zinc-200 bg-zinc-50 text-zinc-400'
+              : 'bg-rose-600 text-white hover:bg-rose-700',
+          ].join(' ')}
+        >
+          Stop
+        </button>
+      </div>
+
+      <button
+        type="button"
+        onClick={onClear}
+        disabled={!canClear || isConnecting}
+        className={[
+          'mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-lg border px-4 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-300 focus:ring-offset-2',
+          !canClear || isConnecting
+            ? 'cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-400'
+            : 'border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-50',
+        ].join(' ')}
+      >
+        Clear transcript
+      </button>
+
+      <div className="mt-5 space-y-2">
+        <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
           Microphone
+        </label>
+        <div className="flex gap-2">
           <select
             value={selectedDeviceId}
             onChange={(event) => onSelectedDeviceChange(event.target.value)}
             disabled={deviceControlsDisabled}
             className={[
-              'h-10 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200',
-              deviceControlsDisabled ? 'cursor-not-allowed bg-slate-100 text-slate-500' : '',
+              'h-11 min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100',
+              deviceControlsDisabled ? 'cursor-not-allowed bg-zinc-100 text-zinc-500' : '',
             ].join(' ')}
           >
             <option value="default">Default microphone</option>
@@ -163,52 +151,64 @@ export default function ControlPanel({
               </option>
             ))}
           </select>
-        </label>
 
-        <button
-          type="button"
-          onClick={onRefreshAudioInputDevices}
-          disabled={deviceControlsDisabled}
-          aria-label="Refresh microphone list"
-          title="Refresh microphone list"
-          className={[
-            'inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-slate-600 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-200',
-            deviceControlsDisabled
-              ? 'cursor-not-allowed bg-slate-100 text-slate-400'
-              : 'hover:bg-slate-50 hover:text-slate-900',
-          ].join(' ')}
-        >
-          <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-            <path
-              fillRule="evenodd"
-              d="M4.5 7.5A5.5 5.5 0 0114 3.72V2.5a.75.75 0 011.5 0v3a.75.75 0 01-.75.75h-3a.75.75 0 010-1.5h1.41A4 4 0 106 8.5a.75.75 0 01-1.5 0v-1zm11 4A5.5 5.5 0 016 15.28v1.22a.75.75 0 01-1.5 0v-3a.75.75 0 01.75-.75h3a.75.75 0 010 1.5H6.84A4 4 0 0014 11.5a.75.75 0 011.5 0z"
-              clipRule="evenodd"
-            />
-          </svg>
-        </button>
+          <button
+            type="button"
+            onClick={onRefreshAudioInputDevices}
+            disabled={deviceControlsDisabled}
+            title="Refresh microphone list"
+            aria-label="Refresh microphone list"
+            className={[
+              'inline-flex h-11 w-11 items-center justify-center rounded-md border border-zinc-300 bg-white text-sm font-semibold text-zinc-700 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-100',
+              deviceControlsDisabled
+                ? 'cursor-not-allowed bg-zinc-100 text-zinc-400'
+                : 'hover:bg-zinc-50 hover:text-zinc-950',
+            ].join(' ')}
+          >
+            R
+          </button>
+        </div>
       </div>
 
-      <p className="max-w-md text-center text-xs text-slate-500">
-        Lưu ý: bấm Stop khi ghi âm xong để tránh phát sinh phí AWS Transcribe,
-        Translate và S3 nếu có export transcript.
-      </p>
-
-      <p className="max-w-md text-center text-xs text-slate-500">
-        Max session: {formatDuration(maxSessionSeconds)}
-        {isCapturing ? ` - Remaining: ${formatDuration(remainingSessionSeconds)}` : ''}
-      </p>
+      <div className="mt-5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
+        Usage note: stop the session when finished. Transcribe and Translate are
+        usage-based, and transcript export writes to S3.
+      </div>
 
       {permissionDenied && (
-        <p role="alert" aria-live="assertive" className="text-center text-sm text-red-600">
-          Microphone access is required to capture audio
+        <p role="alert" aria-live="assertive" className="mt-3 text-sm text-rose-700">
+          Microphone access is required to capture audio.
         </p>
       )}
     </div>
   );
 }
 
+function LiveBadge({ isLive }: { isLive: boolean }) {
+  return (
+    <span
+      className={[
+        'inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold',
+        isLive
+          ? 'border-rose-200 bg-rose-50 text-rose-700'
+          : 'border-zinc-200 bg-zinc-100 text-zinc-600',
+      ].join(' ')}
+    >
+      <span
+        className={[
+          'h-1.5 w-1.5 rounded-full',
+          isLive ? 'bg-rose-500' : 'bg-zinc-400',
+        ].join(' ')}
+      />
+      {isLive ? 'Live' : 'Idle'}
+    </span>
+  );
+}
+
 function formatDuration(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  return `${minutes.toString().padStart(2, '0')}:${seconds
+    .toString()
+    .padStart(2, '0')}`;
 }

@@ -50,9 +50,15 @@ export interface UseWebSocketReturn {
   isConnected: boolean;
   isConnectionLost: boolean;
   connectionStatus: WebSocketConnectionStatus;
-  connect: () => void;
+  connect: () => Promise<void>;
   disconnect: () => void;
   sendAudioChunk: (chunk: ArrayBuffer) => void;
+}
+
+interface PendingConnection {
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (error: Error) => void;
 }
 
 function buildWsUrl(
@@ -201,6 +207,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const reconnectingRef = useRef(false);
   const retryTimerRef = useRef<number | null>(null);
   const heartbeatTimerRef = useRef<number | null>(null);
+  const pendingConnectionRef = useRef<PendingConnection | null>(null);
 
   const [isConnected, setIsConnected] = useState(false);
   const [isConnectionLost, setIsConnectionLost] = useState(false);
@@ -219,6 +226,16 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       window.clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
     }
+  }, []);
+
+  const resolvePendingConnection = useCallback(() => {
+    pendingConnectionRef.current?.resolve();
+    pendingConnectionRef.current = null;
+  }, []);
+
+  const rejectPendingConnection = useCallback((error: Error) => {
+    pendingConnectionRef.current?.reject(error);
+    pendingConnectionRef.current = null;
   }, []);
 
   const startHeartbeat = useCallback((ws: WebSocket) => {
@@ -249,7 +266,13 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       console.error('[useWebSocket] Failed to construct WebSocket:', err);
       setConnectionStatus('lost');
       setIsConnectionLost(true);
-      optionsRef.current.onReconnectFailed?.();
+      if (isRetry) {
+        optionsRef.current.onReconnectFailed?.();
+      } else {
+        rejectPendingConnection(
+          err instanceof Error ? err : new Error('Failed to open WebSocket')
+        );
+      }
       return;
     }
 
@@ -263,6 +286,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       setConnectionStatus(isRetry ? 'reconnected' : 'connected');
       retryAttemptRef.current = 0;
       startHeartbeat(ws);
+      if (!isRetry) {
+        resolvePendingConnection();
+      }
     };
 
     ws.onmessage = (event: MessageEvent) => {
@@ -326,6 +352,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       wsRef.current = null;
 
       if (intentionalCloseRef.current) {
+        rejectPendingConnection(new Error('WebSocket connection was cancelled'));
         optionsRef.current.onSessionEnd?.(sessionIdRef.current);
         setConnectionStatus('idle');
         return;
@@ -338,6 +365,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         );
         setConnectionStatus('lost');
         setIsConnectionLost(true);
+        rejectPendingConnection(
+          new Error(
+            event.reason || `WebSocket closed before opening (code ${event.code})`
+          )
+        );
         return;
       }
 
@@ -355,15 +387,28 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         openSocket(true);
       }, delayMs);
     };
-  }, [clearHeartbeat, clearRetryTimer, startHeartbeat]);
+  }, [
+    clearHeartbeat,
+    clearRetryTimer,
+    rejectPendingConnection,
+    resolvePendingConnection,
+    startHeartbeat,
+  ]);
 
-  const connect = useCallback(() => {
+  const connect = useCallback((): Promise<void> => {
     if (
       wsRef.current !== null &&
-      (wsRef.current.readyState === WebSocket.OPEN ||
-        wsRef.current.readyState === WebSocket.CONNECTING)
+      wsRef.current.readyState === WebSocket.OPEN
     ) {
-      return;
+      return Promise.resolve();
+    }
+
+    if (
+      wsRef.current !== null &&
+      wsRef.current.readyState === WebSocket.CONNECTING &&
+      pendingConnectionRef.current !== null
+    ) {
+      return pendingConnectionRef.current.promise;
     }
 
     intentionalCloseRef.current = false;
@@ -371,7 +416,21 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     retryAttemptRef.current = 0;
     sessionIdRef.current = null;
     setIsConnectionLost(false);
+
+    let resolveConnection!: () => void;
+    let rejectConnection!: (error: Error) => void;
+    const connectionPromise = new Promise<void>((resolve, reject) => {
+      resolveConnection = resolve;
+      rejectConnection = reject;
+    });
+    pendingConnectionRef.current = {
+      promise: connectionPromise,
+      resolve: resolveConnection,
+      reject: rejectConnection,
+    };
+
     openSocket(false);
+    return connectionPromise;
   }, [openSocket]);
 
   const disconnect = useCallback(() => {
@@ -417,6 +476,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         intentionalCloseRef.current = true;
         ws.close(1001, 'Component unmounted');
       }
+      pendingConnectionRef.current = null;
     };
   }, [clearHeartbeat, clearRetryTimer]);
 
