@@ -176,6 +176,37 @@ class TranscriptCandidate:
     created_at: float
 
 
+@dataclass(frozen=True)
+class PartialCandidate:
+    """A revisable partial result tagged with the stream that produced it."""
+
+    source_language: str
+    message: PartialSegmentMessage
+
+
+class DominantLanguage:
+    """Mutable holder for the stream whose partials are currently shown.
+
+    In dual-stream mode both the vi and en Transcribe streams emit partial
+    results for the same audio. To avoid the live caption flickering between a
+    correct guess and a wrong-language guess, only partials from the dominant
+    stream are forwarded. The dominant language starts from the user's selected
+    source language and flips whenever the arbiter finalizes a segment in the
+    other language.
+    """
+
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+
+# Sentinel pushed onto the unified output queue when the finalized-candidate
+# arbiter has finished, signalling the session loop to stop reading.
+_ARBITRATION_DONE = object()
+_DUAL_CANDIDATE_QUEUE_SIZE = 32
+_DUAL_PARTIAL_QUEUE_SIZE = 64
+_DUAL_OUTPUT_QUEUE_SIZE = 64
+
+
 # ---------------------------------------------------------------------------
 # Helper: send a Pydantic model as JSON
 # ---------------------------------------------------------------------------
@@ -345,8 +376,14 @@ async def _run_dual_transcription_worker(
     source_language: str,
     audio_queue: "asyncio.Queue[bytes | None]",
     candidate_queue: "asyncio.Queue[TranscriptCandidate | Exception | None]",
+    partial_queue: "asyncio.Queue[PartialCandidate] | None" = None,
 ) -> None:
-    """Run one fixed-language Transcribe stream and publish finalized candidates."""
+    """Run one fixed-language Transcribe stream and publish finalized candidates.
+
+    When *partial_queue* is provided, revisable partial results are forwarded to
+    it (tagged with *source_language*) so the session loop can show a live
+    caption while a phrase is still in progress.
+    """
     service = TranscriptionService(
         session_id=session_id,
         settings=settings,
@@ -355,6 +392,13 @@ async def _run_dual_transcription_worker(
     try:
         async for msg in service.transcribe(audio_queue):
             if isinstance(msg, PartialSegmentMessage):
+                if partial_queue is not None:
+                    await partial_queue.put(
+                        PartialCandidate(
+                            source_language=source_language,
+                            message=msg,
+                        )
+                    )
                 continue
             if isinstance(msg, FinalizedSegmentMessage):
                 transcript_text = _final_text(msg, source_language).strip()
@@ -439,6 +483,7 @@ async def _arbitrate_dual_candidates(
     *,
     session_id: str,
     candidate_queue: "asyncio.Queue[TranscriptCandidate | Exception | None]",
+    dominant_language: "DominantLanguage | None" = None,
 ) -> AsyncIterator[FinalizedSegmentMessage | Exception]:
     """Choose one finalized candidate when both streams produce nearby text."""
     active_workers = 2
@@ -502,6 +547,10 @@ async def _arbitrate_dual_candidates(
             selected.transcript_text
         ).casefold()
         recent_finalized[normalized_selected] = time.monotonic()
+        # Flip the live-caption stream to follow the language just finalized,
+        # so subsequent partials are shown from the matching Transcribe stream.
+        if dominant_language is not None:
+            dominant_language.value = selected.source_language
         _logger.info(
             "transcript_candidate_emitted",
             extra={
@@ -518,6 +567,60 @@ async def _arbitrate_dual_candidates(
             mode=selected.mode,
             source_language=selected.source_language,
         )
+
+
+async def _forward_dual_partials(
+    *,
+    session_id: str,
+    partial_queue: "asyncio.Queue[PartialCandidate]",
+    output_queue: "asyncio.Queue",
+    dominant_language: "DominantLanguage",
+) -> None:
+    """Forward live partials from the dominant stream to the output queue.
+
+    Only partials whose ``source_language`` matches the current dominant
+    language are forwarded, so the single frontend live-caption slot does not
+    flicker between the two streams' competing guesses. The segment_id is
+    prefixed with the source language to mirror the finalized-segment contract
+    so the frontend can replace the partial when its finalized form arrives.
+    """
+    while True:
+        candidate = await partial_queue.get()
+        if candidate.source_language != dominant_language.value:
+            continue
+        msg = candidate.message
+        await output_queue.put(
+            PartialSegmentMessage(
+                segment_id=f"{candidate.source_language}-{msg.segment_id}",
+                speaker_label=msg.speaker_label,
+                text_vi=msg.text_vi,
+                text_en=msg.text_en,
+                spoken_language=msg.spoken_language,
+            )
+        )
+
+
+async def _drive_dual_arbiter(
+    *,
+    session_id: str,
+    candidate_queue: "asyncio.Queue[TranscriptCandidate | Exception | None]",
+    output_queue: "asyncio.Queue",
+    dominant_language: "DominantLanguage",
+) -> None:
+    """Run the finalized-candidate arbiter, pushing results to the output queue.
+
+    Signals completion by pushing the :data:`_ARBITRATION_DONE` sentinel so the
+    session loop knows no more finalized segments will arrive.
+    """
+    try:
+        async for msg in _arbitrate_dual_candidates(
+            session_id=session_id,
+            candidate_queue=candidate_queue,
+            dominant_language=dominant_language,
+        ):
+            await output_queue.put(msg)
+    finally:
+        await output_queue.put(_ARBITRATION_DONE)
 
 
 # ---------------------------------------------------------------------------
@@ -765,7 +868,21 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                 )
                 candidate_queue: asyncio.Queue[
                     TranscriptCandidate | Exception | None
-                ] = asyncio.Queue()
+                ] = asyncio.Queue(maxsize=_DUAL_CANDIDATE_QUEUE_SIZE)
+                # Unified output queue: both the finalized-candidate arbiter and
+                # the live-partial forwarder push here, so a single consumer owns
+                # all websocket sends (no concurrent-send race).
+                output_queue: asyncio.Queue = asyncio.Queue(
+                    maxsize=_DUAL_OUTPUT_QUEUE_SIZE
+                )
+                partial_queue: asyncio.Queue[PartialCandidate] = asyncio.Queue(
+                    maxsize=_DUAL_PARTIAL_QUEUE_SIZE
+                )
+                # The live caption follows the user's selected source language
+                # until the arbiter finalizes a segment in the other language.
+                dominant_language = DominantLanguage(
+                    language_mode.source_translate_code
+                )
                 vi_task = asyncio.create_task(
                     _run_dual_transcription_worker(
                         session_id=session_id,
@@ -774,6 +891,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                         source_language="vi",
                         audio_queue=vi_audio_queue,
                         candidate_queue=candidate_queue,
+                        partial_queue=partial_queue,
                     )
                 )
                 en_task = asyncio.create_task(
@@ -784,13 +902,31 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                         source_language="en",
                         audio_queue=en_audio_queue,
                         candidate_queue=candidate_queue,
+                        partial_queue=partial_queue,
+                    )
+                )
+                arbiter_task = asyncio.create_task(
+                    _drive_dual_arbiter(
+                        session_id=session_id,
+                        candidate_queue=candidate_queue,
+                        output_queue=output_queue,
+                        dominant_language=dominant_language,
+                    )
+                )
+                partial_task = asyncio.create_task(
+                    _forward_dual_partials(
+                        session_id=session_id,
+                        partial_queue=partial_queue,
+                        output_queue=output_queue,
+                        dominant_language=dominant_language,
                     )
                 )
                 try:
-                    async for msg in _arbitrate_dual_candidates(
-                        session_id=session_id,
-                        candidate_queue=candidate_queue,
-                    ):
+                    while True:
+                        msg = await output_queue.get()
+                        if msg is _ARBITRATION_DONE:
+                            # Arbiter finished: no more finalized segments.
+                            break
                         if error_event.is_set():
                             break
                         if isinstance(msg, Exception):
@@ -807,10 +943,16 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                             break
                         await _send(websocket, msg)
                 finally:
-                    for task in (vi_task, en_task):
+                    for task in (vi_task, en_task, arbiter_task, partial_task):
                         if not task.done():
                             task.cancel()
-                    await asyncio.gather(vi_task, en_task, return_exceptions=True)
+                    await asyncio.gather(
+                        vi_task,
+                        en_task,
+                        arbiter_task,
+                        partial_task,
+                        return_exceptions=True,
+                    )
 
             else:
                 transcription_service = TranscriptionService(

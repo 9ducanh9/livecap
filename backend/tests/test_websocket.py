@@ -565,6 +565,66 @@ class TestBilingualDualStream:
         assert finalized_msgs[0]["text_en"] == "Sense my voice."
         assert finalized_msgs[0]["text_vi"] == "Cảm nhận giọng nói của tôi."
 
+    def test_dual_stream_forwards_partial_from_dominant_language(
+        self, app, mock_logging
+    ):
+        """Live partials from the dominant (default source) stream are forwarded,
+        and the off-language stream's partials are suppressed to avoid flicker."""
+        settings = make_settings(bilingual_dual_stream=True)
+
+        vi_partial = PartialSegmentMessage(
+            segment_id="seg-1",
+            speaker_label="Speaker 1",
+            text_vi="xin",
+            text_en="",
+            spoken_language="vi",
+        )
+        en_partial = PartialSegmentMessage(
+            segment_id="seg-1",
+            speaker_label="Speaker 1",
+            text_vi="",
+            text_en="sin",
+            spoken_language="en",
+        )
+
+        def make_service(*args, **kwargs):
+            language_code = kwargs["language_code"]
+
+            async def mock_transcribe(audio_queue):
+                _ = await audio_queue.get()
+                # Each stream emits only its own-language partial, then idles
+                # until end-of-stream. No finalized segment is produced so the
+                # dominant language stays at the default (vi).
+                yield vi_partial if language_code == "vi-VN" else en_partial
+                while True:
+                    item = await audio_queue.get()
+                    if item is None:
+                        break
+
+            service = MagicMock()
+            service.transcribe = mock_transcribe
+            return service
+
+        async def mock_translate(segment, session_id="", **kwargs):
+            return segment
+
+        with patch("app.routers.websocket.get_settings", return_value=settings), \
+             patch("app.routers.websocket.TranscriptionService", side_effect=make_service), \
+             patch("app.routers.websocket.translate_segment", new=mock_translate):
+            with TestClient(app) as client:
+                with client.websocket_connect("/ws/transcribe") as websocket:
+                    _ = websocket.receive_text()
+                    websocket.send_bytes(make_valid_audio_chunk())
+                    websocket.send_text(make_stop_message())
+                    received_msgs = collect_until_session_end(websocket, max_messages=10)
+
+        partial_msgs = [m for m in received_msgs if m["type"] == "partial_segment"]
+        # The default source language is vi, so only the vi partial is shown.
+        assert len(partial_msgs) >= 1
+        assert all(m["spoken_language"] == "vi" for m in partial_msgs)
+        assert partial_msgs[0]["segment_id"] == "vi-seg-1"
+        assert partial_msgs[0]["text_vi"] == "xin"
+
 
 # ---------------------------------------------------------------------------
 # Binary frame routing to transcription (Req 2.3, 3.1)
