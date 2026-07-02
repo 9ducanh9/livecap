@@ -132,7 +132,7 @@ def setup_logging(
         ``"livecap-stream"``.
     aws_region:
         AWS region for CloudWatch.  Falls back to the ``AWS_REGION``
-        environment variable, then to ``"us-east-1"``.
+        environment variable, then to ``"ap-southeast-1"``.
     """
 
     resolved_group = (
@@ -148,7 +148,7 @@ def setup_logging(
     resolved_region = (
         aws_region
         or os.getenv("AWS_REGION")
-        or "us-east-1"
+        or "ap-southeast-1"
     )
 
     logger = logging.getLogger(LOGGER_NAME)
@@ -167,8 +167,8 @@ def setup_logging(
 
         cw_client = boto3.client("logs", region_name=resolved_region)
         handler = watchtower.CloudWatchLogHandler(
-            log_group=resolved_group,
-            log_stream=resolved_stream,
+            log_group_name=resolved_group,
+            log_stream_name=resolved_stream,
             boto3_client=cw_client,
             create_log_group=True,
         )

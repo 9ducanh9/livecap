@@ -112,6 +112,26 @@ class TestSetupLogging:
         logger = logging.getLogger(mod.LOGGER_NAME)
         assert mock_handler_instance in logger.handlers
 
+    def test_cloudwatch_handler_uses_watchtower_parameter_names(self):
+        """Use the constructor contract exposed by watchtower 3.x."""
+        mod = _reload_service()
+        mock_wt, _ = _make_mock_watchtower()
+        mock_b3 = _make_mock_boto3()
+
+        with patch.dict(sys.modules, {"watchtower": mock_wt, "boto3": mock_b3}):
+            mod.setup_logging(
+                log_group="/ecs/livecap-test",
+                log_stream="test-stream",
+                aws_region="ap-southeast-1",
+            )
+
+        mock_wt.CloudWatchLogHandler.assert_called_once_with(
+            log_group_name="/ecs/livecap-test",
+            log_stream_name="test-stream",
+            boto3_client=mock_b3.client.return_value,
+            create_log_group=True,
+        )
+
 
 # ---------------------------------------------------------------------------
 # JSON formatter
