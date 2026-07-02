@@ -434,13 +434,19 @@ Push or pull request
 The latest local pre-commit gate passed with:
 
 - `python -m compileall app`
-- `python -m pytest` with 201 tests passing
+- `python -m pytest` with 204 tests passing
 - `npm run build`
 - Docker-based `gitleaks detect --source=/repo --redact`
 - Docker-based `gitleaks dir /repo --redact`
 - Docker-based Terraform `fmt -check -recursive`
 - Docker-based Terraform `init -backend=false` and `validate` for both the
   bootstrap and main infrastructure stacks
+
+The submission deployment was refreshed on 2026-07-03 with backend image
+`a65921c` and the matching frontend bundle. Production smoke verification
+passed for CloudFront `/` and `/app`, `/api/health`, WebSocket session start,
+heartbeat, real 16 kHz PCM transcription, English-to-Vietnamese translation,
+clean session end, S3 transcript export, and presigned TXT download.
 
 Local Terraform state files were moved out of the repository to:
 

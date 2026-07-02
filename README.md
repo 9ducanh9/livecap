@@ -1,6 +1,6 @@
 # LiveCap
 
-[![CI](https://github.com/9ducanh9/livecap/actions/workflows/ci.yml/badge.svg?branch=v1.5-production-ready-mvp)](https://github.com/9ducanh9/livecap/actions/workflows/ci.yml)
+[![CI](https://github.com/9ducanh9/livecap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/9ducanh9/livecap/actions/workflows/ci.yml)
 
 **Live demo:** [https://dpeohr327wt9l.cloudfront.net](https://dpeohr327wt9l.cloudfront.net)
 
@@ -8,9 +8,10 @@ LiveCap is a real-time speech caption and translation web application. It captur
 
 The application is deployed on AWS using a cloud-native architecture: the frontend is served through Amazon CloudFront from S3, while the backend runs as Docker containers on Amazon ECS Fargate behind an Application Load Balancer (ALB) that terminates TLS.
 
-The live URL currently uses the stable legacy ECS path. The private-subnet,
-scale-to-zero target stack is implemented in Terraform and remains behind the
-reviewed state-import and blue/green cutover gates.
+The live URL currently uses the stable legacy ECS path with an immutable Git
+SHA image. The private-subnet, scale-to-zero target stack is implemented in
+Terraform and remains behind the reviewed state-import and blue/green cutover
+gates.
 
 ---
 
@@ -157,9 +158,9 @@ terraform validate
 
 ### Backend Deployment
 
-**IMPORTANT:** Push the target backend image under an immutable Git SHA before
-creating the target ECS service. The legacy rollback task may still reference
-`latest`, but the target service must use `backend_image_tag`.
+**IMPORTANT:** Push the backend image under an immutable Git SHA before updating
+either ECS service. Both the live rollback service and the target service use
+the Terraform `backend_image_tag` variable; do not deploy `latest`.
 
 #### Step 1: Build Docker Image
 
