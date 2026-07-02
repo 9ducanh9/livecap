@@ -177,10 +177,10 @@ docker build -t livecap-backend:$GIT_SHA .
 ```
 
 The Dockerfile includes:
-- Python 3.11 slim base image
+- Pinned Python 3.11 slim Bookworm base image
 - FastAPI application and dependencies
 - Uvicorn ASGI server
-- curl for health checks (required by ECS)
+- Python standard-library health checks (no extra runtime package)
 - Environment variable configuration
 
 #### Step 2: Authenticate to ECR

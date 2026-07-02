@@ -6,7 +6,7 @@
 # ==============================================================================
 # Stage 1: Dependencies
 # ==============================================================================
-FROM python:3.11-slim AS dependencies
+FROM python:3.11-slim-bookworm@sha256:721dc13fd1be0a771e54b72097634291d628d0007dee9da777e2ce676a9c998f AS dependencies
 
 # Set working directory
 WORKDIR /app
@@ -23,15 +23,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # ==============================================================================
 # Stage 2: Application
 # ==============================================================================
-FROM python:3.11-slim AS application
+FROM python:3.11-slim-bookworm@sha256:721dc13fd1be0a771e54b72097634291d628d0007dee9da777e2ce676a9c998f AS application
 
 # Set working directory
 WORKDIR /app
-
-# Install curl for health checks (used by ECS task definition)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
-    rm -rf /var/lib/apt/lists/*
 
 # Copy installed dependencies from the dependencies stage
 COPY --from=dependencies /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
@@ -76,13 +71,13 @@ ENV CLOUDWATCH_LOG_GROUP=livecap
 EXPOSE 8000
 
 # Health check instruction (Requirement 13.1)
-# Calls GET /api/health every 30 seconds using curl
+# Calls GET /api/health every 30 seconds using the Python standard library
 # - interval: 30s between checks
 # - timeout: 5s to wait for response
 # - start-period: 30s grace period after container starts
 # - retries: 3 consecutive failures before marking unhealthy
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8000/api/health || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=4)"
 
 # Run Uvicorn with FastAPI app (Requirement 13.1)
 # - host 0.0.0.0: Listen on all network interfaces (required for container networking)
