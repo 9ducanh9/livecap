@@ -443,10 +443,11 @@ The latest local pre-commit gate passed with:
   bootstrap and main infrastructure stacks
 
 The submission deployment was refreshed on 2026-07-03 with backend image
-`a65921c` and the matching frontend bundle. Production smoke verification
-passed for CloudFront `/` and `/app`, `/api/health`, WebSocket session start,
-heartbeat, real 16 kHz PCM transcription, English-to-Vietnamese translation,
-clean session end, S3 transcript export, and presigned TXT download.
+`a65921c` and frontend revision `b58a80c`. Production smoke verification passed
+for CloudFront `/` and `/app`, `/api/health`, desktop and 390 px mobile layout,
+WebSocket session start, heartbeat, real 16 kHz PCM transcription,
+English-to-Vietnamese translation, clean session end, S3 transcript export,
+and presigned TXT download.
 
 Local Terraform state files were moved out of the repository to:
 
