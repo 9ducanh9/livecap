@@ -824,6 +824,8 @@ multi-AZ ALB, and performs a parallel-stack blue/green-style cutover. See
 [`docs/post-v1.5-requirements-design-flow.md`](docs/post-v1.5-requirements-design-flow.md)
 for the target architecture and migration gates.
 
+![LiveCap target AWS architecture](docs/livecap-target-architecture.png)
+
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        End User Browser                              │
