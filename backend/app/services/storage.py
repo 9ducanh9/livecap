@@ -127,7 +127,7 @@ def upload_transcript_to_s3(
     key: str,
     content: str,
     session_id: str,
-    region: str = "us-east-1",
+    region: str = "ap-southeast-1",
 ) -> None:
     """Upload a TXT transcript to S3.
 
@@ -181,7 +181,7 @@ def generate_presigned_download_link(
     bucket: str,
     key: str,
     expiration_seconds: int,
-    region: str = "us-east-1",
+    region: str = "ap-southeast-1",
 ) -> str:
     """Generate a presigned download link for an S3 object.
 
@@ -230,7 +230,7 @@ def store_transcript_and_get_download_link(
     segments: List[ExportSegment],
     bucket: str,
     expiration_seconds: int,
-    region: str = "us-east-1",
+    region: str = "ap-southeast-1",
 ) -> tuple[str, datetime]:
     """Complete storage workflow: serialize, upload, generate download link.
 

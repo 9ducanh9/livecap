@@ -196,6 +196,20 @@ class TestGenerateS3ObjectKey:
 
 
 class TestUploadTranscriptToS3:
+    def test_default_region_is_singapore(self):
+        mock_client = MagicMock()
+        with patch("boto3.client", return_value=mock_client) as mock_boto_client:
+            upload_transcript_to_s3(
+                bucket="my-bucket",
+                key="transcripts/sess/file.txt",
+                content="hello world",
+                session_id="sess-1",
+            )
+
+        mock_boto_client.assert_called_once_with(
+            "s3", region_name="ap-southeast-1"
+        )
+
     def test_successful_upload_calls_put_object(self):
         """Upload should call put_object with correct parameters."""
         mock_client = MagicMock()

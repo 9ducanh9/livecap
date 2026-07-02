@@ -80,6 +80,14 @@ def make_service_with_mock(translated_return: str) -> tuple[TranslationService, 
 
 
 class TestTranslationDirectionality:
+    def test_default_region_is_singapore(self):
+        with patch("boto3.client") as mock_boto_client:
+            TranslationService()
+
+        mock_boto_client.assert_called_once_with(
+            "translate", region_name="ap-southeast-1"
+        )
+
     def test_vi_segment_translates_to_en(self):
         """spoken vi → translated text placed in text_en, source stays in text_vi."""
         service, mock_client = make_service_with_mock("Hello world")

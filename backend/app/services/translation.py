@@ -57,10 +57,10 @@ class TranslationService:
     ----------
     aws_region:
         AWS region to use for the Translate client.  Defaults to
-        ``"us-east-1"``.
+        ``"ap-southeast-1"``.
     """
 
-    def __init__(self, aws_region: str = "us-east-1") -> None:
+    def __init__(self, aws_region: str = "ap-southeast-1") -> None:
         self._region = aws_region
         self._client = boto3.client("translate", region_name=aws_region)
         self._logger: logging.Logger = get_logger()

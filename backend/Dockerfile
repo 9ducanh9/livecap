@@ -43,7 +43,7 @@ COPY app/ ./app/
 # Environment variable injection points (Requirement 13.6)
 # These can be overridden by ECS task definition or docker run -e flags
 # AWS region for Transcribe, Translate, and S3
-ENV AWS_REGION=us-east-1
+ENV AWS_REGION=ap-southeast-1
 
 # S3 bucket name for transcript storage (Transcript_Bucket)
 ENV S3_BUCKET=livecap-transcripts
