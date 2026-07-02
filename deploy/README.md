@@ -1,5 +1,11 @@
 # LiveCap Deployment Configuration
 
+> **Legacy reference only.** The JSON templates and manual EC2/ECS steps in
+> this directory predate the current private-Fargate, immutable-SHA and
+> blue/green Terraform design. Do not use them for the submission deployment.
+> Use `../infrastructure/terraform/README.md` and
+> `../infrastructure/terraform/IMPORT_PLAN.md` instead.
+
 This directory contains deployment configuration files for the LiveCap application, supporting both traditional EC2 deployment and modern containerized ECS Fargate deployment.
 
 ## Directory Structure

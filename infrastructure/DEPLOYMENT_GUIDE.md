@@ -1,5 +1,9 @@
 # LiveCap AWS Deployment Guide
 
+> **Legacy walkthrough.** Do not use the one-shot apply or `latest` image steps
+> below for the current environment. The authoritative workflow is
+> `terraform/README.md` plus `terraform/IMPORT_PLAN.md`.
+
 This guide walks through deploying LiveCap to AWS using the provided Terraform Infrastructure as Code templates.
 
 ## Table of Contents

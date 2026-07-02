@@ -1,5 +1,11 @@
 # ECS Deployment Configuration Guide
 
+> **Legacy manual guide.** This document contains the old public-IP and
+> `latest`-tag workflow. It is retained for historical context only. The active
+> deployment process is the review-gated Terraform workflow documented in
+> `../infrastructure/terraform/README.md` and
+> `../infrastructure/terraform/IMPORT_PLAN.md`.
+
 This document describes the Amazon ECS Fargate deployment configuration for the LiveCap backend, including task definitions, service configuration, and IAM roles.
 
 ## Overview

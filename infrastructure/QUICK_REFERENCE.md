@@ -1,5 +1,10 @@
 # LiveCap Infrastructure Quick Reference
 
+> **Legacy reference only.** The one-command deployment below is unsafe for the
+> current empty/remote-state recovery and blue/green migration. Follow
+> `terraform/README.md` and `terraform/IMPORT_PLAN.md`; review imports and the
+> full plan before any apply.
+
 ## One-Command Deployment (Using Makefile)
 
 ```bash

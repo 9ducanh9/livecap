@@ -1,8 +1,16 @@
 # LiveCap
 
+[![CI](https://github.com/9ducanh9/livecap/actions/workflows/ci.yml/badge.svg?branch=v1.5-production-ready-mvp)](https://github.com/9ducanh9/livecap/actions/workflows/ci.yml)
+
+**Live demo:** [https://dpeohr327wt9l.cloudfront.net](https://dpeohr327wt9l.cloudfront.net)
+
 LiveCap is a real-time speech caption and translation web application. It captures microphone audio in the browser, streams it to a FastAPI backend over a secure WebSocket (WSS), transcribes it with Amazon Transcribe Streaming, translates it with Amazon Translate, and displays bilingual captions side-by-side — Vietnamese on the left, English on the right. Sessions can be exported as TXT files and stored in Amazon S3 with a time-limited download link.
 
 The application is deployed on AWS using a cloud-native architecture: the frontend is served through Amazon CloudFront from S3, while the backend runs as Docker containers on Amazon ECS Fargate behind an Application Load Balancer (ALB) that terminates TLS.
+
+The live URL currently uses the stable legacy ECS path. The private-subnet,
+scale-to-zero target stack is implemented in Terraform and remains behind the
+reviewed state-import and blue/green cutover gates.
 
 ---
 
@@ -36,9 +44,9 @@ The application is deployed on AWS using a cloud-native architecture: the fronte
 | Tool | Version | Purpose |
 |------|---------|---------|
 | **AWS CLI** | v2 or later | AWS resource management and deployment |
-| **Docker** | Latest | Building backend container images |
-| **Terraform** | Latest | Infrastructure as Code provisioning |
-| **Node.js** | 18 LTS or later | Building frontend application |
+| **Docker** | 24 or later | Building backend container images |
+| **Terraform** | 1.10.x | Infrastructure as Code provisioning and S3 lockfiles |
+| **Node.js** | 20 LTS | Building frontend application and matching CI |
 | **npm** | 9 or later | Frontend dependency management |
 | **Python** | 3.11+ | Local backend development (optional) |
 
@@ -85,6 +93,14 @@ aws ecr get-login-password --region ap-southeast-1 | docker login --username AWS
 
 This section covers deploying LiveCap to AWS using Terraform Infrastructure as Code.
 
+> **Current source of truth:** use
+> [`infrastructure/terraform/README.md`](infrastructure/terraform/README.md)
+> together with
+> [`infrastructure/terraform/IMPORT_PLAN.md`](infrastructure/terraform/IMPORT_PLAN.md).
+> The existing AWS stack must be imported into the reviewed remote state before
+> any main-stack apply. Do not use `terraform init -migrate-state`, do not apply
+> an empty-state plan, and do not deploy an image tagged `latest`.
+
 ### Initial Setup
 
 #### 1. Configure Infrastructure Variables
@@ -126,8 +142,14 @@ session_timeout_seconds   = 1800
 
 **Terraform:**
 ```bash
-cd infrastructure/terraform
+cd infrastructure/bootstrap/remote-state
 terraform init
+terraform validate
+terraform plan
+
+# After the reviewed bootstrap apply creates the state bucket:
+cd ../../terraform
+terraform init -reconfigure -backend-config=backend.hcl
 terraform validate
 ```
 
@@ -135,13 +157,16 @@ terraform validate
 
 ### Backend Deployment
 
-**IMPORTANT:** You must push a Docker image to ECR before the ECS service starts, as it will try to pull `:latest` immediately.
+**IMPORTANT:** Push the target backend image under an immutable Git SHA before
+creating the target ECS service. The legacy rollback task may still reference
+`latest`, but the target service must use `backend_image_tag`.
 
 #### Step 1: Build Docker Image
 
 ```bash
 cd backend
-docker build -t livecap-backend .
+GIT_SHA=$(git rev-parse --short HEAD)
+docker build -t livecap-backend:$GIT_SHA .
 ```
 
 The Dockerfile includes:
@@ -166,11 +191,11 @@ aws ecr get-login-password --region ap-southeast-1 | \
 #### Step 3: Tag and Push Image
 
 ```bash
-# Tag with ECR repository URI
-docker tag livecap-backend:latest <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com/livecap-backend:latest
+# Tag with the immutable Git SHA
+docker tag livecap-backend:$GIT_SHA <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com/livecap-backend:$GIT_SHA
 
 # Push to ECR
-docker push <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com/livecap-backend:latest
+docker push <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com/livecap-backend:$GIT_SHA
 ```
 
 **Tip:** Use `terraform output -raw ecr_repository_uri` to get the exact ECR URI.
@@ -181,22 +206,24 @@ docker push <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com/livecap-backend:la
 
 #### Using Terraform
 
-**For First-Time Deployment:**
+**For the current parallel-stack migration:**
 
 ```bash
 cd infrastructure/terraform
 
-# Step 1: Create ECR repository first
-terraform apply -target=aws_ecr_repository.backend
+# Step 1: confirm all existing resources are present in remote state
+terraform state list
 
-# Step 2: Build and push Docker image (see Backend Deployment section above)
+# Step 2: run the reviewed imports from IMPORT_PLAN.md where needed
 
-# Step 3: Apply full infrastructure
+# Step 3: create a reviewable plan with traffic kept on the legacy ALB
 terraform plan
-terraform apply
 ```
 
-Type `yes` when prompted. Deployment takes approximately 10-15 minutes.
+The plan must keep `route_backend_to_target=false` and must not destroy or
+replace the legacy ALB, ECS service, S3 buckets, or CloudFront distribution.
+Apply is a separate human-approved action after plan review; it is intentionally
+not included as a copy-paste step here.
 
 **Resources Created:**
 - 2 S3 buckets (frontend + transcripts with lifecycle policy)
@@ -386,9 +413,9 @@ docker push <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com/livecap-backend:v2
 ```bash
 cd infrastructure/terraform
 
-# Update the image tag in ecs.tf or variables
-# Then apply:
-terraform apply
+# Update backend_image_tag in the untracked terraform.tfvars
+# Then review the plan before a separately approved apply:
+terraform plan
 ```
 
 **Option B: Register new task definition (AWS CLI)**
@@ -456,8 +483,8 @@ aws ecs update-service \
 # Update terraform.tfvars
 backend_desired_count = 1
 
-# Apply
-terraform apply
+# Review before any separately approved apply
+terraform plan
 ```
 
 Keep `backend_max_capacity = 1` until the active session registry moves from
@@ -654,7 +681,7 @@ aws ecr describe-images \
 aws iam get-role --role-name ecsTaskExecutionRole
 
 # Test container locally
-docker run -p 8000:8000 <ecr-uri>:latest
+docker run -p 8000:8000 <ecr-uri>:<GIT_SHA>
 curl http://localhost:8000/api/health
 ```
 
@@ -789,6 +816,14 @@ The app opens at `http://localhost:5173`.
 
 ### Production Deployment Architecture
 
+The diagram below shows the logical request path. The currently deployed demo
+still runs the rollback ECS service in the default VPC with public task IPs.
+The reviewed target design moves Fargate into two private subnets across
+`ap-southeast-1a` and `ap-southeast-1b`, adds one NAT Gateway, keeps one
+multi-AZ ALB, and performs a parallel-stack blue/green-style cutover. See
+[`docs/post-v1.5-requirements-design-flow.md`](docs/post-v1.5-requirements-design-flow.md)
+for the target architecture and migration gates.
+
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        End User Browser                              │
@@ -859,27 +894,32 @@ The app opens at `http://localhost:5173`.
 
 | Service | Configuration | Monthly Cost |
 |---------|--------------|--------------|
-| ECS Fargate | 1 task × 0.5 vCPU × 1 GB × 10 hours | ~$0.60 |
-| ALB | Partial hours + minimal data processing | ~$16 |
+| ECS Fargate | 1 task x 0.5 vCPU x 1 GB x 10 hours | ~$0.60 |
+| ALB | One ALB remains provisioned for the full month | ~$16 |
 | S3 Storage | 1 GB | $0.02 |
 | CloudFront | 10 GB transfer | $1 |
-| Transcribe | 10 hours × 2 streams × $0.024/min | $288 |
+| Transcribe | 10 hours x 2 streams x $0.024/min | $28.80 |
 | Translate | 100K characters | $1.50 |
-| **Total** | | **~$307/month** |
+| **Base subtotal** | Excludes NAT Gateway, WAF, taxes, and data processing | **~$47.92/month** |
 
 #### Production Environment (Moderate Usage - 100 hours/month)
 
 | Service | Configuration | Monthly Cost |
 |---------|--------------|--------------|
-| ECS Fargate | 1 task × 0.5 vCPU × 1 GB × 730 hours | ~$21 |
+| ECS Fargate | 1 task x 0.5 vCPU x 1 GB x 100 hours | ~$3 |
 | ALB | Full month + data processing | ~$23 |
 | S3 Storage | 10 GB | $0.23 |
 | CloudFront | 100 GB transfer | $8.50 |
-| Transcribe | 100 hours × 2 streams × $0.024/min | $2,880 |
+| Transcribe | 100 hours x 2 streams x $0.024/min | $288 |
 | Translate | 5M characters | $75 |
-| **Total** | | **~$3,008/month** |
+| **Base subtotal** | Excludes NAT Gateway, WAF, taxes, and data processing | **~$397.73/month** |
 
-**Note:** Transcribe and Translate dominate costs at scale.
+**Note:** These are order-of-magnitude estimates, not quotes. Check the AWS
+Pricing Calculator before deployment. The target architecture adds one NAT
+Gateway and two WAF web ACLs; both keep charging while ECS is scaled to zero.
+AWS WAF charges per web ACL, rule/rule group, and request. The `$50` AWS Budget
+is an alerting guardrail, not a spending cap, and the complete target stack may
+exceed it even at low traffic.
 
 ### Cost Reduction Strategies
 
@@ -972,4 +1012,5 @@ For issues or questions:
 
 ## License
 
-[Your license information here]
+This repository is an academic project. No open-source license has been
+assigned.
