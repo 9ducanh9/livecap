@@ -443,7 +443,7 @@ The latest local pre-commit gate passed with:
   bootstrap and main infrastructure stacks
 
 The submission deployment was refreshed on 2026-07-03 with backend image
-`a65921c` and frontend revision `b58a80c`. Production smoke verification passed
+`a86fc1e` and frontend revision `b58a80c`. Production smoke verification passed
 for CloudFront `/` and `/app`, `/api/health`, desktop and 390 px mobile layout,
 WebSocket session start, heartbeat, real 16 kHz PCM transcription,
 English-to-Vietnamese translation, clean session end, S3 transcript export,
@@ -468,3 +468,6 @@ These items are intentionally not fully solved by post-v1.5 hardening:
   - `LiveCapEC2Role`
   - legacy S3 bucket `livecaptranscripts`
 - Applying the new Terraform budget and scheduled scaling resources to AWS.
+- Monitoring the pinned Bookworm base image for patched packages. ECR Basic
+  Scanning completed for `a86fc1e`; its remaining Debian OS findings currently
+  report no fixed package version.

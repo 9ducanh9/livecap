@@ -35,7 +35,7 @@ The submission deployment currently uses:
 5. ECS and application logs are written to CloudWatch.
 
 The live backend was verified on 2026-07-03 with immutable image tag
-`a65921c`. Health, WebSocket heartbeat, real Transcribe/Translate output, clean
+`a86fc1e`. Health, WebSocket heartbeat, real Transcribe/Translate output, clean
 session shutdown, S3 export, and presigned download all passed production smoke
 tests.
 
