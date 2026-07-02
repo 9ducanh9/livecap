@@ -1,7 +1,8 @@
 # LiveCap Terraform Remote State Bootstrap
 
 This bootstrap stack creates the S3 bucket used by the main LiveCap Terraform
-state backend. It is intentionally separate from `infrastructure/terraform`.
+state backend in `ap-southeast-1`. It is intentionally separate from
+`infrastructure/terraform`.
 
 ## Review-gated workflow
 

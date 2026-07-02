@@ -16,7 +16,7 @@ terraform {
 
   backend "s3" {
     key          = "livecap/main/terraform.tfstate"
-    region       = "us-east-1"
+    region       = "ap-southeast-1"
     encrypt      = true
     use_lockfile = true
   }

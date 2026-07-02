@@ -44,6 +44,13 @@ sessions. Two-task HA is deferred until session state moves out of process.
 
 ### 0. Bootstrap remote state first
 
+The remote-state S3 bucket and the main backend are configured in
+`ap-southeast-1`. The separate `us-east-1` provider alias remains required only
+for CloudFront-scoped AWS resources such as WAF and ACM.
+
+Existing legacy resources must be reconstructed in state using
+[`IMPORT_PLAN.md`](IMPORT_PLAN.md) before any main-stack apply.
+
 Remote state is managed by a separate bootstrap stack:
 
 ```bash
@@ -137,13 +144,12 @@ add a second NAT Gateway or adopt the required VPC endpoints.
 terraform plan
 ```
 
-### 4. Deploy the Infrastructure
+### 4. Human Review Gate
 
-```bash
-terraform apply
-```
-
-Terraform will prompt for confirmation. Type `yes` to proceed.
+Do not apply directly from this guide. Confirm that the remote state contains
+all 34 legacy resources listed in `IMPORT_PLAN.md`, then review the complete
+plan. Any deletion or replacement of the legacy ALB, ECS service, CloudFront
+distribution, or S3 buckets is a stop condition.
 
 ### 5. Note the Outputs
 
@@ -162,60 +168,28 @@ After deployment, Terraform will output important values:
 before creating the target service. Set the same SHA in `backend_image_tag`.
 Do not overwrite or deploy `latest` for the target environment.
 
-### Initial Deployment (First Time)
+### Current Parallel-stack Migration
 
-#### Step 1: Create ECR Repository First
-
-```bash
-cd infrastructure/terraform
-
-# Apply only ECR to create the repository
-terraform apply -target=aws_ecr_repository.backend
-
-# Save ECR URI for next steps
-export ECR_URI=$(terraform output -raw ecr_repository_uri)
-```
-
-#### Step 2: Build and Push Initial Docker Image
+1. Bootstrap the reviewed S3 state bucket in `ap-southeast-1`.
+2. Run the imports in `IMPORT_PLAN.md` against that remote state.
+3. Build and push the target backend image using an immutable Git SHA.
+4. Set `backend_image_tag` to that SHA and keep
+   `route_backend_to_target=false`.
+5. Run and review the full plan. Applying it requires separate human approval.
 
 ```bash
-# Authenticate with ECR
-aws ecr get-login-password --region ap-southeast-1 | docker login --username AWS --password-stdin $(terraform output -raw ecr_repository_uri)
+GIT_SHA=$(git rev-parse --short HEAD)
+ECR_URI=720459752315.dkr.ecr.ap-southeast-1.amazonaws.com/livecap-backend
 
-# Build the Docker image
-cd ../../backend
-docker build -t livecap-backend .
+aws ecr get-login-password --region ap-southeast-1 \
+  | docker login --username AWS --password-stdin 720459752315.dkr.ecr.ap-southeast-1.amazonaws.com
 
-# Tag and push
-docker tag livecap-backend:latest $(terraform output -raw ecr_repository_uri):latest
-docker push $(terraform output -raw ecr_repository_uri):latest
+docker build -t livecap-backend:$GIT_SHA ../../backend
+docker tag livecap-backend:$GIT_SHA $ECR_URI:$GIT_SHA
+docker push $ECR_URI:$GIT_SHA
+
+terraform plan -var "backend_image_tag=$GIT_SHA"
 ```
-
-#### Step 2: Build and Push Initial Docker Image
-
-```bash
-# Authenticate with ECR
-aws ecr get-login-password --region ap-southeast-1 | docker login --username AWS --password-stdin $(terraform output -raw ecr_repository_uri)
-
-# Build the Docker image
-cd ../../backend
-docker build -t livecap-backend .
-
-# Tag and push
-docker tag livecap-backend:latest $(terraform output -raw ecr_repository_uri):latest
-docker push $(terraform output -raw ecr_repository_uri):latest
-```
-
-#### Step 3: Apply Full Infrastructure
-
-Now that the image exists in ECR, apply the complete infrastructure:
-
-```bash
-cd ../infrastructure/terraform
-terraform apply
-```
-
-ECS will pull the `:latest` image and start tasks successfully.
 
 ---
 
@@ -225,19 +199,8 @@ For updates after the initial deployment, you can update backend code without re
 
 #### Update Backend Code
 
-```bash
-# Build and push new image
-cd backend
-docker build -t livecap-backend:v2 .
-docker tag livecap-backend:v2 $(cd ../infrastructure/terraform && terraform output -raw ecr_repository_uri):latest
-docker push $(cd ../infrastructure/terraform && terraform output -raw ecr_repository_uri):latest
-
-# Force ECS to deploy new version
-aws ecs update-service \
-  --cluster $(cd ../infrastructure/terraform && terraform output -raw ecs_cluster_name) \
-  --service $(cd ../infrastructure/terraform && terraform output -raw ecs_service_name) \
-  --force-new-deployment
-```
+Build another immutable SHA image, update `backend_image_tag`, and review a new
+Terraform plan. Do not overwrite an existing ECR tag or force-deploy `latest`.
 
 #### Update Frontend Code
 
@@ -569,10 +532,10 @@ After modifying `.tf` files or variables:
 ```bash
 # Review changes
 terraform plan
-
-# Apply changes
-terraform apply
 ```
+
+Apply only after the saved plan has passed human review and the change window
+has been explicitly approved.
 
 ## Destroying the Infrastructure
 

@@ -219,9 +219,9 @@ resource "aws_route_table" "target_public" {
 }
 
 resource "aws_route_table_association" "target_public" {
-  for_each = aws_subnet.target_public
+  for_each = var.target_public_subnets
 
-  subnet_id      = each.value.id
+  subnet_id      = aws_subnet.target_public[each.key].id
   route_table_id = aws_route_table.target_public.id
 }
 
@@ -272,9 +272,9 @@ resource "aws_route_table" "target_private" {
 }
 
 resource "aws_route_table_association" "target_private" {
-  for_each = aws_subnet.target_private
+  for_each = var.target_private_subnets
 
-  subnet_id      = each.value.id
+  subnet_id      = aws_subnet.target_private[each.key].id
   route_table_id = aws_route_table.target_private.id
 }
 
