@@ -44,9 +44,10 @@ The current live environment still uses the pre-migration network path:
 - default VPC subnets;
 - Fargate task public IP enabled;
 - ECS desired count fixed at one;
+- immutable ECR Git SHA tags with scan-on-push enabled;
 - no deployed wake Lambda;
-- no deployed target WAF, dashboard, budget, NAT Gateway, or private-subnet
-  stack.
+- no deployed target WAF, dashboard, LiveCap `$50` Budget, NAT Gateway, or
+  private-subnet stack.
 
 These facts are documented explicitly so the target architecture is not
 misrepresented as already deployed.

@@ -6,7 +6,13 @@
 
 LiveCap is a real-time speech caption and translation web application. It captures microphone audio in the browser, streams it to a FastAPI backend over a secure WebSocket (WSS), transcribes it with Amazon Transcribe Streaming, translates it with Amazon Translate, and displays bilingual captions side-by-side — Vietnamese on the left, English on the right. Sessions can be exported as TXT files and stored in Amazon S3 with a time-limited download link.
 
-The application is deployed on AWS using a cloud-native architecture: the frontend is served through Amazon CloudFront from S3, while the backend runs as Docker containers on Amazon ECS Fargate behind an Application Load Balancer (ALB) that terminates TLS.
+The application is deployed on AWS using a cloud-native architecture: the
+frontend is served through Amazon CloudFront from S3, while the backend runs as
+Docker containers on Amazon ECS Fargate behind an Application Load Balancer
+(ALB). CloudFront terminates public HTTPS/WSS for the current demo and forwards
+backend traffic to the ALB over its current HTTP origin connection. The target
+ALB supports end-to-end TLS when an ACM certificate and backend domain are
+configured.
 
 The live URL currently uses the stable legacy ECS path with an immutable Git
 SHA image. The private-subnet, scale-to-zero target stack is implemented in
@@ -229,7 +235,8 @@ not included as a copy-paste step here.
 **Resources Created:**
 - 2 S3 buckets (frontend + transcripts with lifecycle policy)
 - 1 CloudFront distribution (CDN for frontend)
-- 1 Application Load Balancer (ALB with TLS termination)
+- Existing rollback ALB plus one parallel target ALB (target HTTPS listener is
+  enabled when an ACM certificate is configured)
 - 1 ECS Fargate cluster
 - 1 ECS service and task definition
 - 1 ECR repository
@@ -809,7 +816,10 @@ npm run dev
 
 The app opens at `http://localhost:5173`.
 
-> **Note:** Local development uses plain `ws://` and `http://` (no TLS). Production deployments must use `wss://` and `https://`.
+> **Note:** Local development uses plain `ws://` and `http://` (no TLS). Public
+> production traffic uses `wss://` and `https://`. The current demo uses an
+> HTTP CloudFront-to-ALB origin; configure the target ALB certificate and
+> backend domain for encrypted origin traffic.
 
 ---
 
@@ -868,7 +878,9 @@ for the target architecture and migration gates.
 
 - **Frontend:** React + TypeScript application built with Vite, hosted on Amazon S3, distributed globally via Amazon CloudFront with HTTPS
 - **Backend:** FastAPI (Python 3.11+) packaged as a Docker container, running on Amazon ECS Fargate
-- **Load Balancer:** Application Load Balancer terminates TLS and routes HTTPS and WSS traffic to ECS tasks
+- **Load Balancer:** Application Load Balancer health-checks and routes API and
+  WebSocket traffic to ECS tasks; TLS termination is enabled on the target ALB
+  only when its ACM certificate is configured
 - **Transcription:** Amazon Transcribe Streaming with parallel Vietnamese (vi-VN) and English (en-US) fixed-language streams for accurate bilingual transcription
 - **Translation:** Amazon Translate for Vietnamese ↔ English translation
 - **Storage:** Two isolated S3 buckets:
@@ -881,7 +893,8 @@ for the target architecture and migration gates.
 
 **Why ECS Fargate + ALB?**
 - **Operational Excellence:** Automatic task restart; container packaging ensures consistency; CloudWatch integration
-- **Security:** ALB TLS termination; IAM task roles (no embedded credentials); isolated S3 buckets
+- **Security:** CloudFront viewer TLS, optional target ALB origin TLS, IAM task
+  roles with no embedded credentials, and isolated S3 buckets
 - **Reliability:** ECS auto-restarts failed tasks; ALB routes only to healthy targets; stateless design enables scaling
 - **Performance:** Right-sized Fargate tasks; CloudFront CDN reduces latency globally
 - **Cost Optimization:** Pay-per-use pricing; no idle EC2 costs; 14-day retention for transcripts and logs; no raw audio storage

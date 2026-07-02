@@ -372,7 +372,9 @@ infrastructure/terraform/
 ## Security Features
 
 1. **Bucket Isolation**: Frontend and transcript buckets are separate with distinct IAM policies
-2. **TLS Everywhere**: ALB terminates TLS; CloudFront uses HTTPS
+2. **TLS Boundaries**: CloudFront always protects viewer traffic with HTTPS;
+   the target ALB terminates origin TLS only when its ACM certificate and
+   backend domain are configured
 3. **IAM Task Roles**: No embedded credentials; automatic rotation
 4. **Security Groups**: Least-privilege network access
 5. **Encryption**: S3 server-side encryption enabled by default
