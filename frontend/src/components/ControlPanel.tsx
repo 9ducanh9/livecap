@@ -46,7 +46,7 @@ export default function ControlPanel({
       : 0;
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+    <div className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-zinc-950">Controls</h2>
@@ -58,7 +58,7 @@ export default function ControlPanel({
       </div>
 
       <div className="mt-5 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-        <div className="flex items-end justify-between gap-4">
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
               Timer
@@ -67,7 +67,7 @@ export default function ControlPanel({
               {formatDuration(recordingDurationSeconds)}
             </div>
           </div>
-          <div className="text-right text-xs text-zinc-500">
+          <div className="text-left text-xs text-zinc-500 sm:text-right">
             <div>Max {formatDuration(maxSessionSeconds)}</div>
             <div>
               {isCapturing

@@ -16,7 +16,7 @@ export default function CaptionDisplay({
   return (
     <section
       aria-label="Bilingual captions"
-      className="flex h-full min-h-[620px] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm"
+      className="flex h-full min-h-[620px] min-w-0 flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm"
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-white px-4 py-3">
         <div>

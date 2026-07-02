@@ -74,9 +74,8 @@ export default function LandingPage() {
 
     const ctx = gsap.context(() => {
       gsap.from('.hero-copy', {
-        y: 40,
-        opacity: 0,
-        filter: 'blur(16px)',
+        y: 32,
+        scale: 0.985,
         duration: 1.1,
         ease: 'power3.out',
       });
@@ -206,7 +205,7 @@ function HeroSection() {
           </a>
         </nav>
 
-        <div className="hero-copy flex flex-1 flex-col items-center justify-center py-20 text-center">
+        <div className="hero-copy flex flex-1 flex-col items-center justify-center py-20 text-center will-change-transform">
           <p className="mb-5 rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-sm text-white/72">
             Realtime bilingual captions for Vietnamese and English meetings
           </p>

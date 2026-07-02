@@ -270,7 +270,7 @@ export default function DashboardPage() {
   });
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-950">
+    <div className="min-h-screen overflow-x-hidden bg-zinc-50 text-zinc-950">
       <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/92 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-8">
           <div className="flex min-w-0 items-center gap-4">
@@ -288,8 +288,8 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="mx-auto grid w-full max-w-7xl gap-5 px-5 py-5 lg:grid-cols-[380px_minmax(0,1fr)] lg:px-8">
-        <section className="space-y-4">
+      <main className="mx-auto grid w-full max-w-7xl grid-cols-[minmax(0,1fr)] gap-5 px-5 py-5 lg:grid-cols-[380px_minmax(0,1fr)] lg:px-8">
+        <section className="min-w-0 space-y-4">
           <ControlPanel
             isCapturing={isCapturing}
             isConnecting={wsIsConnecting}
@@ -320,7 +320,7 @@ export default function DashboardPage() {
           />
         </section>
 
-        <section className="min-h-[620px] space-y-4">
+        <section className="min-h-[620px] min-w-0 space-y-4">
           {isConnectionLost && (
             <AlertBanner
               tone="warning"
