@@ -4,6 +4,8 @@
 
 **Live demo:** [https://dpeohr327wt9l.cloudfront.net](https://dpeohr327wt9l.cloudfront.net)
 
+**Demo guide:** [docs/demo-guide.md](docs/demo-guide.md)
+
 LiveCap is a real-time speech caption and translation web application. It captures microphone audio in the browser, streams it to a FastAPI backend over a secure WebSocket (WSS), transcribes it with Amazon Transcribe Streaming, translates it with Amazon Translate, and displays bilingual captions side-by-side — Vietnamese on the left, English on the right. Sessions can be exported as TXT files and stored in Amazon S3 with a time-limited download link.
 
 The application is deployed on AWS using a cloud-native architecture: the
@@ -986,23 +988,23 @@ exceed it even at low traffic.
      --comparison-operator GreaterThanThreshold
    ```
 
-6. **Scheduled Scale-to-Zero:** For demo environments, Terraform can scale the
+8. **Scheduled Scale-to-Zero:** For demo environments, Terraform can scale the
    ECS service to 0 outside demo hours and back to 1 during demo hours through
    `enable_demo_scheduled_scaling`.
 
-8. **Optional Wake Endpoint:** If `enable_wake_endpoint=true` is reviewed and
+9. **Optional Wake Endpoint:** If `enable_wake_endpoint=true` is reviewed and
    applied, the frontend can call `VITE_WAKE_BACKEND_URL` before opening the
    WebSocket. This lets a scaled-to-zero ECS service start on demand. It does
    not remove ALB, NAT Gateway, or WAF fixed costs. The browser calls
    `/api/wake` through CloudFront; OAC signs the request to the IAM-protected
    Lambda Function URL.
 
-9. **Idle Backend Scale-Down:** If `ENABLE_IDLE_SCALE_DOWN=true`, the backend
+10. **Idle Backend Scale-Down:** If `ENABLE_IDLE_SCALE_DOWN=true`, the backend
    waits for `IDLE_SCALE_DOWN_GRACE_SECONDS` after the last active session ends,
    then requests ECS desired count 0. A new session cancels the pending
    scale-down.
 
-10. **Budget Guardrail:** Terraform can create a `$50/month` AWS Budget alert
+11. **Budget Guardrail:** Terraform can create a `$50/month` AWS Budget alert
    when `budget_notification_email` is set. AWS Budget alerts are not
    real-time and can lag behind actual usage.
 
@@ -1018,9 +1020,15 @@ retain fixed cost.
 
 ### Documentation
 
-- **Detailed Deployment Guide:** `infrastructure/DEPLOYMENT_GUIDE.md` — Comprehensive IaC setup and deployment instructions
-- **Quick Reference:** `infrastructure/QUICK_REFERENCE.md` — One-command deployment and common operations
-- **ECS Configuration:** `deploy/ECS_DEPLOYMENT.md` — Task definitions, IAM roles, and service configuration
+- [Demo guide](docs/demo-guide.md) - short, reviewer-facing live demonstration flow
+- [Current infrastructure status](infrastructure/README.md) - deployed versus target architecture boundaries
+- [Terraform source of truth](infrastructure/terraform/README.md) - reviewed variables, resources, and safe workflow
+- [State import plan](infrastructure/terraform/IMPORT_PLAN.md) - required gate before any main-stack apply
+- [Requirements, design, and runtime flows](docs/post-v1.5-requirements-design-flow.md) - implementation and verification baseline
+
+The files under `deploy/`, `infrastructure/DEPLOYMENT_GUIDE.md`, and
+`infrastructure/QUICK_REFERENCE.md` are retained as legacy references. They are
+not the source of truth for the current immutable-image ECS deployment.
 
 ### AWS Documentation
 

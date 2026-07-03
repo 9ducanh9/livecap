@@ -449,6 +449,15 @@ WebSocket session start, heartbeat, real 16 kHz PCM transcription,
 English-to-Vietnamese translation, clean session end, S3 transcript export,
 and presigned TXT download.
 
+The production smoke was repeated on 2026-07-04 against the public CloudFront
+URL. A synthesized 16 kHz, 16-bit, mono PCM sentence completed the full WSS ->
+Transcribe -> Translate -> finalized bilingual caption -> clean session end ->
+S3 export -> presigned TXT download path. The ECS service was healthy at one
+desired/running task, transcript and backend log retention were both verified
+at 14 days, and the public frontend production dependency audit reported zero
+known vulnerabilities. GitHub Dependabot alerts and automated security fixes
+are enabled; there were zero open Dependabot alerts at verification time.
+
 Local Terraform state files were moved out of the repository to:
 
 ```text
