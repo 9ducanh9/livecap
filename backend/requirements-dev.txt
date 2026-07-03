@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# Test tooling is kept out of the production container image.
+pytest==9.0.3
+hypothesis==6.112.1
+httpx==0.27.2

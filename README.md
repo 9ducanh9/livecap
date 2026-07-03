@@ -813,9 +813,12 @@ Run the backend and frontend in separate terminals:
 cd livecap/backend
 cp .env.example .env
 # Edit .env: set AWS_REGION, S3_BUCKET, ALLOWED_ORIGIN=http://localhost:5173
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+Production containers install only `requirements.txt`; test tooling stays in
+`requirements-dev.txt` and is not copied into the runtime image.
 
 The API is available at `http://localhost:8000`. Health check: `http://localhost:8000/api/health`.
 
