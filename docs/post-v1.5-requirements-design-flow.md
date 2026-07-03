@@ -458,6 +458,12 @@ at 14 days, and the public frontend production dependency audit reported zero
 known vulnerabilities. GitHub Dependabot alerts and automated security fixes
 are enabled; there were zero open Dependabot alerts at verification time.
 
+The same production flow was also exercised through the real dashboard UI with
+an isolated Edge session and a fake microphone WAV. The UI reached Recording,
+appended three finalized English/Vietnamese rows, retained bounded session
+state, and stopped cleanly. The resulting evidence image is stored at
+`docs/livecap-dashboard.png`.
+
 Local Terraform state files were moved out of the repository to:
 
 ```text

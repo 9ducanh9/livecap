@@ -31,6 +31,9 @@ gates.
 
 ### Caption Dashboard
 
+Captured from the production UI while streaming a fake microphone WAV through
+the complete WebSocket, Transcribe, and Translate path.
+
 ![LiveCap caption dashboard](docs/livecap-dashboard.png)
 
 ---
