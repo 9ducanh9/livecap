@@ -12,7 +12,7 @@ amazon-transcribe==0.6.2
 watchtower==3.2.0
 
 # Configuration via environment variables
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 
 # Testing
 pytest==8.3.3
