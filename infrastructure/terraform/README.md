@@ -353,20 +353,20 @@ echo "Backend API: $(terraform output -raw alb_backend_base_url)"
 
 ```
 infrastructure/terraform/
-â”œâ”€â”€ main.tf              # Provider and Terraform configuration
-â”œâ”€â”€ variables.tf         # Input variable definitions
-â”œâ”€â”€ outputs.tf           # Output value definitions
-â”œâ”€â”€ vpc.tf               # VPC and security groups
-â”œâ”€â”€ s3.tf                # S3 buckets and lifecycle policies
-â”œâ”€â”€ cloudfront.tf        # CloudFront distribution
-â”œâ”€â”€ alb.tf               # Application Load Balancer
-â”œâ”€â”€ waf.tf               # AWS WAFv2 Web ACLs in COUNT mode
-â”œâ”€â”€ cloudwatch_dashboard.tf # CloudWatch operations dashboard
-â”œâ”€â”€ ecs.tf               # ECS cluster, service, task definition
-â”œâ”€â”€ iam.tf               # IAM roles and policies
-â”œâ”€â”€ ecr.tf               # Elastic Container Registry
-â”œâ”€â”€ cloudwatch.tf        # CloudWatch log groups
-â””â”€â”€ README.md            # This file
+|-- main.tf                    # Provider and Terraform configuration
+|-- variables.tf               # Input variable definitions
+|-- outputs.tf                 # Output value definitions
+|-- vpc.tf                     # VPC and security groups
+|-- s3.tf                      # S3 buckets and lifecycle policies
+|-- cloudfront.tf              # CloudFront distribution
+|-- alb.tf                     # Application Load Balancer
+|-- waf.tf                     # AWS WAFv2 Web ACLs in COUNT mode
+|-- cloudwatch_dashboard.tf    # CloudWatch operations dashboard
+|-- ecs.tf                     # ECS cluster, service, task definition
+|-- iam.tf                     # IAM roles and policies
+|-- ecr.tf                     # Elastic Container Registry
+|-- cloudwatch.tf              # CloudWatch log groups
+`-- README.md                  # This file
 ```
 
 ## Security Features
@@ -558,7 +558,7 @@ terraform destroy
 
 1. Check CloudWatch logs for task errors
 2. Verify Docker image exists in ECR
-3. Check security group rules allow ALB â†’ ECS communication
+3. Check security group rules allow ALB -> ECS communication
 4. Verify IAM task execution role has ECR pull permissions
 
 ### ALB Health Checks Failing
@@ -585,7 +585,7 @@ terraform destroy
 
 ### Obtaining ACM Certificate for ALB (REQUIRED for Production)
 
-**âš ï¸ CRITICAL:** Never deploy to production without TLS. Follow these steps to obtain an ACM certificate:
+**CRITICAL:** Never deploy to production without TLS. Follow these steps to obtain an ACM certificate:
 
 #### Option 1: Using AWS Certificate Manager (Recommended)
 

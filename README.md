@@ -21,26 +21,39 @@ gates.
 
 ---
 
+## Product Preview
+
+### Landing Page
+
+![LiveCap landing page](docs/livecap-landing.png)
+
+### Caption Dashboard
+
+![LiveCap caption dashboard](docs/livecap-dashboard.png)
+
+---
+
 ## Table of Contents
 
-1. [Prerequisites](#prerequisites)
-2. [AWS Deployment Guide](#aws-deployment-guide)
+1. [Product Preview](#product-preview)
+2. [Prerequisites](#prerequisites)
+3. [AWS Deployment Guide](#aws-deployment-guide)
    - [Initial Setup](#initial-setup)
    - [Backend Deployment](#backend-deployment)
    - [Infrastructure Provisioning](#infrastructure-provisioning)
    - [Frontend Deployment](#frontend-deployment)
    - [Environment Configuration](#environment-configuration)
-3. [ECS Service Operations](#ecs-service-operations)
+4. [ECS Service Operations](#ecs-service-operations)
    - [Updating Backend Code](#updating-backend-code)
    - [Scaling ECS Service](#scaling-ecs-service)
    - [Rollback Procedure](#rollback-procedure)
-4. [Monitoring and Troubleshooting](#monitoring-and-troubleshooting)
+5. [Monitoring and Troubleshooting](#monitoring-and-troubleshooting)
    - [Viewing Logs](#viewing-logs)
    - [Checking Service Health](#checking-service-health)
    - [Common Issues](#common-issues)
-5. [Local Development](#local-development)
-6. [Architecture Overview](#architecture-overview)
-7. [Cost Optimization](#cost-optimization)
+6. [Local Development](#local-development)
+7. [Architecture Overview](#architecture-overview)
+8. [Cost Optimization](#cost-optimization)
 
 ---
 
