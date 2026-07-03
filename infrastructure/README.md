@@ -14,6 +14,8 @@ blue/green migration.
 - [`../docs/post-v1.5-requirements-design-flow.md`](../docs/post-v1.5-requirements-design-flow.md): requirements, runtime flows,
   security controls, and migration decisions.
 - [`../docs/livecap-target-architecture.png`](../docs/livecap-target-architecture.png): target architecture diagram.
+- [`../docs/as-deployed-architecture.md`](../docs/as-deployed-architecture.md):
+  verified live resource placement and runtime request paths.
 
 The files under [`../deploy`](../deploy) and the older
 [`DEPLOYMENT_GUIDE.md`](DEPLOYMENT_GUIDE.md) and

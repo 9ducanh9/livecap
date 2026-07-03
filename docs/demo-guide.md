@@ -30,6 +30,8 @@ Use this guide for a short reviewer-facing demonstration of the deployed MVP.
 
 ## Architecture Talking Points
 
+- Use the [as-deployed architecture](as-deployed-architecture.md) for the live
+  request path and the target diagram only when discussing planned hardening.
 - The React/Vite frontend is stored in private S3 and served by CloudFront.
 - CloudFront terminates the public HTTPS/WSS connection and routes API and
   WebSocket traffic to an ALB.

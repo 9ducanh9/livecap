@@ -843,54 +843,40 @@ The app opens at `http://localhost:5173`.
 
 ## Architecture Overview
 
-### Production Deployment Architecture
+### Current As-Deployed Architecture
 
-The diagram below shows the logical request path. The currently deployed demo
-still runs the rollback ECS service in the default VPC with public task IPs.
-The reviewed target design moves Fargate into two private subnets across
-`ap-southeast-1a` and `ap-southeast-1b`, adds one NAT Gateway, keeps one
-multi-AZ ALB, and performs a parallel-stack blue/green-style cutover. See
-[`docs/post-v1.5-requirements-design-flow.md`](docs/post-v1.5-requirements-design-flow.md)
-for the target architecture and migration gates.
+The live submission environment uses this verified request path. See the
+[as-deployed architecture](docs/as-deployed-architecture.md) for resource
+placement, runtime flows, and the exact current-versus-target boundary.
+
+```mermaid
+flowchart LR
+    User["Browser"] -->|HTTPS and WSS| CF["CloudFront"]
+    CF -->|OAC origin fetch| Frontend["S3 frontend bucket"]
+    CF -->|HTTP origin for /api and /ws| ALB["Public multi-AZ ALB"]
+    ALB -->|HTTP port 8000| Task["One ECS Fargate task"]
+    ECR["ECR immutable image"] -.->|image pull| Task
+    Task -->|PCM stream| Transcribe["Amazon Transcribe"]
+    Task -->|finalized text| Translate["Amazon Translate"]
+    Task -->|exported TXT only| Transcript["S3 transcript bucket"]
+    Task -.->|structured logs| CloudWatch["CloudWatch"]
+```
+
+CloudFront terminates viewer HTTPS/WSS. The current ALB origin is HTTP-only,
+the task can be placed in either of two default-VPC public subnets with a public
+IP, desired count is one, and no WAF is currently associated with CloudFront or
+the ALB.
+
+### Reviewed Target Architecture
+
+The target design moves Fargate into two private subnets across
+`ap-southeast-1a` and `ap-southeast-1b`, adds one NAT Gateway, WAF COUNT-mode
+Web ACLs, wake/idle scale-to-zero, and a parallel-stack blue/green-style
+cutover. It is implemented in Terraform but is not claimed as deployed. See
+the [requirements, design, and runtime flow](docs/post-v1.5-requirements-design-flow.md)
+for migration gates.
 
 ![LiveCap target AWS architecture](docs/livecap-target-architecture.png)
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        End User Browser                              │
-└──────────────┬────────────────────────────────┬──────────────────────┘
-               │ HTTPS (static assets)          │ WSS (audio stream)
-               ▼                                ▼
- ┌──────────────────────────┐       ┌────────────────────────────────┐
- │ Amazon CloudFront (CDN)  │       │ Application Load Balancer (ALB)│
- │   + TLS certificate      │       │   + TLS termination            │
- └───────────┬──────────────┘       │   + Health checks              │
-             │ origin fetch         │   + Target groups              │
-             ▼                      └────────────┬───────────────────┘
- ┌──────────────────────────┐                   │ HTTP/WSS (internal)
- │ Frontend_Bucket (S3)     │                   ▼
- │ - Static React bundle    │       ┌────────────────────────────────┐
- │ - Public read (CF only)  │       │  Amazon ECS Fargate Service    │
- └──────────────────────────┘       │  ┌──────────────────────────┐  │
-                                    │  │  ECS Task (Docker)       │  │
-                                    │  │  ┌────────────────────┐  │  │
-                                    │  │  │ FastAPI + Uvicorn  │  │  │
-                                    │  │  │ /api/health        │  │  │
-                                    │  │  │ /ws/transcribe     │  │  │
-                                    │  │  └────────────────────┘  │  │
-                                    │  └──────────────────────────┘  │
-                                    └────────────┬───────────────────┘
-                                                 │ AWS SDK (boto3)
-                                                 │ + IAM Task Role
-                                                 ▼
-                   ┌────────────────────────────────────────────────────┐
-                   │ AWS Services                                       │
-                   │ - Amazon Transcribe Streaming                      │
-                   │ - Amazon Translate                                 │
-                   │ - Transcript_Bucket (S3, private)                  │
-                   │ - Amazon CloudWatch Logs                           │
-                   └────────────────────────────────────────────────────┘
-```
 
 ### Components
 
