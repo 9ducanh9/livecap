@@ -34,10 +34,11 @@ The submission deployment currently uses:
    separate private S3 bucket.
 5. ECS and application logs are written to CloudWatch.
 
-The live backend was verified on 2026-07-03 with immutable image tag
-`a86fc1e`. Health, WebSocket heartbeat, real Transcribe/Translate output, clean
-session shutdown, S3 export, and presigned download all passed production smoke
-tests.
+The live backend was verified on 2026-07-04 with ECS task definition revision
+`livecap-backend-dev:5` and immutable, architecture-specific image tag
+`1ef4250-amd64`. Health, WebSocket heartbeat, real Transcribe/Translate output,
+clean session shutdown, S3 export, and presigned download all passed production
+smoke tests.
 
 The current live environment still uses the pre-migration network path:
 

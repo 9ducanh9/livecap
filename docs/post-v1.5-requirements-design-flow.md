@@ -442,15 +442,15 @@ The latest local pre-commit gate passed with:
 - Docker-based Terraform `init -backend=false` and `validate` for both the
   bootstrap and main infrastructure stacks
 
-The submission deployment was refreshed on 2026-07-03 with backend image
-`a86fc1e` and frontend revision `b58a80c`. Production smoke verification passed
-for CloudFront `/` and `/app`, `/api/health`, desktop and 390 px mobile layout,
-WebSocket session start, heartbeat, real 16 kHz PCM transcription,
+The submission deployment was refreshed on 2026-07-04 with ECS task definition
+revision `livecap-backend-dev:5`, immutable backend image tag
+`1ef4250-amd64`, and frontend revision `b58a80c`. Production smoke verification
+passed for CloudFront `/` and `/app`, `/api/health`, desktop and 390 px mobile
+layout, WebSocket session start, heartbeat, real 16 kHz PCM transcription,
 English-to-Vietnamese translation, clean session end, S3 transcript export,
 and presigned TXT download.
 
-The production smoke was repeated on 2026-07-04 against the public CloudFront
-URL. A synthesized 16 kHz, 16-bit, mono PCM sentence completed the full WSS ->
+A synthesized 16 kHz, 16-bit, mono PCM sentence completed the full WSS ->
 Transcribe -> Translate -> finalized bilingual caption -> clean session end ->
 S3 export -> presigned TXT download path. The ECS service was healthy at one
 desired/running task, transcript and backend log retention were both verified
@@ -478,5 +478,7 @@ These items are intentionally not fully solved by post-v1.5 hardening:
   - legacy S3 bucket `livecaptranscripts`
 - Applying the new Terraform budget and scheduled scaling resources to AWS.
 - Monitoring the pinned Bookworm base image for patched packages. ECR Basic
-  Scanning completed for `a86fc1e`; its remaining Debian OS findings currently
-  report no fixed package version.
+  Scanning completed for the single-manifest `1ef4250-amd64` image. Its
+  inherited Debian OS baseline still reports 1 critical, 6 high, 6 medium, and
+  3 low findings; the critical/high package findings remain a tracked residual
+  risk until Debian publishes compatible fixes.
