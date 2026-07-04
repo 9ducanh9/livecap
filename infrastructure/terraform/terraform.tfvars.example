@@ -24,7 +24,7 @@ backend_min_capacity  = 0
 backend_max_capacity  = 1
 
 # Target backend image must already exist in ECR under an immutable Git SHA.
-backend_image_tag = "54c423b" # Replace with the SHA built and pushed for migration.
+backend_image_tag = "0000000" # Required: replace with the immutable Git SHA pushed to ECR.
 
 # Blue/green gate. First apply with false and target_backend_desired_count=1,
 # verify the target, then switch route_backend_to_target=true.
@@ -37,7 +37,6 @@ autoscaling_target_memory = 80  # Scale out when memory > 80%
 # Application Configuration
 session_timeout_seconds           = 1800  # 30 minutes
 download_link_expiration_seconds  = 86400 # 24 hours
-max_speakers                      = 5
 max_concurrent_sessions           = 4
 max_sessions_per_ip               = 1
 
@@ -45,16 +44,17 @@ max_sessions_per_ip               = 1
 monthly_budget_limit_usd = 50
 # budget_notification_email = "billing-alerts@example.com"
 
-# Demo-safe scheduled scaling.
-enable_demo_scheduled_scaling       = true
+# Scheduled scaling creates Application Auto Scaling schedules. Enable only
+# after reviewing the target service and demo timezone.
+enable_demo_scheduled_scaling       = false
 demo_scale_up_schedule_expression   = "cron(0 8 ? * MON-FRI *)"
 demo_scale_down_schedule_expression = "cron(0 19 ? * MON-FRI *)"
 demo_scaling_timezone               = "Asia/Ho_Chi_Minh"
 
 # Optional backend self scale-down after the last session ends.
 # Keep disabled until the ECS task role/plan are reviewed.
-enable_idle_scale_down         = false
-target_enable_idle_scale_down  = true
+enable_idle_scale_down        = false
+target_enable_idle_scale_down = false
 idle_scale_down_grace_seconds = 300
 
 # Optional wake-on-demand endpoint. Keep disabled until the Terraform plan is reviewed.
@@ -72,16 +72,16 @@ unhealthy_threshold   = 3   # consecutive failures
 log_retention_days = 14  # Retain logs for 14 days
 
 # CloudFront Configuration
-cloudfront_price_class = "PriceClass_100"  # Use edge locations in North America and Europe
+cloudfront_price_class = "PriceClass_100" # Cost-focused; use 200/All for more Asia edge coverage.
 
-# WAF Configuration. Rules are COUNT-only in this batch.
-enable_waf     = true
+# WAF Configuration. COUNT-only rules still incur WAF charges when enabled.
+enable_waf     = false
 waf_rate_limit = 2000
 
 # TLS/SSL Configuration
 # Provide an ACM certificate ARN for the backend ALB in the same region as the ALB.
 # Leave empty only for development HTTP mode.
-# alb_ssl_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/backend-cert-id"
+# alb_ssl_certificate_arn = "arn:aws:acm:ap-southeast-1:123456789012:certificate/backend-cert-id"
 # backend_domain_name = "api.livecap.example.com"
 # target_backend_domain_name = "api-green.livecap.example.com"
 
@@ -108,7 +108,7 @@ ecr_scan_on_push         = true
 
 # Additional Resource Tags
 tags = {
-  Owner       = "DevOps Team"
-  CostCenter  = "Engineering"
+  Owner       = "livecap"
+  CostCenter  = "academic-project"
   Terraform   = "true"
 }

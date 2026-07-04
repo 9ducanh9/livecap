@@ -1,3 +1,4 @@
+// Runtime AudioWorklet loaded directly by useAudioCapture.ts.
 const TARGET_SAMPLE_RATE = 16000;
 const CHUNK_DURATION_S = 0.1;
 const CHUNK_SAMPLES = Math.round(TARGET_SAMPLE_RATE * CHUNK_DURATION_S);
@@ -5,7 +6,6 @@ class PcmProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.buffer = new Int16Array(CHUNK_SAMPLES);
-    this.sumSquares = 0;
     this.writePos = 0;
     this.inputPhase = 0;
   }
@@ -31,7 +31,6 @@ class PcmProcessor extends AudioWorkletProcessor {
         clamped < 0
           ? Math.round(clamped * 0x8000)
           : Math.round(clamped * 0x7fff);
-      this.sumSquares += clamped * clamped;
       this.writePos += 1;
 
       if (this.writePos >= CHUNK_SAMPLES) {
@@ -56,7 +55,6 @@ class PcmProcessor extends AudioWorkletProcessor {
     }
 
     this.writePos = 0;
-    this.sumSquares = 0;
     this.buffer.fill(0);
 
     this.port.postMessage(transferBuffer, [transferBuffer]);

@@ -28,7 +28,6 @@ DEFAULT_S3_BUCKET = "livecap-transcripts"
 DEFAULT_DOWNLOAD_LINK_EXPIRATION = 86_400
 # 30 minutes, in seconds.
 DEFAULT_SESSION_TIMEOUT = 1_800
-DEFAULT_MAX_SPEAKERS = 5
 DEFAULT_TRANSCRIBE_LANGUAGE_CODE = "vi-VN"
 DEFAULT_BILINGUAL_DUAL_STREAM = True
 DEFAULT_AUDIO_PIPELINE_DEBUG = False
@@ -83,7 +82,6 @@ class Settings:
         s3_bucket: S3 bucket where exported transcripts are stored.
         download_link_expiration: Lifetime (seconds) of presigned download links.
         session_timeout: Maximum session duration (seconds) before timeout.
-        max_speakers: Maximum number of speakers for Transcribe diarization.
         transcribe_language_code: Fixed Transcribe Streaming language code.
         bilingual_dual_stream: Enables parallel vi-VN and en-US Transcribe streams.
         audio_pipeline_debug: Enables temporary audio flow debug logging.
@@ -101,7 +99,6 @@ class Settings:
     s3_bucket: str = DEFAULT_S3_BUCKET
     download_link_expiration: int = DEFAULT_DOWNLOAD_LINK_EXPIRATION
     session_timeout: int = DEFAULT_SESSION_TIMEOUT
-    max_speakers: int = DEFAULT_MAX_SPEAKERS
     transcribe_language_code: str = DEFAULT_TRANSCRIBE_LANGUAGE_CODE
     bilingual_dual_stream: bool = DEFAULT_BILINGUAL_DUAL_STREAM
     audio_pipeline_debug: bool = DEFAULT_AUDIO_PIPELINE_DEBUG
@@ -133,7 +130,6 @@ class Settings:
                 "DOWNLOAD_LINK_EXPIRATION", DEFAULT_DOWNLOAD_LINK_EXPIRATION
             ),
             session_timeout=_get_int("SESSION_TIMEOUT", DEFAULT_SESSION_TIMEOUT),
-            max_speakers=_get_int("MAX_SPEAKERS", DEFAULT_MAX_SPEAKERS),
             transcribe_language_code=_get_str(
                 "TRANSCRIBE_LANGUAGE_CODE", DEFAULT_TRANSCRIBE_LANGUAGE_CODE
             ),

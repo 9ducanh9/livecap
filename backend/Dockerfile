@@ -49,9 +49,6 @@ ENV DOWNLOAD_LINK_EXPIRATION=86400
 # Maximum session duration (seconds, default: 30 minutes)
 ENV SESSION_TIMEOUT=1800
 
-# Maximum number of speakers for diarization
-ENV MAX_SPEAKERS=5
-
 # Transcribe language code (used when BILINGUAL_DUAL_STREAM=false)
 ENV TRANSCRIBE_LANGUAGE_CODE=vi-VN
 
