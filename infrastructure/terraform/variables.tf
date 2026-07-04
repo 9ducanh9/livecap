@@ -126,12 +126,6 @@ variable "download_link_expiration_seconds" {
   default     = 86400 # 24 hours
 }
 
-variable "max_speakers" {
-  description = "Maximum number of speakers for diarization"
-  type        = number
-  default     = 5
-}
-
 variable "max_concurrent_sessions" {
   description = "Process-local maximum active WebSocket sessions. Keep ECS max capacity at 1 while this is in-memory."
   type        = number
@@ -159,7 +153,7 @@ variable "budget_notification_email" {
 variable "enable_demo_scheduled_scaling" {
   description = "Enable demo-safe scheduled scaling for the ECS service."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "enable_legacy_scheduled_scaling" {
@@ -195,7 +189,7 @@ variable "enable_idle_scale_down" {
 variable "target_enable_idle_scale_down" {
   description = "Enable idle scale-down for the private target service. Local/dev .env safety remains disabled."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "idle_scale_down_grace_seconds" {
@@ -425,7 +419,7 @@ variable "cloudwatch_dashboard_name" {
 variable "enable_waf" {
   description = "Create AWS WAFv2 Web ACLs for CloudFront and ALB in COUNT mode."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "waf_rate_limit" {

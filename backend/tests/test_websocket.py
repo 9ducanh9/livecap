@@ -46,7 +46,6 @@ def make_settings(**overrides) -> Settings:
         s3_bucket="test-bucket",
         download_link_expiration=86400,
         session_timeout=30,  # short timeout for tests
-        max_speakers=5,
         bilingual_dual_stream=False,
         allowed_origin="http://localhost:5173",
         cloudwatch_log_group="livecap",

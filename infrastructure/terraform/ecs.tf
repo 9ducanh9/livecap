@@ -59,10 +59,6 @@ resource "aws_ecs_task_definition" "backend" {
           value = tostring(var.session_timeout_seconds)
         },
         {
-          name  = "MAX_SPEAKERS"
-          value = tostring(var.max_speakers)
-        },
-        {
           name  = "MAX_CONCURRENT_SESSIONS"
           value = tostring(var.max_concurrent_sessions)
         },
@@ -319,10 +315,6 @@ resource "aws_ecs_task_definition" "target_backend" {
         {
           name  = "SESSION_TIMEOUT"
           value = tostring(var.session_timeout_seconds)
-        },
-        {
-          name  = "MAX_SPEAKERS"
-          value = tostring(var.max_speakers)
         },
         {
           name  = "MAX_CONCURRENT_SESSIONS"
