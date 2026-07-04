@@ -17,11 +17,9 @@ blue/green migration.
 - [`../docs/as-deployed-architecture.md`](../docs/as-deployed-architecture.md):
   verified live resource placement and runtime request paths.
 
-The files under [`../deploy`](../deploy) and the older
-[`DEPLOYMENT_GUIDE.md`](DEPLOYMENT_GUIDE.md) and
-[`QUICK_REFERENCE.md`](QUICK_REFERENCE.md) are legacy references. Their
-one-shot apply and mutable-tag examples must not be used for the current AWS
-environment.
+The obsolete manual EC2/ECS templates and one-shot deployment guides were
+removed from the submission branch. Historical versions remain available in
+Git history; they must not be used for the current AWS environment.
 
 ## Live Environment
 

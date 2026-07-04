@@ -95,12 +95,16 @@ ecs_task_memory       = 1024
 backend_desired_count = 0
 backend_min_capacity  = 0
 backend_max_capacity  = 1
-backend_image_tag     = "54c423b" # Replace with a Git SHA already pushed to ECR.
+backend_image_tag     = "0000000" # Required: replace with a Git SHA already pushed to ECR.
 
 # Blue/green migration gates.
-route_backend_to_target      = false
-target_backend_desired_count = 1
-target_enable_idle_scale_down = true
+route_backend_to_target       = false
+target_backend_desired_count  = 1
+target_enable_idle_scale_down = false
+
+# Cost-incurring optional controls remain off until their plan is reviewed.
+enable_demo_scheduled_scaling = false
+enable_waf                    = false
 
 # Optional: Configure retention periods
 transcript_retention_days = 14
@@ -297,7 +301,6 @@ echo "Backend API: $(terraform output -raw alb_backend_base_url)"
 |----------|-------------|---------|
 | `session_timeout_seconds` | Max session duration | `1800` (30 min) |
 | `download_link_expiration_seconds` | Presigned URL expiration | `86400` (24 hours) |
-| `max_speakers` | Max speakers for diarization | `5` |
 
 ### Health Check Configuration
 
@@ -323,7 +326,7 @@ echo "Backend API: $(terraform output -raw alb_backend_base_url)"
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `enable_waf` | Create COUNT-mode AWS WAFv2 Web ACLs for CloudFront and ALB | `true` |
+| `enable_waf` | Create COUNT-mode AWS WAFv2 Web ACLs for CloudFront and ALB | `false` |
 | `waf_rate_limit` | Requests per IP per 5-minute window for COUNT-mode rate rules | `2000` |
 
 ### Network Configuration
