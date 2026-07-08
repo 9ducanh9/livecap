@@ -69,12 +69,12 @@ variable "backend_max_capacity" {
 }
 
 variable "backend_image_tag" {
-  description = "Immutable Git SHA tag already pushed to ECR for the target Fargate task."
+  description = "Immutable Git SHA tag, optionally with an architecture suffix, already pushed to ECR for the target Fargate task."
   type        = string
 
   validation {
-    condition     = can(regex("^[0-9a-f]{7,40}$", var.backend_image_tag))
-    error_message = "backend_image_tag must be a 7-40 character lowercase hexadecimal Git SHA."
+    condition     = can(regex("^[0-9a-f]{7,40}(-amd64)?$", var.backend_image_tag))
+    error_message = "backend_image_tag must be a lowercase Git SHA with an optional -amd64 suffix."
   }
 }
 
@@ -260,7 +260,7 @@ variable "cloudfront_ssl_certificate_arn" {
 }
 
 variable "alb_ssl_certificate_arn" {
-  description = "ARN of ACM certificate for ALB HTTPS listener. Required for production WSS/HTTPS backend traffic. Leave empty only for development HTTP mode."
+  description = "Optional ACM certificate ARN for the legacy rollback ALB. Leave empty to keep its current HTTP origin during migration."
   type        = string
   default     = ""
 
@@ -271,15 +271,26 @@ variable "alb_ssl_certificate_arn" {
 }
 
 variable "backend_domain_name" {
-  description = "Backend API domain covered by alb_ssl_certificate_arn, for example api.livecap.example.com. Required when alb_ssl_certificate_arn is set."
+  description = "Legacy backend domain covered by alb_ssl_certificate_arn. Required only when legacy ALB TLS is enabled."
   type        = string
   default     = ""
 }
 
 variable "target_backend_domain_name" {
-  description = "DNS name covered by alb_ssl_certificate_arn and pointed at the target ALB during blue/green migration."
+  description = "DNS name covered by target_alb_ssl_certificate_arn and pointed at the target ALB during blue/green migration."
   type        = string
   default     = ""
+}
+
+variable "target_alb_ssl_certificate_arn" {
+  description = "ACM certificate ARN for the target ALB HTTPS listener in ap-southeast-1."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.target_alb_ssl_certificate_arn == "" || can(regex("^arn:aws:acm:ap-southeast-1:", var.target_alb_ssl_certificate_arn))
+    error_message = "target_alb_ssl_certificate_arn must be an ap-southeast-1 ACM certificate ARN or empty."
+  }
 }
 
 variable "custom_domain" {
@@ -417,15 +428,27 @@ variable "cloudwatch_dashboard_name" {
 }
 
 variable "enable_waf" {
-  description = "Create AWS WAFv2 Web ACLs for CloudFront and ALB in COUNT mode."
+  description = "Create blocking AWS WAFv2 Web ACLs for CloudFront and ALB."
   type        = bool
   default     = false
 }
 
 variable "waf_rate_limit" {
-  description = "Request rate limit per 5-minute window for WAF rate-based COUNT rules."
+  description = "Request rate limit per 5-minute window for WAF rate-based BLOCK rules."
   type        = number
   default     = 2000
+}
+
+variable "origin_verify_secret" {
+  description = "Secret CloudFront origin header required by the ALB WAF. Set through untracked tfvars when enable_waf is true."
+  type        = string
+  sensitive   = true
+  default     = ""
+
+  validation {
+    condition     = var.origin_verify_secret == "" || length(var.origin_verify_secret) >= 32
+    error_message = "origin_verify_secret must be empty or at least 32 characters."
+  }
 }
 
 # Autoscaling Configuration

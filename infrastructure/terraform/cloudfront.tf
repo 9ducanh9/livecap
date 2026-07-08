@@ -24,6 +24,29 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
   signing_protocol                  = "sigv4"
 }
 
+# Rewrite client-side React routes at viewer request time. Keeping SPA routing
+# out of custom error responses preserves real WAF/API 403 and 404 statuses.
+resource "aws_cloudfront_function" "spa_rewrite" {
+  name    = "${var.project_name}-spa-rewrite-${var.environment}"
+  runtime = "cloudfront-js-2.0"
+  comment = "Rewrite extensionless frontend routes to index.html"
+  publish = true
+  code    = <<-EOT
+    function handler(event) {
+      var request = event.request;
+      var uri = request.uri;
+
+      if (uri.endsWith('/')) {
+        request.uri = uri + 'index.html';
+      } else if (!uri.split('/').pop().includes('.')) {
+        request.uri = '/index.html';
+      }
+
+      return request;
+    }
+  EOT
+}
+
 # CloudFront Distribution
 resource "aws_cloudfront_distribution" "frontend" {
   enabled             = true
@@ -44,6 +67,15 @@ resource "aws_cloudfront_distribution" "frontend" {
     domain_name = var.alb_ssl_certificate_arn != "" ? var.backend_domain_name : aws_lb.main.dns_name
     origin_id   = local.legacy_backend_origin_id
 
+    dynamic "custom_header" {
+      for_each = var.enable_waf ? [1] : []
+
+      content {
+        name  = "X-LiveCap-Origin-Verify"
+        value = var.origin_verify_secret
+      }
+    }
+
     custom_origin_config {
       http_port              = 80
       https_port             = 443
@@ -53,13 +85,22 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   origin {
-    domain_name = var.alb_ssl_certificate_arn != "" ? var.target_backend_domain_name : aws_lb.target.dns_name
+    domain_name = var.target_alb_ssl_certificate_arn != "" ? var.target_backend_domain_name : aws_lb.target.dns_name
     origin_id   = local.target_backend_origin_id
+
+    dynamic "custom_header" {
+      for_each = var.enable_waf ? [1] : []
+
+      content {
+        name  = "X-LiveCap-Origin-Verify"
+        value = var.origin_verify_secret
+      }
+    }
 
     custom_origin_config {
       http_port              = 80
       https_port             = 443
-      origin_protocol_policy = var.alb_ssl_certificate_arn != "" ? "https-only" : "http-only"
+      origin_protocol_policy = var.target_alb_ssl_certificate_arn != "" ? "https-only" : "http-only"
       origin_ssl_protocols   = ["TLSv1.2"]
     }
   }
@@ -100,6 +141,11 @@ resource "aws_cloudfront_distribution" "frontend" {
     default_ttl            = 3600     # 1 hour
     max_ttl                = 31536000 # 1 year
     compress               = true
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.spa_rewrite.arn
+    }
   }
 
   # The wake endpoint is more specific than /api/* and must be evaluated first.
@@ -107,24 +153,14 @@ resource "aws_cloudfront_distribution" "frontend" {
     for_each = var.enable_wake_endpoint ? [1] : []
 
     content {
-      path_pattern     = "/api/wake"
-      allowed_methods  = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
-      cached_methods   = ["GET", "HEAD"]
-      target_origin_id = "WakeLambdaFunctionUrl"
-
-      forwarded_values {
-        query_string = true
-        headers      = ["*"]
-
-        cookies {
-          forward = "none"
-        }
-      }
+      path_pattern             = "/api/wake"
+      allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+      cached_methods           = ["GET", "HEAD"]
+      target_origin_id         = "WakeLambdaFunctionUrl"
+      cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
+      origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader
 
       viewer_protocol_policy = "redirect-to-https"
-      min_ttl                = 0
-      default_ttl            = 0
-      max_ttl                = 0
       compress               = true
     }
   }
@@ -200,19 +236,6 @@ resource "aws_cloudfront_distribution" "frontend" {
     compress               = true
   }
 
-  # Custom error response for SPA routing
-  custom_error_response {
-    error_code         = 404
-    response_code      = 200
-    response_page_path = "/index.html"
-  }
-
-  custom_error_response {
-    error_code         = 403
-    response_code      = 200
-    response_page_path = "/index.html"
-  }
-
   restrictions {
     geo_restriction {
       restriction_type = "none"
@@ -238,10 +261,10 @@ resource "aws_cloudfront_distribution" "frontend" {
   lifecycle {
     precondition {
       condition = (
-        var.alb_ssl_certificate_arn == ""
-        || (var.backend_domain_name != "" && var.target_backend_domain_name != "")
+        (var.alb_ssl_certificate_arn == "" || var.backend_domain_name != "")
+        && (var.target_alb_ssl_certificate_arn == "" || var.target_backend_domain_name != "")
       )
-      error_message = "backend_domain_name and target_backend_domain_name are required when alb_ssl_certificate_arn is set."
+      error_message = "Each ALB domain is required when its corresponding ACM certificate ARN is set."
     }
   }
 }

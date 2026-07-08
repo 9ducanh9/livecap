@@ -191,7 +191,7 @@ resource "aws_cloudwatch_dashboard" "livecap_operations" {
         width  = 12
         height = 6
         properties = {
-          title   = "CloudFront WAF COUNT Activity"
+          title   = "CloudFront WAF Activity"
           region  = "us-east-1"
           view    = "timeSeries"
           stacked = false
@@ -210,7 +210,7 @@ resource "aws_cloudwatch_dashboard" "livecap_operations" {
         width  = 12
         height = 6
         properties = {
-          title   = "ALB WAF COUNT Activity"
+          title   = "ALB WAF Activity"
           region  = var.aws_region
           view    = "timeSeries"
           stacked = false

@@ -1,10 +1,8 @@
-/**
- * Transcript export panel.
- */
-
 import { useCallback, useMemo, useState } from 'react';
 import type { Segment } from '../types';
 import { exportTranscript, ExportError } from '../services/exportService';
+import { GlassPanel, ProButton } from './ui';
+import { Download, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 interface ExportPanelProps {
   sessionId: string | null;
@@ -48,84 +46,71 @@ export default function ExportPanel({ sessionId, segments }: ExportPanelProps) {
     !sessionId || finalizedSegments.length === 0 || status.kind === 'loading';
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+    <GlassPanel className="p-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-zinc-950">Export TXT</h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            Create a presigned download link for finalized transcript lines.
+          <h2 className="text-xs font-bold uppercase tracking-widest text-white/40">Data Export</h2>
+          <p className="mt-2 text-xs leading-relaxed text-white/60">
+            Generate presigned S3 link for finalized lines.
           </p>
         </div>
-        <span className="rounded-full bg-zinc-100 px-2.5 py-1 font-mono text-xs font-semibold text-zinc-700">
+        <div className="font-mono text-xs text-emerald-pro bg-emerald-pro/5 border border-emerald-pro/20 px-2 py-1">
           {finalizedSegments.length}
-        </span>
+        </div>
       </div>
 
-      <button
-        type="button"
+      <ProButton
         onClick={triggerExport}
         disabled={isDisabled}
-        aria-busy={status.kind === 'loading'}
-        className={[
-          'mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-lg px-4 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2',
-          isDisabled
-            ? 'cursor-not-allowed bg-zinc-100 text-zinc-400'
-            : 'bg-zinc-950 text-white hover:bg-zinc-800',
-        ].join(' ')}
+        loading={status.kind === 'loading'}
+        variant="secondary"
+        className="mt-6 w-full h-12 flex gap-2"
       >
-        {status.kind === 'loading' ? 'Exporting...' : 'Export TXT'}
-      </button>
+        <Download className="w-4 h-4" />
+        Export TXT Session
+      </ProButton>
 
       {status.kind === 'success' && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"
-        >
-          <p className="font-semibold">Export ready</p>
+        <div className="mt-6 border border-emerald-pro/20 bg-emerald-pro/5 p-4 font-mono">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-3 h-3 text-emerald-pro" />
+            <p className="text-[10px] font-bold text-emerald-pro uppercase tracking-widest">Export Ready</p>
+          </div>
           <a
             href={status.downloadUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-2 block break-all font-mono text-xs text-emerald-900 underline"
+            className="mt-3 block break-all text-[10px] text-white underline opacity-60 hover:opacity-100"
           >
             {status.downloadUrl}
           </a>
-          <p className="mt-2 text-xs text-emerald-700">
-            Expires: {formatExpiry(status.expiresAt)}
+          <p className="mt-3 text-[9px] text-white/40 uppercase">
+            EXPIRES: {formatExpiry(status.expiresAt)}
           </p>
         </div>
       )}
 
       {status.kind === 'error' && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="mt-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"
-        >
+        <div className="mt-6 border border-crimson/20 bg-crimson/5 p-4 font-mono">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="font-semibold">Export failed</p>
-              <p className="mt-1 break-words">{status.message}</p>
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-3 h-3 text-crimson" />
+                <p className="text-[10px] font-bold text-crimson uppercase tracking-widest">Export Failed</p>
+              </div>
+              <p className="mt-2 text-[10px] text-white/70 leading-relaxed">{status.message}</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setStatus({ kind: 'idle' })}
-              className="rounded px-2 py-1 text-xs font-semibold hover:bg-white/70 focus:outline-none focus:ring-2 focus:ring-rose-400"
-            >
-              Dismiss
-            </button>
           </div>
-          <button
-            type="button"
+          <ProButton
+            variant="ghost"
             onClick={triggerExport}
-            className="mt-3 rounded-md bg-rose-100 px-3 py-1.5 text-xs font-semibold text-rose-900 hover:bg-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-400"
+            className="mt-4 w-full h-9 border border-crimson/30 text-crimson text-[9px]"
           >
-            Retry
-          </button>
+            Retry Export
+          </ProButton>
         </div>
       )}
-    </div>
+    </GlassPanel>
   );
 }
 

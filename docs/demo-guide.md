@@ -53,7 +53,7 @@ Be explicit during review:
 - CloudFront viewer traffic uses HTTPS/WSS, while its current ALB origin uses
   HTTP.
 - The reviewed target Terraform adds private subnets, a NAT Gateway,
-  scale-to-zero wake/idle behavior, WAF COUNT rules, a dashboard, and a budget.
+  scale-to-zero wake/idle behavior, blocking WAF rules, a dashboard, and a budget.
 - That target stack is not presented as deployed. It remains behind state
   import, Terraform plan review, and blue/green cutover gates to avoid damaging
   the working submission environment.

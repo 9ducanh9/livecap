@@ -64,7 +64,7 @@ Terraform defines a parallel target stack in `ap-southeast-1`:
 - maximum one backend task while session limits remain process-local;
 - ECS scale `0 <-> 1`, CloudFront-authenticated wake Lambda, and five-minute
   idle scale-down;
-- CloudFront and ALB WAF Web ACLs in COUNT mode;
+- blocking CloudFront and ALB WAF Web ACLs with CloudFront-only ALB ingress;
 - CloudWatch dashboard, 14-day logs, 14-day transcript retention, and a
   configurable monthly AWS Budget;
 - immutable ECR Git SHA tags through `backend_image_tag`;

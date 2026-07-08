@@ -4,7 +4,7 @@ This document describes the AWS environment serving the public LiveCap demo.
 It is intentionally separate from the reviewed target architecture so that
 planned controls are not presented as already deployed.
 
-Verified on 2026-07-04 in `ap-southeast-1`.
+Verified on 2026-07-07 in `ap-southeast-1`.
 
 ## Resource Topology
 
@@ -13,6 +13,7 @@ flowchart TB
     User["Browser"]
 
     subgraph Global["AWS global edge"]
+        CFWAF["CloudFront WAF - blocking"]
         CF["CloudFront distribution"]
     end
 
@@ -31,6 +32,7 @@ flowchart TB
                 PublicB[Public subnet B]
             end
             ALB["Internet-facing ALB spanning both subnets"]
+            ALBWAF["Regional ALB WAF - blocking"]
             Task["Fargate task - public IP - possible placement in either AZ"]
         end
 
@@ -38,9 +40,11 @@ flowchart TB
         Translate[Amazon Translate]
     end
 
-    User -->|HTTPS / WSS| CF
+    User -->|HTTPS / WSS| CFWAF
+    CFWAF --> CF
     CF -->|OAC origin fetch| Frontend
-    CF -->|HTTP origin - /api/* and /ws/*| ALB
+    CF -->|verified origin header - /api/* and /ws/*| ALBWAF
+    ALBWAF --> ALB
     PublicA --- ALB
     PublicB --- ALB
     PublicA -.->|possible task placement| Task
@@ -67,15 +71,17 @@ in-flight WebSocket session is lost during task replacement.
 ### Frontend
 
 1. The browser requests `/` over HTTPS from CloudFront.
-2. CloudFront fetches the private React/Vite assets from S3 through Origin
-   Access Control.
-3. Static assets are cached at CloudFront edge locations.
+2. A viewer-request CloudFront Function rewrites extensionless React routes
+   such as `/app` to `/index.html` without masking WAF or API errors.
+3. CloudFront fetches the private React/Vite assets from S3 through Origin
+   Access Control and caches static assets at edge locations.
 
 ### Live Caption Session
 
 1. The browser opens `/ws/transcribe` through CloudFront using WSS.
-2. CloudFront forwards the upgraded request to the ALB through the current HTTP
-   origin connection.
+2. CloudFront adds the private origin verification header and forwards the
+   upgraded request through the regional ALB WAF over the current HTTP origin
+   connection.
 3. The ALB sends traffic only to the healthy Fargate target on port 8000.
 4. The browser streams 16 kHz, 16-bit, mono PCM chunks.
 5. FastAPI streams audio to Amazon Transcribe and sends finalized text to
@@ -103,7 +109,9 @@ in-flight WebSocket session is lost during task replacement.
 | Backend image | Immutable `1ef4250-amd64` ECR tag |
 | Viewer TLS | Terminates at CloudFront |
 | CloudFront to ALB | HTTP origin |
-| WAF | Not currently associated with CloudFront or ALB |
+| Origin TLS prerequisite | ACM certificate for `api.livecap.logantai.com` requested in `ap-southeast-1`; pending external DNS validation |
+| WAF | Blocking Web ACLs associated with CloudFront and ALB; BLOCK/COUNT logs retained for 14 days with sensitive headers redacted |
+| ALB ingress | Port 80 restricted to the AWS-managed CloudFront origin-facing prefix list; direct requests are denied by security group and ALB WAF |
 | Wake and scale-to-zero | Not deployed; desired count remains 1 |
 | Transcript retention | 14 days; no raw audio storage |
 | CloudWatch log retention | 14 days |
@@ -111,7 +119,7 @@ in-flight WebSocket session is lost during task replacement.
 ## Target Delta
 
 The Terraform target introduces a dedicated two-AZ VPC, private Fargate
-subnets, one NAT Gateway, `assign_public_ip=false`, WAF Web ACLs in COUNT mode,
+subnets, one NAT Gateway, `assign_public_ip=false`,
 CloudFront-authenticated wake Lambda, ECS `0 <-> 1` idle scaling, a CloudWatch
 dashboard, and an AWS Budget. These resources require state import, plan review,
 and a blue/green cutover before they can be described as deployed.

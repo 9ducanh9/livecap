@@ -9,9 +9,10 @@ import {
   isWakeBackendConfigured,
   wakeBackendIfConfigured,
 } from '../services/wakeService';
+import { GlassPanel, StatusBadge, type BadgeStatus } from './ui';
+import { Activity, Clock, Layers, AlertTriangle, CheckCircle } from 'lucide-react';
 
 const DEFAULT_MAX_SESSION_SECONDS = 1_800;
-const SESSION_TIMEOUT_WARNING_SECONDS = 60;
 
 function configuredMaxSessionSeconds(): number {
   const raw = import.meta.env.VITE_MAX_SESSION_SECONDS;
@@ -196,13 +197,13 @@ export default function DashboardPage() {
     dispatch({ type: 'CLEAR_ERROR' });
     setIsStarting(true);
     setStartStatusLabel(
-      isWakeBackendConfigured() ? 'Starting backend' : 'Connecting',
+      isWakeBackendConfigured() ? 'Waking Node' : 'Linking',
     );
 
     try {
       await wakeBackendIfConfigured();
       startPhase = 'socket';
-      setStartStatusLabel('Opening stream');
+      setStartStatusLabel('Connecting');
       await connect();
       startPhase = 'audio';
       await startCapture();
@@ -270,34 +271,39 @@ export default function DashboardPage() {
   });
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-zinc-50 text-zinc-950">
-      <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/92 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <div className="flex min-w-0 items-center gap-4">
-            <a href="/" className="text-xl font-semibold tracking-tight text-zinc-950">
-              LiveCap
+    <div className="min-h-screen overflow-x-hidden bg-obsidian text-white font-ui antialiased">
+      {/* Background patterns */}
+      <div className="fixed inset-0 pointer-events-none opacity-20 z-0">
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px]" />
+      </div>
+
+      <header className="sticky top-0 z-[60] border-b border-white/5 bg-obsidian/60 backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between px-5 py-3 lg:px-10">
+          <div className="flex items-center gap-4">
+            <a href="/" className="text-lg font-bold tracking-tighter text-white flex items-center gap-2">
+              <Activity className="w-4 h-4 text-crimson" />
+              LIVECAP
             </a>
-            <StatusPill status={statusCopy.tone} label={statusCopy.label} />
+            <StatusBadge status={statusCopy.tone as BadgeStatus} label={statusCopy.label} />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <HeaderMetric label="Timer" value={formatDuration(recordingDurationSeconds)} />
-            <HeaderMetric label="Remaining" value={formatDuration(remainingSessionSeconds)} />
-            <HeaderMetric label="Finalized" value={state.segments.length.toString()} />
+          <div className="flex items-center gap-4 lg:gap-10">
+            <HeaderMetric icon={<Clock className="w-3 h-3" />} label="TIME" value={formatDuration(recordingDurationSeconds)} />
+            <div className="hidden lg:flex items-center gap-10">
+              <HeaderMetric icon={<Clock className="w-3 h-3 text-crimson" />} label="LIMIT" value={formatDuration(remainingSessionSeconds)} />
+              <HeaderMetric icon={<Layers className="w-3 h-3" />} label="DATA" value={state.segments.length.toString()} />
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto grid w-full max-w-7xl grid-cols-[minmax(0,1fr)] gap-5 px-5 py-5 lg:grid-cols-[380px_minmax(0,1fr)] lg:px-8">
-        <section className="min-w-0 space-y-4">
+      <main className="relative z-10 mx-auto grid w-full max-w-[1600px] grid-cols-1 gap-6 p-5 lg:grid-cols-[360px_1fr] lg:p-10 lg:pt-8">
+        <aside className="space-y-6">
           <ControlPanel
             isCapturing={isCapturing}
             isConnecting={wsIsConnecting}
             connectionStatusLabel={startStatusLabel}
             permissionDenied={permissionDenied}
-            recordingDurationSeconds={recordingDurationSeconds}
-            maxSessionSeconds={maxSessionSeconds}
-            remainingSessionSeconds={remainingSessionSeconds}
             audioInputDevices={audioInputDevices}
             selectedDeviceId={selectedDeviceId}
             canClear={state.segments.length > 0 || state.currentPartial !== null}
@@ -318,46 +324,32 @@ export default function DashboardPage() {
             sessionId={state.sessionId}
             segments={state.segments}
           />
-        </section>
+        </aside>
 
-        <section className="min-h-[620px] min-w-0 space-y-4">
-          {isConnectionLost && (
-            <AlertBanner
-              tone="warning"
-              title="Connection lost"
-              message="Audio capture stopped. Restart the session when the backend is ready."
-            />
-          )}
-
-          {connectionStatus === 'reconnected' && !isConnectionLost && (
-            <AlertBanner
-              tone="success"
-              title="Reconnected"
-              message="A new backend session is active. Existing finalized transcript lines were preserved."
-            />
-          )}
-
-          {isCapturing &&
-            remainingSessionSeconds <= SESSION_TIMEOUT_WARNING_SECONDS && (
-              <AlertBanner
-                tone="warning"
-                title="Session limit"
-                message={`Capture will stop automatically in ${remainingSessionSeconds} seconds.`}
-              />
-            )}
-
+        <section className="min-h-[60vh] space-y-4">
           {state.error && (
             <AlertBanner
               tone="error"
-              title="Error"
+              title="System Error"
               message={state.error}
               onDismiss={() => dispatch({ type: 'CLEAR_ERROR' })}
+            />
+          )}
+
+          {isConnectionLost && (
+            <AlertBanner
+              tone="warning"
+              title="Stream Disrupted"
+              message="The connection was lost. Please verify your internet and restart the engine."
             />
           )}
 
           <CaptionDisplay
             segments={state.segments}
             currentPartial={state.currentPartial}
+            isCapturing={isCapturing}
+            isConnecting={wsIsConnecting}
+            permissionDenied={permissionDenied}
           />
         </section>
       </main>
@@ -373,13 +365,22 @@ function isBackendWakeError(err: unknown): boolean {
   );
 }
 
-function HeaderMetric({ label, value }: { label: string; value: string }) {
+function HeaderMetric({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
   return (
-    <div className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5">
-      <span className="text-xs text-zinc-500">{label}</span>
-      <span className="ml-2 font-mono text-xs font-semibold text-zinc-950">
-        {value}
-      </span>
+    <div className="flex items-center gap-3">
+      <div className="hidden sm:flex flex-col items-end gap-0.5">
+        <span className="text-[9px] font-mono font-bold tracking-widest text-white/30 uppercase leading-none">{label}</span>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className="font-mono text-sm font-bold tabular-nums text-white">
+            {value}
+          </span>
+          {icon}
+        </div>
+      </div>
+      <div className="sm:hidden flex items-center gap-2 border border-white/5 bg-white/5 px-2 py-1">
+        <span className="text-[8px] font-mono font-bold text-white/40 uppercase">{label}</span>
+        <span className="font-mono text-xs font-bold text-white leading-none">{value}</span>
+      </div>
     </div>
   );
 }
@@ -394,61 +395,32 @@ function SessionSummary({
   wakeConfigured: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-      <h2 className="text-sm font-semibold text-zinc-950">Session</h2>
-      <dl className="mt-4 space-y-3 text-sm">
-        <InfoRow label="Status" value={connectionStatus} />
-        <InfoRow label="Wake" value={wakeConfigured ? 'Configured' : 'Direct'} />
-        <InfoRow
-          label="Session ID"
-          value={sessionId ?? 'Not started'}
-          valueClassName="font-mono text-xs"
-        />
+    <GlassPanel className="p-6">
+      <h2 className="text-xs font-bold uppercase tracking-widest text-white/40">Session Node</h2>
+      <dl className="mt-5 space-y-4 text-xs font-mono">
+        <InfoRow label="GATEWAY" value={connectionStatus} />
+        <InfoRow label="CLUSTER" value={wakeConfigured ? 'AWS_FARGATE_WAKE' : 'DIRECT_STREAM'} />
+        <div className="space-y-2">
+          <dt className="text-white/30 tracking-widest">TRACE_ID</dt>
+          <dd className="break-all text-[10px] text-white/70 uppercase">{sessionId ?? 'NULL_PTR'}</dd>
+        </div>
       </dl>
-    </div>
+    </GlassPanel>
   );
 }
 
 function InfoRow({
   label,
   value,
-  valueClassName = '',
 }: {
   label: string;
   value: string;
-  valueClassName?: string;
 }) {
   return (
-    <div className="grid grid-cols-[92px_minmax(0,1fr)] gap-3">
-      <dt className="text-zinc-500">{label}</dt>
-      <dd className={`min-w-0 truncate text-zinc-900 ${valueClassName}`}>
-        {value}
-      </dd>
+    <div className="flex items-center justify-between gap-4">
+      <dt className="text-white/30 tracking-widest">{label}</dt>
+      <dd className="text-white/80 uppercase">{value}</dd>
     </div>
-  );
-}
-
-function StatusPill({
-  status,
-  label,
-}: {
-  status: 'idle' | 'active' | 'warning' | 'error';
-  label: string;
-}) {
-  const classes = {
-    idle: 'border-zinc-200 bg-zinc-100 text-zinc-700',
-    active: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    warning: 'border-amber-200 bg-amber-50 text-amber-800',
-    error: 'border-rose-200 bg-rose-50 text-rose-700',
-  }[status];
-
-  return (
-    <span
-      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${classes}`}
-    >
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {label}
-    </span>
   );
 }
 
@@ -463,30 +435,36 @@ function AlertBanner({
   message: string;
   onDismiss?: () => void;
 }) {
-  const classes = {
-    success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-    warning: 'border-amber-200 bg-amber-50 text-amber-800',
-    error: 'border-rose-200 bg-rose-50 text-rose-800',
+  const colors = {
+    success: 'border-emerald-pro/30 bg-emerald-pro/10 text-emerald-pro shadow-[0_0_15px_rgba(5,150,105,0.1)]',
+    warning: 'border-amber-400/30 bg-amber-400/10 text-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.1)]',
+    error: 'border-crimson/30 bg-crimson/10 text-crimson shadow-[0_0_15px_rgba(225,29,72,0.1)]',
+  }[tone];
+
+  const Icon = {
+    success: CheckCircle,
+    warning: AlertTriangle,
+    error: AlertTriangle,
   }[tone];
 
   return (
     <div
       role={tone === 'error' ? 'alert' : 'status'}
       aria-live={tone === 'error' ? 'assertive' : 'polite'}
-      className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${classes}`}
+      className={`flex items-start gap-4 border p-5 text-xs font-mono uppercase tracking-wider backdrop-blur-md ${colors}`}
     >
-      <span className="mt-1 h-2 w-2 flex-none rounded-full bg-current" />
+      <Icon className="w-5 h-5 shrink-0 mt-0.5" />
       <div className="min-w-0 flex-1">
-        <p className="font-semibold">{title}</p>
-        <p className="mt-0.5">{message}</p>
+        <p className="font-bold tracking-widest">{title}</p>
+        <p className="mt-1.5 normal-case opacity-70 leading-relaxed">{message}</p>
       </div>
       {onDismiss && (
         <button
           type="button"
           onClick={onDismiss}
-          className="rounded-md px-2 py-1 text-xs font-semibold hover:bg-white/70 focus:outline-none focus:ring-2 focus:ring-current"
+          className="hover:text-white transition-colors border border-current px-2 py-1"
         >
-          Dismiss
+          DISMISS
         </button>
       )}
     </div>
@@ -503,19 +481,19 @@ function getConnectionStatusCopy({
   isCapturing: boolean;
   isConnectionLost: boolean;
   isStarting: boolean;
-}): { label: string; tone: 'idle' | 'active' | 'warning' | 'error' } {
-  if (isConnectionLost) return { label: 'Lost', tone: 'error' };
+}): { label: string; tone: string } {
+  if (isConnectionLost) return { label: 'LOST', tone: 'error' };
   if (isStarting || connectionStatus === 'connecting') {
-    return { label: 'Starting', tone: 'warning' };
+    return { label: 'WAKING', tone: 'waking' };
   }
   if (connectionStatus === 'reconnecting') {
-    return { label: 'Reconnecting', tone: 'warning' };
+    return { label: 'LINKING', tone: 'connecting' };
   }
-  if (isCapturing) return { label: 'Recording', tone: 'active' };
+  if (isCapturing) return { label: 'ACTIVE', tone: 'active' };
   if (connectionStatus === 'reconnected') {
-    return { label: 'Reconnected', tone: 'active' };
+    return { label: 'RELINKED', tone: 'success' };
   }
-  return { label: 'Ready', tone: 'idle' };
+  return { label: 'READY', tone: 'idle' };
 }
 
 function formatDuration(totalSeconds: number): string {

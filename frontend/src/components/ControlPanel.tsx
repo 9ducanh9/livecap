@@ -1,17 +1,12 @@
-/**
- * Start/stop capture controls, recording timer, and microphone selection.
- */
-
 import type { AudioInputDevice } from '../hooks/useAudioCapture';
+import { GlassPanel, ProButton, StatusBadge } from './ui';
+import { Mic, RefreshCcw, Info, AlertTriangle } from 'lucide-react';
 
 interface ControlPanelProps {
   isCapturing: boolean;
   isConnecting: boolean;
   connectionStatusLabel?: string | null;
   permissionDenied: boolean;
-  recordingDurationSeconds: number;
-  maxSessionSeconds: number;
-  remainingSessionSeconds: number;
   audioInputDevices: AudioInputDevice[];
   selectedDeviceId: string;
   canClear: boolean;
@@ -27,9 +22,6 @@ export default function ControlPanel({
   isConnecting,
   connectionStatusLabel,
   permissionDenied,
-  recordingDurationSeconds,
-  maxSessionSeconds,
-  remainingSessionSeconds,
   audioInputDevices,
   selectedDeviceId,
   canClear,
@@ -40,175 +32,104 @@ export default function ControlPanel({
   onClear,
 }: ControlPanelProps) {
   const deviceControlsDisabled = isCapturing || isConnecting;
-  const progress =
-    maxSessionSeconds > 0
-      ? Math.min(100, (recordingDurationSeconds / maxSessionSeconds) * 100)
-      : 0;
 
   return (
-    <div className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+    <GlassPanel className="p-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-zinc-950">Controls</h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            Start opens the backend stream before microphone capture begins.
+          <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-white/50">Processing Engine</h2>
+          <p className="mt-2 text-[11px] leading-relaxed text-white/40 font-light">
+            Connect to the ECS Fargate backend to start real-time captioning.
           </p>
         </div>
-        <LiveBadge isLive={isCapturing} />
+        <StatusBadge status={isCapturing ? 'active' : 'idle'} label={isCapturing ? 'LIVE' : 'READY'} />
       </div>
 
-      <div className="mt-5 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-              Timer
-            </div>
-            <div className="mt-1 font-mono text-3xl font-semibold tabular-nums text-zinc-950">
-              {formatDuration(recordingDurationSeconds)}
-            </div>
-          </div>
-          <div className="text-left text-xs text-zinc-500 sm:text-right">
-            <div>Max {formatDuration(maxSessionSeconds)}</div>
-            <div>
-              {isCapturing
-                ? `${formatDuration(remainingSessionSeconds)} left`
-                : 'Ready'}
-            </div>
+      <div className="mt-8 grid grid-cols-1 gap-4">
+        <div className="space-y-4">
+          <ProButton
+            onClick={onStart}
+            disabled={isCapturing || isConnecting}
+            loading={isConnecting}
+            variant="primary"
+            className="w-full h-16 text-sm font-bold tracking-widest"
+          >
+            {isConnecting ? (connectionStatusLabel ?? 'WAKING...') : 'START STREAM'}
+          </ProButton>
+
+          <div className="flex items-start gap-2.5 px-1">
+            <Info className="w-3.5 h-3.5 text-white/30 shrink-0 mt-0.5" />
+            <p className="text-[9px] leading-relaxed text-white/30 uppercase tracking-[0.1em] font-medium">
+              Start to grant microphone access. <br />
+              <span className="text-crimson/80 font-bold">Transcription is usage-based.</span>
+            </p>
           </div>
         </div>
 
-        <div className="mt-4 h-2 overflow-hidden rounded-full bg-zinc-200">
-          <div
-            className="h-full rounded-full bg-emerald-500 transition-[width]"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        <button
-          type="button"
-          onClick={onStart}
-          disabled={isCapturing || isConnecting}
-          aria-busy={isConnecting}
-          className={[
-            'inline-flex min-h-12 items-center justify-center rounded-lg px-4 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2',
-            isCapturing || isConnecting
-              ? 'cursor-not-allowed bg-zinc-100 text-zinc-400'
-              : 'bg-emerald-600 text-white hover:bg-emerald-700',
-          ].join(' ')}
-        >
-          {isConnecting ? connectionStatusLabel ?? 'Starting' : 'Start'}
-        </button>
-
-        <button
-          type="button"
+        <ProButton
           onClick={onStop}
           disabled={!isCapturing || isConnecting}
-          className={[
-            'inline-flex min-h-12 items-center justify-center rounded-lg px-4 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-rose-400 focus:ring-offset-2',
-            !isCapturing || isConnecting
-              ? 'cursor-not-allowed border border-zinc-200 bg-zinc-50 text-zinc-400'
-              : 'bg-rose-600 text-white hover:bg-rose-700',
-          ].join(' ')}
+          variant="outline"
+          className="h-12 border-white/10 hover:border-crimson hover:text-crimson transition-all"
         >
-          Stop
-        </button>
+          STOP PROCESSING
+        </ProButton>
       </div>
 
-      <button
-        type="button"
-        onClick={onClear}
-        disabled={!canClear || isConnecting}
-        className={[
-          'mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-lg border px-4 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-300 focus:ring-offset-2',
-          !canClear || isConnecting
-            ? 'cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-400'
-            : 'border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-50',
-        ].join(' ')}
-      >
-        Clear transcript
-      </button>
+      <div className="mt-10 space-y-4">
+        <div className="flex items-center justify-between border-b border-white/5 pb-2">
+          <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
+            <Mic className="w-3 h-3 text-crimson" />
+            Audio Source
+          </label>
+          <button
+            onClick={onRefreshAudioInputDevices}
+            disabled={deviceControlsDisabled}
+            className="group flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-white/30 hover:text-white transition-colors disabled:opacity-20"
+            aria-label="Refresh audio devices"
+          >
+            <RefreshCcw className={`w-3 h-3 ${isConnecting ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
+            Scan
+          </button>
+        </div>
 
-      <div className="mt-5 space-y-2">
-        <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
-          Microphone
-        </label>
-        <div className="flex gap-2">
+        <div className="relative group">
           <select
             value={selectedDeviceId}
             onChange={(event) => onSelectedDeviceChange(event.target.value)}
             disabled={deviceControlsDisabled}
-            className={[
-              'h-11 min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100',
-              deviceControlsDisabled ? 'cursor-not-allowed bg-zinc-100 text-zinc-500' : '',
-            ].join(' ')}
+            className="w-full h-12 bg-white/5 border border-white/10 px-4 pr-10 font-mono text-[11px] text-white/80 focus:border-crimson/50 focus:outline-none disabled:opacity-30 cursor-pointer hover:bg-white/[0.08] transition-colors appearance-none outline-none"
           >
-            <option value="default">Default microphone</option>
+            <option value="default" className="bg-obsidian">Default System Device</option>
             {audioInputDevices.map((device) => (
-              <option key={device.deviceId} value={device.deviceId}>
+              <option key={device.deviceId} value={device.deviceId} className="bg-obsidian">
                 {device.label}
               </option>
             ))}
           </select>
-
-          <button
-            type="button"
-            onClick={onRefreshAudioInputDevices}
-            disabled={deviceControlsDisabled}
-            title="Refresh microphone list"
-            aria-label="Refresh microphone list"
-            className={[
-              'inline-flex h-11 w-11 items-center justify-center rounded-md border border-zinc-300 bg-white text-sm font-semibold text-zinc-700 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-100',
-              deviceControlsDisabled
-                ? 'cursor-not-allowed bg-zinc-100 text-zinc-400'
-                : 'hover:bg-zinc-50 hover:text-zinc-950',
-            ].join(' ')}
-          >
-            R
-          </button>
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-white/20 group-hover:text-white/40 transition-colors">
+            <svg className="w-3 h-3 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" /></svg>
+          </div>
         </div>
       </div>
 
-      <div className="mt-5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
-        Usage note: stop the session when finished. Transcribe and Translate are
-        usage-based, and transcript export writes to S3.
-      </div>
+      <ProButton
+        onClick={onClear}
+        disabled={!canClear || isConnecting}
+        variant="ghost"
+        className="mt-10 w-full h-10 border border-white/5 text-[9px] font-bold text-white/20 hover:text-white hover:border-white/20 tracking-[0.2em]"
+      >
+        PURGE SESSION CACHE
+      </ProButton>
 
       {permissionDenied && (
-        <p role="alert" aria-live="assertive" className="mt-3 text-sm text-rose-700">
-          Microphone access is required to capture audio.
-        </p>
+        <div className="mt-6 flex items-center gap-3 border border-crimson/30 bg-crimson/10 p-4">
+          <AlertTriangle className="w-5 h-5 text-crimson shrink-0" />
+          <p className="text-[10px] font-mono text-crimson uppercase tracking-wider leading-relaxed font-black">
+            Hardware Blocked. <br /> Check browser mic access.
+          </p>
+        </div>
       )}
-    </div>
+    </GlassPanel>
   );
-}
-
-function LiveBadge({ isLive }: { isLive: boolean }) {
-  return (
-    <span
-      className={[
-        'inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold',
-        isLive
-          ? 'border-rose-200 bg-rose-50 text-rose-700'
-          : 'border-zinc-200 bg-zinc-100 text-zinc-600',
-      ].join(' ')}
-    >
-      <span
-        className={[
-          'h-1.5 w-1.5 rounded-full',
-          isLive ? 'bg-rose-500' : 'bg-zinc-400',
-        ].join(' ')}
-      />
-      {isLive ? 'Live' : 'Idle'}
-    </span>
-  );
-}
-
-function formatDuration(totalSeconds: number): string {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes.toString().padStart(2, '0')}:${seconds
-    .toString()
-    .padStart(2, '0')}`;
 }

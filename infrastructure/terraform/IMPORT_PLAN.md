@@ -33,7 +33,7 @@ state-only import command itself.
 | `aws_ecr_repository.backend` | `livecap-backend` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_ecr_repository.backend' 'livecap-backend'` | Medium |
 | `aws_ecr_lifecycle_policy.backend` | `livecap-backend` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_ecr_lifecycle_policy.backend' 'livecap-backend'` | Medium |
 | `aws_ecs_cluster.main` | `livecap-cluster-dev` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_ecs_cluster.main' 'livecap-cluster-dev'` | Medium |
-| `aws_ecs_task_definition.backend` | `arn:aws:ecs:ap-southeast-1:720459752315:task-definition/livecap-backend-dev:1` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_ecs_task_definition.backend' 'arn:aws:ecs:ap-southeast-1:720459752315:task-definition/livecap-backend-dev:1'` | High |
+| `aws_ecs_task_definition.backend` | `arn:aws:ecs:ap-southeast-1:720459752315:task-definition/livecap-backend-dev:5` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_ecs_task_definition.backend' 'arn:aws:ecs:ap-southeast-1:720459752315:task-definition/livecap-backend-dev:5'` | High |
 | `aws_ecs_service.backend` | `livecap-cluster-dev/livecap-backend-service-dev` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_ecs_service.backend' 'livecap-cluster-dev/livecap-backend-service-dev'` | High |
 | `aws_appautoscaling_target.ecs_target` | `ecs/service/livecap-cluster-dev/livecap-backend-service-dev/ecs:service:DesiredCount` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_appautoscaling_target.ecs_target' 'ecs/service/livecap-cluster-dev/livecap-backend-service-dev/ecs:service:DesiredCount'` | Medium |
 | `aws_appautoscaling_policy.ecs_cpu_policy` | `ecs/service/livecap-cluster-dev/livecap-backend-service-dev/ecs:service:DesiredCount/livecap-cpu-autoscaling-dev` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_appautoscaling_policy.ecs_cpu_policy' 'ecs/service/livecap-cluster-dev/livecap-backend-service-dev/ecs:service:DesiredCount/livecap-cpu-autoscaling-dev'` | Medium |
@@ -57,6 +57,14 @@ state-only import command itself.
 | `aws_s3_bucket_server_side_encryption_configuration.transcript` | `livecap-transcripts-dev-720459752315` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_s3_bucket_server_side_encryption_configuration.transcript' 'livecap-transcripts-dev-720459752315'` | Low |
 | `aws_security_group.alb` | `sg-0c9fd0d5b64ae8e61` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_security_group.alb' 'sg-0c9fd0d5b64ae8e61'` | High |
 | `aws_security_group.ecs_tasks` | `sg-0391c85bb86d6161e` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_security_group.ecs_tasks' 'sg-0391c85bb86d6161e'` | High |
+| `aws_cloudfront_function.spa_rewrite` | `livecap-spa-rewrite-dev` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_cloudfront_function.spa_rewrite' 'livecap-spa-rewrite-dev'` | Medium |
+| `aws_wafv2_web_acl.cloudfront[0]` | `ee59d195-d631-4c82-8563-358a8fbd6662/livecap-cloudfront-waf-dev/CLOUDFRONT` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_wafv2_web_acl.cloudfront[0]' 'ee59d195-d631-4c82-8563-358a8fbd6662/livecap-cloudfront-waf-dev/CLOUDFRONT'` | High |
+| `aws_wafv2_web_acl.alb[0]` | `409d74dd-0f9c-43a1-a82a-e5230b84080e/livecap-alb-waf-dev/REGIONAL` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_wafv2_web_acl.alb[0]' '409d74dd-0f9c-43a1-a82a-e5230b84080e/livecap-alb-waf-dev/REGIONAL'` | High |
+| `aws_wafv2_web_acl_association.alb[0]` | Existing ALB/WAF association | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_wafv2_web_acl_association.alb[0]' 'arn:aws:wafv2:ap-southeast-1:720459752315:regional/webacl/livecap-alb-waf-dev/409d74dd-0f9c-43a1-a82a-e5230b84080e,arn:aws:elasticloadbalancing:ap-southeast-1:720459752315:loadbalancer/app/livecap-alb-dev/4b4de1301030b116'` | High |
+| `aws_cloudwatch_log_group.cloudfront_waf[0]` | `aws-waf-logs-livecap-cloudfront-dev` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_cloudwatch_log_group.cloudfront_waf[0]' 'aws-waf-logs-livecap-cloudfront-dev'` | Low |
+| `aws_cloudwatch_log_group.alb_waf[0]` | `aws-waf-logs-livecap-alb-dev` | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_cloudwatch_log_group.alb_waf[0]' 'aws-waf-logs-livecap-alb-dev'` | Low |
+| `aws_wafv2_web_acl_logging_configuration.cloudfront[0]` | CloudFront WAF ARN | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_wafv2_web_acl_logging_configuration.cloudfront[0]' 'arn:aws:wafv2:us-east-1:720459752315:global/webacl/livecap-cloudfront-waf-dev/ee59d195-d631-4c82-8563-358a8fbd6662'` | Medium |
+| `aws_wafv2_web_acl_logging_configuration.alb[0]` | ALB WAF ARN | `terraform import -var "backend_image_tag=<GIT_SHA>" 'aws_wafv2_web_acl_logging_configuration.alb[0]' 'arn:aws:wafv2:ap-southeast-1:720459752315:regional/webacl/livecap-alb-waf-dev/409d74dd-0f9c-43a1-a82a-e5230b84080e'` | Medium |
 
 Replace only `<GIT_SHA>` with the immutable image tag selected for deployment.
 
@@ -65,12 +73,15 @@ Replace only `<GIT_SHA>` with the immutable image tag selected for deployment.
 - ECS Container Insights is enabled in AWS but disabled in Terraform.
 - Legacy ECS autoscaling is `min=1, max=2`; Terraform constrains it to
   `min=1, max=1` during the rollback window.
-- Backend and ALB log groups have no retention policy; Terraform sets 14 days.
-- Transcript lifecycle expiration is 30 days; Terraform sets 14 days.
-- ECR is mutable and only has a `latest` tag; Terraform requires immutable
-  tags and the target task definition requires a Git SHA image.
-- CloudFront currently has no WAF and only the legacy ALB/S3 origins. The
-  post-import plan will add target-origin configuration and WAF resources.
+- Backend, ALB, and WAF log groups use 14-day retention.
+- Transcript lifecycle expiration is already 14 days.
+- ECR is immutable and contains `1ef4250` and architecture-specific
+  `1ef4250-amd64` tags.
+- CloudFront and ALB blocking WAFs, the CloudFront SPA rewrite function,
+  origin verification header, CloudFront-only ALB ingress, and filtered WAF
+  logging already exist and must be imported before planning.
+- The `api.livecap.logantai.com` ACM certificate in `ap-southeast-1` is issued
+  and is passed as a variable for the target ALB; it is not managed here.
 - The current ECS task uses public subnets and a public IP. The target service
   is created separately in private subnets; the legacy service remains for
   rollback.
