@@ -30,7 +30,7 @@ resource "aws_cloudfront_function" "spa_rewrite" {
   runtime = "cloudfront-js-2.0"
   comment = "Rewrite extensionless frontend routes to index.html"
   publish = true
-  code    = <<-EOT
+  code = replace(<<-EOT
     function handler(event) {
       var request = event.request;
       var uri = request.uri;
@@ -44,6 +44,7 @@ resource "aws_cloudfront_function" "spa_rewrite" {
       return request;
     }
   EOT
+  , "\r\n", "\n")
 }
 
 # CloudFront Distribution
