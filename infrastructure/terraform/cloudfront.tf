@@ -8,11 +8,10 @@ locals {
     ? local.target_backend_origin_id
     : local.legacy_backend_origin_id
   )
-  frontend_allowed_origin = (
-    var.custom_domain != ""
-    ? "https://${var.custom_domain}"
-    : "https://${aws_cloudfront_distribution.frontend.domain_name}"
-  )
+  frontend_allowed_origin = join(",", compact([
+    var.custom_domain != "" ? "https://${var.custom_domain}" : "",
+    "https://${aws_cloudfront_distribution.frontend.domain_name}",
+  ]))
 }
 
 # Origin Access Control for S3

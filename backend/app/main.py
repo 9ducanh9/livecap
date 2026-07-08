@@ -5,8 +5,7 @@ Assembles the FastAPI application (task 9.1, Requirements 11.1, 11.3, 10.1):
 - Creates the FastAPI app instance.
 - Registers the WebSocket router (``GET /ws/transcribe``).
 - Registers the export router (``POST /api/sessions/{session_id}/export``).
-- Configures CORS to allow only the deployed frontend origin
-  (``settings.allowed_origin``).
+- Configures CORS for the explicitly configured frontend origins.
 - Adds the ``GET /api/health`` endpoint.
 - Initialises the Logging_Service at application startup via the
   ``lifespan`` context manager.
@@ -58,7 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         "livecap_startup",
         extra={
             "event": "application_startup",
-            "allowed_origin": settings.allowed_origin,
+            "allowed_origins": settings.allowed_origins,
             "session_timeout": settings.session_timeout,
         },
     )
@@ -91,7 +90,7 @@ _settings = get_settings()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[_settings.allowed_origin],
+    allow_origins=list(_settings.allowed_origins),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
