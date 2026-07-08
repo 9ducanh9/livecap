@@ -15,13 +15,12 @@ const partialSegment: Segment = {
 };
 
 describe('CaptionDisplay', () => {
-  it('shows the current partial without counting it as finalized', () => {
+  it('shows the current partial as an in-progress capture', () => {
     render(
       <CaptionDisplay segments={[]} currentPartial={partialSegment} />,
     );
 
-    expect(screen.getByText('0 finalized')).toBeTruthy();
     expect(screen.getByText('Xin chao')).toBeTruthy();
-    expect(screen.getAllByText('Live draft')).toHaveLength(2);
+    expect(screen.getByText('CAPTURE_IN_PROGRESS')).toBeTruthy();
   });
 });

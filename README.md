@@ -85,7 +85,7 @@ state.
 ### Reviewed Target Architecture
 
 The Terraform target adds a dedicated two-AZ VPC, private Fargate subnets, one
-NAT Gateway, WAF Web ACLs in COUNT mode, an IAM-protected wake Lambda, ECS
+NAT Gateway, blocking WAF Web ACLs, an IAM-protected wake Lambda, ECS
 `0 <-> 1` idle scaling, a CloudWatch dashboard, and an AWS Budget. It remains
 behind state import, plan review, and blue/green cutover gates.
 

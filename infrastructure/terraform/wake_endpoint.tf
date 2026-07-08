@@ -6,12 +6,10 @@ locals {
   wake_endpoint_allowed_origins = var.custom_domain != "" ? ["https://${var.custom_domain}"] : []
 
   wake_endpoint_allowed_origin = join(",", local.wake_endpoint_allowed_origins)
-  wake_backend_service_name = (
-    var.route_backend_to_target
-    ? "${var.project_name}-target-service-${var.environment}"
-    : "${var.project_name}-backend-service-${var.environment}"
-  )
-  wake_backend_service_arn = "arn:${data.aws_partition.current.partition}:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.main.name}/${local.wake_backend_service_name}"
+  # The migration wake endpoint always controls the private target service.
+  # CloudFront routing remains an independent blue/green cutover gate.
+  wake_backend_service_name = "${var.project_name}-target-service-${var.environment}"
+  wake_backend_service_arn  = "arn:${data.aws_partition.current.partition}:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.main.name}/${local.wake_backend_service_name}"
 }
 
 data "aws_partition" "current" {}
@@ -188,12 +186,11 @@ resource "aws_lambda_function_url" "wake_backend" {
 resource "aws_lambda_permission" "wake_backend_function_url" {
   count = var.enable_wake_endpoint ? 1 : 0
 
-  statement_id           = "AllowCloudFrontFunctionUrlInvoke"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = aws_lambda_function.wake_backend[0].function_name
-  principal              = "cloudfront.amazonaws.com"
-  source_arn             = aws_cloudfront_distribution.frontend.arn
-  function_url_auth_type = "AWS_IAM"
+  statement_id  = "AllowCloudFrontFunctionUrlInvoke"
+  action        = "lambda:InvokeFunctionUrl"
+  function_name = aws_lambda_function.wake_backend[0].function_name
+  principal     = "cloudfront.amazonaws.com"
+  source_arn    = aws_cloudfront_distribution.frontend.arn
 }
 
 resource "aws_lambda_permission" "wake_backend_function" {

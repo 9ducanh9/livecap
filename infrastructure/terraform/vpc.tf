@@ -69,19 +69,11 @@ resource "aws_security_group" "alb" {
   vpc_id      = data.aws_vpc.selected.id
 
   ingress {
-    description = "HTTPS from anywhere"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "HTTP from anywhere (redirect to HTTPS)"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    description     = "Selected origin protocol from CloudFront origin-facing addresses"
+    from_port       = var.alb_ssl_certificate_arn != "" ? 443 : 80
+    to_port         = var.alb_ssl_certificate_arn != "" ? 443 : 80
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id]
   }
 
   egress {
@@ -285,8 +277,8 @@ resource "aws_security_group" "target_alb" {
 
   ingress {
     description     = "Selected origin protocol from CloudFront origin-facing addresses"
-    from_port       = var.alb_ssl_certificate_arn != "" ? 443 : 80
-    to_port         = var.alb_ssl_certificate_arn != "" ? 443 : 80
+    from_port       = var.target_alb_ssl_certificate_arn != "" ? 443 : 80
+    to_port         = var.target_alb_ssl_certificate_arn != "" ? 443 : 80
     protocol        = "tcp"
     prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id]
   }

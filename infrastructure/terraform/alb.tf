@@ -166,13 +166,13 @@ resource "aws_lb_target_group" "target_backend" {
 }
 
 resource "aws_lb_listener" "target_https" {
-  count = var.alb_ssl_certificate_arn != "" ? 1 : 0
+  count = var.target_alb_ssl_certificate_arn != "" ? 1 : 0
 
   load_balancer_arn = aws_lb.target.arn
   port              = "443"
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = var.alb_ssl_certificate_arn
+  certificate_arn   = var.target_alb_ssl_certificate_arn
 
   default_action {
     type             = "forward"
@@ -181,7 +181,7 @@ resource "aws_lb_listener" "target_https" {
 }
 
 resource "aws_lb_listener" "target_http_dev" {
-  count = var.alb_ssl_certificate_arn == "" ? 1 : 0
+  count = var.target_alb_ssl_certificate_arn == "" ? 1 : 0
 
   load_balancer_arn = aws_lb.target.arn
   port              = "80"

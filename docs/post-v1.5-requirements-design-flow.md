@@ -217,7 +217,7 @@ ALB, and ECS service are created and validated in parallel.
 - IAM-protected Lambda Function URL exposed only through CloudFront
   `/api/wake`, gated by `enable_wake_endpoint`.
 - Optional backend idle scale-down, gated by `ENABLE_IDLE_SCALE_DOWN`.
-- CloudFront and ALB WAF Web ACLs in COUNT mode.
+- CloudFront and ALB WAF Web ACLs in blocking mode.
 - CloudWatch dashboard covering target ECS/ALB, wake Lambda, and WAF metrics.
 - ECR backend images use immutable Git SHA tags rather than `latest`.
 - Frontend assets remain in the private frontend S3 bucket behind CloudFront.
@@ -274,7 +274,7 @@ accepted for this cost-sensitive MVP.
 4. Start one target Fargate task and verify that it has no public IP, passes ALB
    health checks, and reaches required AWS services through NAT.
 5. Validate wake-up, API, WebSocket, Transcribe, Translate, transcript export,
-   CloudWatch metrics, and WAF COUNT observations.
+   CloudWatch metrics, and WAF allow/block observations.
 6. Change CloudFront `/api/*` and `/ws/*` routing to the target ALB only after
    the target path passes review.
 7. Validate ECS wake `0 -> 1` and idle scale-down `1 -> 0`, with maximum capacity

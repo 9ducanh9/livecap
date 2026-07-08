@@ -13,7 +13,7 @@ The infrastructure provisions:
 - **Storage**: Isolated S3 buckets for frontend assets and transcript storage
 - **Container Registry**: Amazon ECR for Docker images
 - **Monitoring**: CloudWatch Logs and an operations dashboard
-- **Security**: CloudFront/ALB WAF in COUNT mode, IAM-protected wake Lambda,
+- **Security**: blocking CloudFront/ALB WAF, IAM-protected wake Lambda,
   security groups, TLS termination, and bucket isolation
 
 The current backend resources are retained as the blue environment during
@@ -118,16 +118,19 @@ monthly_budget_limit_usd = 50
 max_concurrent_sessions = 4
 max_sessions_per_ip     = 1
 
-# Optional: Provide backend ALB TLS certificate (REQUIRED for production)
-# alb_ssl_certificate_arn = "arn:aws:acm:REGION:ACCOUNT_ID:certificate/BACKEND_CERT_ID"
-# backend_domain_name = "api.livecap.example.com"
-# target_backend_domain_name = "api-green.livecap.example.com"
+# Keep the legacy rollback origin on HTTP during migration.
+# alb_ssl_certificate_arn = ""
+# backend_domain_name      = ""
+
+# Target production origin TLS.
+# target_alb_ssl_certificate_arn = "arn:aws:acm:ap-southeast-1:ACCOUNT_ID:certificate/TARGET_CERT_ID"
+# target_backend_domain_name      = "api.livecap.example.com"
 
 # Optional: Provide CloudFront custom domain and certificate
 # cloudfront_ssl_certificate_arn = "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/FRONTEND_CERT_ID"
 # custom_domain = "livecap.example.com"
 
-# WARNING: Without alb_ssl_certificate_arn, ALB uses insecure HTTP on port 80 (development only)
+# The active target path must use target_alb_ssl_certificate_arn before cutover.
 ```
 
 The target VPC defaults are:
@@ -317,8 +320,10 @@ echo "Backend API: $(terraform output -raw alb_backend_base_url)"
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `cloudfront_price_class` | Price class (All/200/100) | `PriceClass_100` |
-| `alb_ssl_certificate_arn` | Required for production backend HTTPS/WSS. ACM certificate ARN for the ALB listener in the same AWS region as the ALB. Empty enables insecure HTTP dev mode. | `""` |
-| `backend_domain_name` | Backend domain covered by `alb_ssl_certificate_arn`, for example `api.livecap.example.com`. Point this DNS name at the ALB before production use. | `""` |
+| `alb_ssl_certificate_arn` | Optional certificate for the legacy rollback ALB; empty preserves its current HTTP origin during migration | `""` |
+| `backend_domain_name` | Legacy ALB domain, required only when legacy TLS is enabled | `""` |
+| `target_alb_ssl_certificate_arn` | Required for target production HTTPS; certificate must be in `ap-southeast-1` | `""` |
+| `target_backend_domain_name` | Target ALB domain covered by the target certificate | `""` |
 | `cloudfront_ssl_certificate_arn` | ACM certificate ARN for a CloudFront custom domain. Must be in `us-east-1`. | `""` |
 | `custom_domain` | Custom domain name | `""` |
 
@@ -326,8 +331,9 @@ echo "Backend API: $(terraform output -raw alb_backend_base_url)"
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `enable_waf` | Create COUNT-mode AWS WAFv2 Web ACLs for CloudFront and ALB | `false` |
-| `waf_rate_limit` | Requests per IP per 5-minute window for COUNT-mode rate rules | `2000` |
+| `enable_waf` | Create blocking AWS WAFv2 Web ACLs for CloudFront and ALB | `false` |
+| `waf_rate_limit` | Requests per IP per 5-minute window before blocking | `2000` |
+| `origin_verify_secret` | Sensitive CloudFront-to-ALB origin verification value required when WAF is enabled | `""` |
 
 ### Network Configuration
 
@@ -363,7 +369,7 @@ infrastructure/terraform/
 |-- s3.tf                      # S3 buckets and lifecycle policies
 |-- cloudfront.tf              # CloudFront distribution
 |-- alb.tf                     # Application Load Balancer
-|-- waf.tf                     # AWS WAFv2 Web ACLs in COUNT mode
+|-- waf.tf                     # Blocking AWS WAFv2 Web ACLs
 |-- cloudwatch_dashboard.tf    # CloudWatch operations dashboard
 |-- ecs.tf                     # ECS cluster, service, task definition
 |-- iam.tf                     # IAM roles and policies
@@ -403,7 +409,7 @@ These retention policies support AWS Well-Architected Framework pillars:
 
 ## Monitoring and Operations
 
-### WAF COUNT Mode
+### WAF Blocking Mode
 
 Terraform can create AWS WAFv2 Web ACLs for both public entrypoints when
 `enable_waf=true`:
@@ -412,16 +418,21 @@ Terraform can create AWS WAFv2 Web ACLs for both public entrypoints when
 - **ALB WAF (`scope = REGIONAL`)** protects the backend API and WebSocket
   entrypoint.
 
-This batch uses COUNT mode only:
+The production baseline uses blocking rules:
 
-- AWS Managed Rules Common Rule Set is counted, not blocked.
-- AWS Managed Rules Known Bad Inputs is counted, not blocked.
-- Rate-based rules are counted, not blocked.
+- AWS Managed Rules Common Rule Set uses its AWS-managed actions.
+- AWS Managed Rules Known Bad Inputs uses its AWS-managed actions.
+- Rate-based rules block clients that exceed `waf_rate_limit`.
+- The ALB Web ACL defaults to block and allows only requests carrying the
+  private origin verification header added by CloudFront.
+- The ALB security group accepts the selected origin port only from the AWS
+  managed CloudFront origin-facing prefix list.
+- WAF logging keeps only BLOCK/COUNT events in 14-day CloudWatch log groups and
+  redacts authorization, cookie, and origin verification headers.
 
-COUNT mode observes traffic and emits WAF metrics without blocking requests, so
-it should not break WebSocket traffic. Review WAF metrics and sampled requests
-before changing any rule to BLOCK mode. BLOCK mode should be enabled only after
-the observed traffic patterns are understood.
+Supply `origin_verify_secret` through an untracked `terraform.tfvars` file and
+never commit the real value. Continue reviewing WAF metrics and sampled requests
+for false positives, especially after managed rule updates.
 
 ### CloudWatch Operations Dashboard
 
@@ -446,8 +457,8 @@ The dashboard is intended for LiveCap demo/MVP observability:
   - errors
   - duration
 - **WAF observation**
-  - CloudFront WAF COUNT metrics in `us-east-1`
-  - ALB WAF COUNT metrics in `ap-southeast-1`
+  - CloudFront WAF allow/block metrics in `us-east-1`
+  - ALB WAF allow/block metrics in `ap-southeast-1`
 - **Operational notes**
   - ECS may intentionally sit at zero tasks outside active demo/use windows.
   - ALB metrics continue while the environment exists because ALB is kept as
@@ -611,9 +622,9 @@ aws acm describe-certificate \
 # Add the CNAME record to your DNS provider
 # Wait for validation (usually 5-10 minutes)
 
-# Update terraform.tfvars with backend certificate ARN:
-alb_ssl_certificate_arn = "arn:aws:acm:ap-southeast-1:ACCOUNT_ID:certificate/CERT_ID"
-backend_domain_name = "api.yourdomain.com"
+# Update terraform.tfvars with target certificate ARN:
+target_alb_ssl_certificate_arn = "arn:aws:acm:ap-southeast-1:ACCOUNT_ID:certificate/CERT_ID"
+target_backend_domain_name = "api.yourdomain.com"
 ```
 
 #### Option 2: Import Existing Certificate
@@ -644,7 +655,7 @@ alb_ssl_certificate_arn = ""  # Empty = dev mode
 ### 1. State Management
 
 Configure S3 backend for Terraform state (see `main.tf`):
-2. **TLS Certificates**: Provide `alb_ssl_certificate_arn` for backend production traffic and CloudFront certs only when using a custom frontend domain
+2. **TLS Certificates**: Provide `target_alb_ssl_certificate_arn` for target backend production traffic and CloudFront certs only when using a custom frontend domain
 3. **Network Isolation**: Use private subnets for ECS tasks
 4. **Monitoring**: Set up CloudWatch alarms for key metrics
 5. **Backup**: Enable S3 versioning (already configured)

@@ -171,6 +171,11 @@ resource "aws_ecs_service" "backend" {
   deployment_maximum_percent         = 200
   deployment_minimum_healthy_percent = 100
 
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   # Keep the blue service on its current revision and desired count throughout
   # the rollback window.
   lifecycle {

@@ -74,16 +74,22 @@ log_retention_days = 14  # Retain logs for 14 days
 # CloudFront Configuration
 cloudfront_price_class = "PriceClass_100" # Cost-focused; use 200/All for more Asia edge coverage.
 
-# WAF Configuration. COUNT-only rules still incur WAF charges when enabled.
-enable_waf     = false
+# WAF Configuration. The origin secret must be generated and supplied through
+# the untracked terraform.tfvars file; never commit the real value.
+enable_waf = true
+# origin_verify_secret = "replace-with-a-random-value-of-at-least-32-characters"
 waf_rate_limit = 2000
 
 # TLS/SSL Configuration
-# Provide an ACM certificate ARN for the backend ALB in the same region as the ALB.
-# Leave empty only for development HTTP mode.
-# alb_ssl_certificate_arn = "arn:aws:acm:ap-southeast-1:123456789012:certificate/backend-cert-id"
-# backend_domain_name = "api.livecap.example.com"
-# target_backend_domain_name = "api-green.livecap.example.com"
+# Keep the legacy rollback ALB on its current HTTP origin unless a separate
+# legacy certificate/domain is intentionally provisioned.
+# alb_ssl_certificate_arn = ""
+# backend_domain_name      = ""
+
+# Target ALB production TLS. The certificate must be issued in ap-southeast-1
+# and the domain must resolve to the target ALB before CloudFront cutover.
+# target_alb_ssl_certificate_arn = "arn:aws:acm:ap-southeast-1:123456789012:certificate/target-cert-id"
+# target_backend_domain_name      = "api.livecap.example.com"
 
 # Provide your ACM certificate ARN for a CloudFront custom domain (certificate must be in us-east-1)
 # cloudfront_ssl_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/abc123..."
