@@ -85,7 +85,7 @@ class Settings:
         transcribe_language_code: Fixed Transcribe Streaming language code.
         bilingual_dual_stream: Enables parallel vi-VN and en-US Transcribe streams.
         audio_pipeline_debug: Enables temporary audio flow debug logging.
-        allowed_origin: The single frontend origin permitted by CORS.
+        allowed_origin: Comma-separated frontend origins permitted by CORS.
         cloudwatch_log_group: CloudWatch log group for the Logging_Service.
         max_concurrent_sessions: Process-local active WebSocket session limit.
         max_sessions_per_ip: Process-local active WebSocket session limit per IP.
@@ -110,6 +110,16 @@ class Settings:
     idle_scale_down_grace_seconds: int = DEFAULT_IDLE_SCALE_DOWN_GRACE_SECONDS
     ecs_cluster_name: str = ""
     ecs_service_name: str = ""
+
+    @property
+    def allowed_origins(self) -> tuple[str, ...]:
+        """Return the configured CORS origins without blanks or duplicates."""
+        origins = dict.fromkeys(
+            origin.strip()
+            for origin in self.allowed_origin.split(",")
+            if origin.strip()
+        )
+        return tuple(origins) or (DEFAULT_ALLOWED_ORIGIN,)
 
     @classmethod
     def from_env(cls) -> "Settings":
