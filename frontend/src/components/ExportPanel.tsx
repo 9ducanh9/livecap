@@ -34,34 +34,34 @@ export default function ExportPanel({ sessionId, segments }: ExportPanelProps) {
   const isDisabled = !sessionId || finalizedSegments.length === 0 || status.kind === 'loading';
 
   return (
-    <div className="border-t border-ink/10">
+    <div className="border-t border-[#dce5f2]">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-ink/10 flex items-center justify-between">
-        <p className="font-mono text-[9px] font-bold uppercase tracking-[0.35em] text-ink/60">// Data_Export</p>
-        <div className="font-mono text-[10px] font-bold text-emerald-pro border border-emerald-pro/25 bg-emerald-pro/5 px-2 py-0.5">
+      <div className="px-6 py-5 border-b border-[#dce5f2] flex items-center justify-between">
+        <p className="text-sm font-bold text-ink">Download transcript</p>
+        <div className="rounded-full text-xs font-bold text-emerald-pro border border-emerald-pro/25 bg-emerald-pro/5 px-2.5 py-1">
           {finalizedSegments.length}
         </div>
       </div>
 
       <div className="px-6 py-5 space-y-4">
-        <p className="font-mono text-[10px] leading-relaxed text-ink/60 uppercase tracking-wider">
-          Download finalized lines as a TXT transcript.
+        <p className="text-xs leading-relaxed text-ink-muted">
+          Download your completed captions as a text file.
         </p>
 
         <button
           onClick={triggerExport}
           disabled={isDisabled}
-          className="w-full h-11 border border-ink/20 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-ink/60 hover:border-emerald-pro/50 hover:text-emerald-pro hover:bg-emerald-pro/3 transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full h-11 rounded-xl border border-ink/15 text-sm font-bold text-ink/70 hover:border-emerald-pro/50 hover:text-emerald-pro hover:bg-emerald-pro/3 transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {status.kind === 'loading' ? (
             <>
               <span className="w-3 h-px bg-ink/30 animate-[loading_1.2s_infinite_linear]" />
-              EXPORTING...
+              Preparing download...
             </>
           ) : (
             <>
               <Download className="w-3.5 h-3.5" />
-              EXPORT TXT SESSION
+              Download text
             </>
           )}
         </button>

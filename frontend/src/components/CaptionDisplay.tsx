@@ -31,10 +31,8 @@ export default function CaptionDisplay({
         className="flex-1 overflow-y-auto space-y-2 custom-scrollbar"
         ref={scrollRef}
       >
-        {/* History */}
-        {[...segments].reverse().map((seg) => (
-          <CaptionRow key={seg.segmentId} segment={seg} />
-        ))}
+        {/* Finalized transcript stays as one continuous bilingual stream. */}
+        {segments.length > 0 && <TranscriptFlow segments={segments} />}
 
         {/* Empty state */}
         {segments.length === 0 && !currentPartial && !permissionDenied && !isConnecting && (
@@ -209,71 +207,45 @@ function LiveCaptionTextLine({
   );
 }
 
-function CaptionRow({ segment, isPartial = false }: { segment: Segment; isPartial?: boolean }) {
-  const rowRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (rowRef.current) {
-      gsap.from(rowRef.current, { autoAlpha: 0, y: 16, duration: 0.45, ease: 'power3.out' });
-    }
-  }, []);
-
-  const vietnameseText = segment.textVi;
-  const englishText = segment.textEn;
+function TranscriptFlow({ segments }: { segments: Segment[] }) {
+  const vietnameseText = segments.map((segment) => segment.textVi.trim()).filter(Boolean).join(' ');
+  const englishText = segments.map((segment) => segment.textEn.trim()).filter(Boolean).join(' ');
+  const latestSegment = segments[segments.length - 1];
 
   return (
-    <div
-      ref={rowRef}
-      className={`border transition-all group ${
-        isPartial
-          ? 'border-crimson/30 bg-crimson/3 border-dashed'
-          : 'border-ink/8 hover:border-ink/20 bg-white/50'
-      }`}
+    <section
+      aria-label="Finalized transcript"
+      className="overflow-hidden rounded-2xl border border-ink/8 bg-white/55"
     >
-      {/* Row header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-ink/8 font-mono">
-        <div className="flex items-center gap-4">
-          <span className="text-[9px] font-bold text-ink/40 uppercase tracking-widest bg-ink/5 px-2 py-0.5">
-            {segment.speakerLabel}
-          </span>
-          {isPartial && (
-            <span className="flex items-center gap-2 font-mono text-[9px] font-bold text-crimson uppercase tracking-widest">
-              <span className="w-1.5 h-1.5 rounded-full bg-crimson animate-ping" />
-              CAPTURE_IN_PROGRESS
-            </span>
-          )}
-        </div>
-        <span className="font-mono text-[9px] text-ink/40 tabular-nums">
-          {formatTimestamp(segment.timestampStart)}
+      <div className="flex items-center justify-between border-b border-ink/8 px-5 py-3 font-mono">
+        <span className="text-[9px] font-bold uppercase tracking-[0.25em] text-ink/40">
+          {latestSegment.speakerLabel}
+        </span>
+        <span className="text-[9px] tabular-nums text-ink/40">
+          {formatTimestamp(latestSegment.timestampStart)}
         </span>
       </div>
-
-      {/* 2-column content */}
-      <div className="grid lg:grid-cols-2 divide-x divide-ink/6">
-        <div className="px-5 py-4 space-y-2">
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-[8px] font-bold text-ink/40 uppercase tracking-[0.3em]">
-              VIETNAMESE
-            </span>
+      <div className="grid lg:grid-cols-2 lg:divide-x lg:divide-ink/6">
+        <div className="min-w-0 px-5 py-4">
+          <div className="mb-2 flex items-center gap-3">
+            <span className="font-mono text-[8px] font-bold uppercase tracking-[0.3em] text-ink/40">VIETNAMESE</span>
             <div className="h-px flex-1 bg-ink/10" />
           </div>
-          <p className="font-mono text-sm leading-relaxed text-ink font-medium tracking-tight">
+          <p className="break-words whitespace-normal text-sm font-medium leading-relaxed tracking-tight text-ink">
             {vietnameseText || '...'}
           </p>
         </div>
-        <div className="px-5 py-4 space-y-2">
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-[8px] font-bold text-emerald-pro/70 uppercase tracking-[0.3em]">
-              ENGLISH
-            </span>
+        <div className="min-w-0 px-5 py-4">
+          <div className="mb-2 flex items-center gap-3">
+            <span className="font-mono text-[8px] font-bold uppercase tracking-[0.3em] text-emerald-pro/70">ENGLISH</span>
             <div className="h-px flex-1 bg-emerald-pro/15" />
           </div>
-          <p className="font-mono text-sm leading-relaxed text-emerald-pro font-medium tracking-tight">
+          <p className="break-words whitespace-normal text-sm font-medium leading-relaxed tracking-tight text-emerald-pro">
             {englishText || '...'}
           </p>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 

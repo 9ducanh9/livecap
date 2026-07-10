@@ -12,35 +12,35 @@ export default {
         // Legacy dark mode (kept for dashboard)
         obsidian: '#09090b',
         'zinc-dark': '#18181B',
-        // Neo-Brutalist light palette
-        paper: '#f3f4f6',
-        'paper-warm': '#fafafa',
-        ink: '#09090b',
-        'ink-muted': '#71717a',
-        'ink-faint': '#a1a1aa',
+        // Shared LiveCap workspace palette
+        paper: '#f7f8fc',
+        'paper-warm': '#ffffff',
+        ink: '#102247',
+        'ink-muted': '#52647f',
+        'ink-faint': '#8795aa',
         // Accent
         crimson: {
-          DEFAULT: '#E11D48',
-          light: '#f43f5e',
-          glow: 'rgba(225, 29, 72, 0.4)',
+          DEFAULT: '#e54868',
+          light: '#f46b85',
+          glow: 'rgba(229, 72, 104, 0.3)',
         },
         'emerald-pro': {
-          DEFAULT: '#059669',
-          light: '#22c55e',
-          glow: 'rgba(5, 150, 105, 0.4)',
+          DEFAULT: '#0a9c88',
+          light: '#35bea9',
+          glow: 'rgba(10, 156, 136, 0.28)',
         },
       },
       fontFamily: {
-        ui: ['Space Grotesk', 'sans-serif'],
+        ui: ['Be Vietnam Pro', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
       backdropBlur: {
         pro: '24px',
       },
       boxShadow: {
-        'brutal': '4px 4px 0px 0px #09090b',
-        'brutal-sm': '2px 2px 0px 0px #09090b',
-        'brutal-lg': '6px 6px 0px 0px #09090b',
+        'brutal': '0 12px 30px rgba(16, 34, 71, 0.08)',
+        'brutal-sm': '0 6px 16px rgba(16, 34, 71, 0.08)',
+        'brutal-lg': '0 20px 48px rgba(16, 34, 71, 0.12)',
       },
       backgroundImage: {
         'grid-light': "linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px)",
