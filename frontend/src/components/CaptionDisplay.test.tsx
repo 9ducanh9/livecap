@@ -45,6 +45,28 @@ describe('CaptionDisplay', () => {
     expect(screen.getByText('This is a finalized line')).toBeTruthy();
   });
 
+  it('joins finalized segments into one bilingual transcript flow', () => {
+    const secondSegment: Segment = {
+      ...partialSegment,
+      segmentId: 'final-2',
+      timestampStart: 2,
+      isFinal: true,
+      textVi: 'dong tiep theo',
+      textEn: 'the next line',
+    };
+
+    render(
+      <CaptionDisplay
+        segments={[{ ...partialSegment, isFinal: true }, secondSegment]}
+        currentPartial={null}
+      />,
+    );
+
+    expect(screen.getByLabelText('Finalized transcript')).toBeTruthy();
+    expect(screen.getByText('Xin chao dong tiep theo')).toBeTruthy();
+    expect(screen.getByText('Hello the next line')).toBeTruthy();
+  });
+
   it('shows a translation fallback while partial translation is unavailable', () => {
     render(
       <CaptionDisplay

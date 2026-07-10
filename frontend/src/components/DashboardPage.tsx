@@ -9,7 +9,7 @@ import {
   isWakeBackendConfigured,
   wakeBackendIfConfigured,
 } from '../services/wakeService';
-import { Activity, Clock, Layers, AlertTriangle, CheckCircle, ArrowLeft } from 'lucide-react';
+import { Radio, Clock, Layers, AlertTriangle, CheckCircle, ArrowLeft } from 'lucide-react';
 
 const DEFAULT_MAX_SESSION_SECONDS = 1_800;
 
@@ -161,42 +161,41 @@ export default function DashboardPage() {
   const statusCopy = getConnectionStatusCopy({ connectionStatus, isCapturing, isConnectionLost, isStarting });
 
   return (
-    <div className="min-h-screen bg-paper text-ink font-ui antialiased overflow-x-hidden grid-bg">
+    <div className="min-h-screen bg-paper text-ink font-ui antialiased overflow-x-hidden">
 
       {/* TOP HEADER */}
-      <header className="sticky top-0 z-[60] border-b border-ink/10 bg-paper">
-        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between px-0">
+      <header className="sticky top-0 z-[60] border-b border-[#dce5f2] bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-3 sm:px-8 lg:px-10">
           {/* Left: back + brand */}
           <div className="flex items-center divide-x divide-ink/10">
-            <a href="/" className="flex items-center gap-2 px-6 py-4 group hover:bg-ink/5 transition-colors">
-              <ArrowLeft className="w-3 h-3 text-ink/50 group-hover:text-ink transition-colors" />
-              <span className="font-mono text-[9px] uppercase tracking-widest text-ink/50 group-hover:text-ink/80 transition-colors">Back</span>
+            <a href="/" className="flex items-center gap-2 pr-5 py-2 group transition-colors">
+              <ArrowLeft className="w-4 h-4 text-ink/45 group-hover:text-emerald-pro transition-colors" />
+              <span className="text-sm font-semibold text-ink/55 group-hover:text-ink transition-colors">Home</span>
             </a>
-            <div className="flex items-center gap-3 px-6 py-4">
-              <Activity className="w-4 h-4 text-crimson" />
-              <span className="text-sm font-bold tracking-[0.15em] uppercase text-ink">LiveCap</span>
+            <div className="flex items-center gap-3 pl-5 py-2">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-ink text-[#7ee5d0]"><Radio className="h-4 w-4" /></span>
+              <span className="font-instrument text-xl font-bold tracking-[-0.08em] text-ink">LIVECAP</span>
               <StatusDot status={statusCopy.tone} label={statusCopy.label} />
             </div>
           </div>
 
           {/* Right: metrics */}
-          <div className="flex items-center divide-x divide-ink/10">
+          <div className="hidden items-center gap-5 sm:flex">
             <HeaderMetric icon={<Clock className="w-3 h-3 text-ink/50" />} label="TIME" value={formatDuration(recordingDurationSeconds)} />
-            <HeaderMetric icon={<Clock className="w-3 h-3 text-crimson" />} label="LIMIT" value={formatDuration(remainingSessionSeconds)} accent />
+            <HeaderMetric icon={<Clock className="w-3 h-3 text-emerald-pro" />} label="LIMIT" value={formatDuration(remainingSessionSeconds)} accent />
             <HeaderMetric icon={<Layers className="w-3 h-3 text-ink/50" />} label="SEGS" value={state.segments.length.toString()} />
           </div>
         </div>
       </header>
 
       {/* MAIN LAYOUT */}
-      <main className="mx-auto w-full max-w-[1600px] grid grid-cols-1 lg:grid-cols-[320px_1fr] min-h-[calc(100vh-57px)] border-x border-ink/10">
+      <main className="mx-auto my-6 grid w-[calc(100%-2rem)] max-w-7xl grid-cols-1 overflow-hidden rounded-[2rem] border border-[#dce5f2] bg-white shadow-[0_16px_50px_rgba(16,34,71,0.07)] lg:grid-cols-[320px_1fr] lg:min-h-[calc(100vh-112px)]">
 
         {/* LEFT SIDEBAR */}
-        <aside className="border-r border-ink/10 flex flex-col bg-paper">
-          <div className="px-6 py-4 border-b border-ink/10 bg-paper sticky top-[57px] z-10">
-            <p className="font-mono text-[9px] font-bold uppercase tracking-[0.35em] text-ink/50">
-              // Control_Panel
-            </p>
+        <aside className="border-r border-ink/10 flex flex-col bg-white/55">
+          <div className="px-6 py-5 border-b border-[#dce5f2] bg-white">
+            <p className="text-sm font-bold text-ink">Session controls</p>
+            <p className="mt-1 text-xs text-ink-muted">Set up your input and start when ready.</p>
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             <ControlPanel
@@ -213,11 +212,6 @@ export default function DashboardPage() {
               onStop={handleStop}
               onClear={handleClear}
             />
-            <SessionSummary
-              sessionId={state.sessionId}
-              connectionStatus={connectionStatus}
-              wakeConfigured={isWakeBackendConfigured()}
-            />
             <ExportPanel
               sessionId={state.sessionId}
               segments={state.segments}
@@ -227,18 +221,14 @@ export default function DashboardPage() {
 
         {/* MAIN CONTENT */}
         <section className="flex flex-col min-h-[calc(100vh-57px)]">
-          <div className="px-6 py-4 border-b border-ink/10 flex items-center justify-between sticky top-[57px] z-10 bg-paper">
-            <p className="font-mono text-[9px] font-bold uppercase tracking-[0.35em] text-ink/50">
-              // Transcription_Stream
-            </p>
+          <div className="px-6 py-5 border-b border-[#dce5f2] flex items-center justify-between bg-white/90">
+            <div><p className="text-sm font-bold text-ink">Live transcription</p><p className="mt-1 text-xs text-ink-muted">Captions and translation appear here in real time.</p></div>
             {isCapturing ? (
-              <span className="flex items-center gap-2 font-mono text-[9px] font-bold text-crimson uppercase tracking-widest">
-                <span className="w-1.5 h-1.5 rounded-full bg-crimson animate-ping" />
-                GATEWAY: LINKED
+              <span className="flex items-center gap-2 text-xs font-bold text-emerald-pro">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-pro animate-ping" />
+                Listening
               </span>
-            ) : (
-              <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-ink/40">GATEWAY: WAITING</span>
-            )}
+            ) : null}
           </div>
 
           {/* Alerts */}
@@ -292,7 +282,7 @@ function StatusDot({ status, label }: { status: string; label: string }) {
   };
   const c = config[status] ?? config.idle;
   return (
-    <div className={`flex items-center gap-1.5 border ${c.border} ${c.bg} px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-widest ${c.text}`}>
+    <div className={`flex items-center gap-1.5 rounded-full border ${c.border} ${c.bg} px-2.5 py-1 text-[10px] font-bold ${c.text}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
       {label}
     </div>
@@ -301,47 +291,14 @@ function StatusDot({ status, label }: { status: string; label: string }) {
 
 function HeaderMetric({ label, value, icon, accent }: { label: string; value: string; icon?: React.ReactNode; accent?: boolean }) {
   return (
-    <div className="flex flex-col items-end px-6 py-4">
-      <span className={`font-mono text-[8px] font-bold uppercase tracking-[0.3em] leading-none ${accent ? 'text-crimson' : 'text-ink/50'}`}>
+    <div className="flex flex-col items-end">
+      <span className={`text-[10px] font-bold uppercase tracking-[0.16em] leading-none ${accent ? 'text-emerald-pro' : 'text-ink/45'}`}>
         {label}
       </span>
       <div className="flex items-center gap-1.5 mt-1">
-        {icon && <span className={accent ? 'text-crimson' : 'text-ink/50'}>{icon}</span>}
-        <span className="font-mono text-sm font-bold tabular-nums text-ink">{value}</span>
+        {icon && <span className={accent ? 'text-emerald-pro' : 'text-ink/50'}>{icon}</span>}
+        <span className="text-sm font-bold tabular-nums text-ink">{value}</span>
       </div>
-    </div>
-  );
-}
-
-function SessionSummary({ sessionId, connectionStatus, wakeConfigured }: {
-  sessionId: string | null;
-  connectionStatus: WebSocketConnectionStatus;
-  wakeConfigured: boolean;
-}) {
-  return (
-    <div className="border-t border-ink/10">
-      <div className="px-6 py-4 border-b border-ink/10">
-        <p className="font-mono text-[9px] font-bold uppercase tracking-[0.35em] text-ink/50">// Session_Node</p>
-      </div>
-      <dl className="px-6 py-5 space-y-4 font-mono text-[11px]">
-        <InfoRow label="GATEWAY" value={connectionStatus} />
-        <InfoRow label="CLUSTER" value={wakeConfigured ? 'AWS_FARGATE_WAKE' : 'DIRECT_STREAM'} />
-        <div className="space-y-1.5">
-          <dt className="text-ink/50 tracking-widest text-[9px] uppercase">TRACE_ID</dt>
-          <dd className="break-all text-[10px] text-ink/70 uppercase font-mono leading-relaxed">
-            {sessionId ?? 'NULL_PTR'}
-          </dd>
-        </div>
-      </dl>
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <dt className="text-ink/50 tracking-widest text-[9px] uppercase font-bold">{label}</dt>
-      <dd className="text-ink font-bold uppercase text-[10px]">{value}</dd>
     </div>
   );
 }

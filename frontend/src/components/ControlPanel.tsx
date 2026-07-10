@@ -1,5 +1,5 @@
 import type { AudioInputDevice } from '../hooks/useAudioCapture';
-import { Mic, RefreshCcw, Info, AlertTriangle } from 'lucide-react';
+import { Mic, RefreshCcw, Info, AlertTriangle, Square } from 'lucide-react';
 
 interface ControlPanelProps {
   isCapturing: boolean;
@@ -33,16 +33,16 @@ export default function ControlPanel({
   const deviceControlsDisabled = isCapturing || isConnecting;
 
   return (
-    <div className="border-b border-ink/10">
+    <div className="border-b border-[#dce5f2]">
       {/* Engine header */}
       <div className="px-6 pt-6 pb-4 flex items-start justify-between">
         <div>
-          <p className="font-mono text-[9px] font-bold uppercase tracking-[0.35em] text-ink/60">// Processing_Engine</p>
-          <p className="mt-2 text-[11px] leading-relaxed text-ink/60 font-light">
-            Connect to ECS Fargate backend to start captioning.
+          <p className="text-sm font-bold text-ink">Ready to listen</p>
+          <p className="mt-1.5 text-xs leading-relaxed text-ink-muted">
+            Choose an input, then start a live session.
           </p>
         </div>
-        <div className={`flex items-center gap-1.5 font-mono text-[9px] font-bold uppercase tracking-widest border px-2 py-1 ${
+        <div className={`flex items-center gap-1.5 rounded-full text-[10px] font-bold border px-2.5 py-1 ${
           isCapturing
             ? 'border-emerald-pro/30 text-emerald-pro bg-emerald-pro/5'
             : 'border-ink/20 text-ink/50 bg-ink/3'
@@ -57,45 +57,44 @@ export default function ControlPanel({
         <button
           onClick={onStart}
           disabled={isCapturing || isConnecting}
-          className="w-full h-14 bg-ink text-paper font-mono text-[11px] font-bold uppercase tracking-[0.25em] border border-ink hover:bg-crimson hover:border-crimson disabled:opacity-30 disabled:cursor-not-allowed transition-all relative overflow-hidden group"
+          className="w-full h-12 rounded-xl bg-emerald-pro text-white text-sm font-bold border border-emerald-pro hover:-translate-y-0.5 hover:bg-[#087b6c] hover:border-[#087b6c] disabled:opacity-30 disabled:cursor-not-allowed transition-all relative overflow-hidden group shadow-lg shadow-emerald-pro/15"
         >
           {isConnecting ? (
             <span className="flex items-center justify-center gap-2">
               <span className="w-4 h-px bg-paper/60 animate-[loading_1.2s_infinite_linear]" />
               {connectionStatusLabel ?? 'WAKING...'}
             </span>
-          ) : 'START STREAM'}
+          ) : <span className="flex items-center justify-center gap-2"><Mic className="h-4 w-4" />Start session</span>}
           <div className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 bg-gradient-to-r from-transparent via-white/10 to-transparent pointer-events-none" />
         </button>
 
         <div className="flex items-start gap-2 px-1">
           <Info className="w-3 h-3 text-ink/40 shrink-0 mt-0.5" />
-          <p className="text-[9px] leading-relaxed text-ink/50 uppercase tracking-wider font-mono">
-            Start to grant microphone access.{' '}
-            <span className="text-crimson font-bold">Transcription is usage-based.</span>
+          <p className="text-xs leading-relaxed text-ink-muted">
+            Starting the session will ask for microphone access.
           </p>
         </div>
 
         <button
           onClick={onStop}
           disabled={!isCapturing || isConnecting}
-          className="w-full h-11 border border-ink/15 text-ink/40 font-mono text-[10px] font-bold uppercase tracking-[0.2em] hover:border-crimson/50 hover:text-crimson transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+          className="w-full h-12 rounded-xl border border-crimson/80 bg-white text-crimson text-sm font-bold hover:-translate-y-0.5 hover:bg-crimson hover:text-white disabled:opacity-25 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
         >
-          STOP PROCESSING
+          <Square className="h-3.5 w-3.5 fill-current" />Stop session
         </button>
       </div>
 
       {/* Audio Source */}
-      <div className="px-6 pb-6 border-t border-ink/10 pt-5 space-y-3">
+      <div className="px-6 pb-6 border-t border-[#dce5f2] pt-5 space-y-3">
         <div className="flex items-center justify-between">
-          <label className="flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-widest text-ink/60">
-            <Mic className="w-3 h-3 text-crimson/70" />
+          <label className="flex items-center gap-2 text-xs font-bold text-ink-muted">
+            <Mic className="w-3 h-3 text-emerald-pro/70" />
             Audio Source
           </label>
           <button
             onClick={onRefreshAudioInputDevices}
             disabled={deviceControlsDisabled}
-            className="flex items-center gap-1.5 font-mono text-[9px] font-bold uppercase tracking-widest text-ink/40 hover:text-ink/80 transition-colors disabled:opacity-30"
+            className="flex items-center gap-1.5 text-xs font-semibold text-ink-muted hover:text-emerald-pro transition-colors disabled:opacity-30"
           >
             <RefreshCcw className={`w-3 h-3 ${isConnecting ? 'animate-spin' : ''}`} />
             Scan
@@ -107,7 +106,7 @@ export default function ControlPanel({
             value={selectedDeviceId}
             onChange={(e) => onSelectedDeviceChange(e.target.value)}
             disabled={deviceControlsDisabled}
-            className="w-full h-11 bg-white border border-ink/20 px-4 pr-10 font-mono text-[11px] text-ink/80 focus:border-ink/50 focus:outline-none disabled:opacity-30 cursor-pointer hover:bg-ink/3 transition-colors appearance-none"
+            className="w-full h-11 rounded-xl bg-white border border-ink/15 px-4 pr-10 font-mono text-[11px] text-ink/80 focus:border-emerald-pro focus:outline-none disabled:opacity-30 cursor-pointer hover:bg-emerald-pro/3 transition-colors appearance-none"
           >
             <option value="default">Default System Device</option>
             {audioInputDevices.map((d) => (
@@ -123,11 +122,11 @@ export default function ControlPanel({
       </div>
 
       {/* Purge */}
-      <div className="px-6 pb-6 border-t border-ink/5">
+      <div className="px-6 pb-6 border-t border-[#dce5f2]">
         <button
           onClick={onClear}
           disabled={!canClear || isConnecting}
-          className="mt-5 w-full h-9 border border-ink/15 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-ink/40 hover:text-ink/70 hover:border-ink/30 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+          className="mt-5 w-full h-9 rounded-xl border border-ink/15 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-ink/40 hover:text-ink/70 hover:border-ink/30 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
         >
           PURGE SESSION CACHE
         </button>
