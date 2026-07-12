@@ -3,7 +3,7 @@
 # the signed CloudFront /api/wake behavior.
 
 locals {
-  wake_endpoint_allowed_origins = var.custom_domain != "" ? ["https://${var.custom_domain}"] : []
+  wake_endpoint_allowed_origins = var.custom_domain != "" ? ["https://${var.custom_domain}"] : ["*"]
 
   wake_endpoint_allowed_origin = join(",", local.wake_endpoint_allowed_origins)
   # The migration wake endpoint always controls the private target service.
@@ -49,7 +49,7 @@ data "archive_file" "wake_backend" {
           return {
               "Access-Control-Allow-Origin": allowed_origin,
               "Access-Control-Allow-Methods": "POST, OPTIONS",
-              "Access-Control-Allow-Headers": "content-type",
+              "Access-Control-Allow-Headers": "content-type, x-amz-content-sha256",
               "Cache-Control": "no-store",
               "Content-Type": "application/json",
           }
@@ -181,6 +181,14 @@ resource "aws_lambda_function_url" "wake_backend" {
   count              = var.enable_wake_endpoint ? 1 : 0
   function_name      = aws_lambda_function.wake_backend[0].function_name
   authorization_type = "AWS_IAM"
+
+  cors {
+    allow_credentials = false
+    allow_headers     = ["content-type", "x-amz-content-sha256"]
+    allow_methods     = ["POST"]
+    allow_origins     = local.wake_endpoint_allowed_origins
+    max_age           = 300
+  }
 }
 
 resource "aws_lambda_permission" "wake_backend_function_url" {
