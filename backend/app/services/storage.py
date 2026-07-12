@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from pathlib import PurePosixPath
 from typing import List
 
 import boto3
@@ -213,9 +214,15 @@ def generate_presigned_download_link(
     """
     try:
         s3_client = boto3.client("s3", region_name=region)
+        filename = PurePosixPath(key).name or "livecap-transcript.txt"
         url = s3_client.generate_presigned_url(
             "get_object",
-            Params={"Bucket": bucket, "Key": key},
+            Params={
+                "Bucket": bucket,
+                "Key": key,
+                "ResponseContentDisposition": f'attachment; filename="{filename}"',
+                "ResponseContentType": "text/plain; charset=utf-8",
+            },
             ExpiresIn=expiration_seconds,
         )
         return url
