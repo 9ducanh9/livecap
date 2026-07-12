@@ -34,6 +34,7 @@ describe('wakeBackendIfConfigured', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0][0]).toBe('https://example.test/api/wake');
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' });
+    expect(fetchMock.mock.calls[0][1]?.headers).toBeUndefined();
     expect(fetchMock.mock.calls[1][0]).toBe(
       'https://example.test/api/health'
     );
