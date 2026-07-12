@@ -2,6 +2,8 @@ const DEFAULT_HEALTH_TIMEOUT_MS = 120_000;
 const DEFAULT_HEALTH_POLL_INTERVAL_MS = 5_000;
 const PRODUCTION_BACKEND_ORIGIN = 'https://dpeohr327wt9l.cloudfront.net';
 const CUSTOM_FRONTEND_HOST = 'livecap.logantai.com';
+const EMPTY_SHA256 =
+  'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 
 export interface WakeBackendOptions {
   wakeUrl?: string;
@@ -23,6 +25,7 @@ export async function wakeBackendIfConfigured({
 
   const wakeResponse = await fetch(normalizedWakeUrl, {
     method: 'POST',
+    headers: { 'x-amz-content-sha256': EMPTY_SHA256 },
   });
 
   if (!wakeResponse.ok) {
