@@ -9,6 +9,9 @@
 
 import type { Segment } from '../types';
 
+const PRODUCTION_BACKEND_ORIGIN = 'https://dpeohr327wt9l.cloudfront.net';
+const CUSTOM_FRONTEND_HOST = 'livecap.logantai.com';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -48,7 +51,13 @@ export class ExportError extends Error {
 
 function resolveApiBaseUrl(baseUrl?: string): string {
   const configuredUrl = baseUrl ?? import.meta.env.VITE_API_BASE_URL ?? '';
-  return configuredUrl.replace(/\/$/, '');
+  if (configuredUrl.trim() !== '') {
+    return configuredUrl.replace(/\/$/, '');
+  }
+  if (window.location.hostname === CUSTOM_FRONTEND_HOST) {
+    return PRODUCTION_BACKEND_ORIGIN;
+  }
+  return '';
 }
 
 // ---------------------------------------------------------------------------
