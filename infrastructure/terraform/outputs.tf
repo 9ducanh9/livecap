@@ -186,7 +186,7 @@ output "deployment_instructions" {
        VITE_API_BASE_URL=${local.frontend_base_url}
        VITE_WS_URL=${local.frontend_ws_url}
        VITE_WAKE_BACKEND_URL=${var.enable_wake_endpoint ? "/api/wake" : ""}
-       VITE_BACKEND_HEALTH_URL=${local.frontend_base_url}/api/health
+       VITE_BACKEND_HEALTH_URL=/api/health
        VITE_BACKEND_WAKE_TIMEOUT_SECONDS=120
        VITE_MAX_SESSION_SECONDS=${var.session_timeout_seconds}
        EOF

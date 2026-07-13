@@ -1,7 +1,5 @@
 const DEFAULT_HEALTH_TIMEOUT_MS = 120_000;
 const DEFAULT_HEALTH_POLL_INTERVAL_MS = 5_000;
-const PRODUCTION_BACKEND_ORIGIN = 'https://dpeohr327wt9l.cloudfront.net';
-const CUSTOM_FRONTEND_HOST = 'livecap.logantai.com';
 const EMPTY_SHA256 =
   'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 
@@ -43,6 +41,7 @@ function configuredWakeBackendUrl(): string | undefined {
   return (
     import.meta.env.VITE_WAKE_BACKEND_URL ||
     import.meta.env.VITE_WAKE_API_URL ||
+    (import.meta.env.PROD ? '/api/wake' : undefined) ||
     undefined
   );
 }
@@ -51,13 +50,7 @@ function configuredHealthUrl(apiBaseUrl: unknown): string {
   const explicitHealthUrl = normalizeOptionalUrl(
     import.meta.env.VITE_BACKEND_HEALTH_URL
   );
-  return explicitHealthUrl ?? productionBackendUrl('/api/health') ?? buildHealthUrl(apiBaseUrl);
-}
-
-function productionBackendUrl(path: string): string | null {
-  return window.location.hostname === CUSTOM_FRONTEND_HOST
-    ? `${PRODUCTION_BACKEND_ORIGIN}${path}`
-    : null;
+  return explicitHealthUrl ?? buildHealthUrl(apiBaseUrl);
 }
 
 function configuredWakeTimeoutMs(): number {
