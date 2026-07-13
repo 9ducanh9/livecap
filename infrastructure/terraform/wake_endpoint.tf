@@ -41,31 +41,23 @@ data "archive_file" "wake_backend" {
 
       CLUSTER_NAME = os.environ["CLUSTER_NAME"]
       SERVICE_NAME = os.environ["SERVICE_NAME"]
-      ALLOWED_ORIGINS = [origin for origin in os.environ.get("ALLOWED_ORIGIN", "").split(",") if origin]
-
-
-      def _headers(origin):
-          allowed_origin = origin if origin in ALLOWED_ORIGINS else (ALLOWED_ORIGINS[0] if ALLOWED_ORIGINS else "*")
+      def _headers():
           return {
-              "Access-Control-Allow-Origin": allowed_origin,
-              "Access-Control-Allow-Methods": "POST, OPTIONS",
-              "Access-Control-Allow-Headers": "content-type, x-amz-content-sha256",
               "Cache-Control": "no-store",
               "Content-Type": "application/json",
           }
 
 
       def handler(event, context):
-          origin = (event.get("headers") or {}).get("origin") or (event.get("headers") or {}).get("Origin")
           method = event.get("requestContext", {}).get("http", {}).get("method", "POST")
 
           if method == "OPTIONS":
-              return {"statusCode": 204, "headers": _headers(origin), "body": ""}
+              return {"statusCode": 204, "headers": _headers(), "body": ""}
 
           if method != "POST":
               return {
                   "statusCode": 405,
-                  "headers": _headers(origin),
+                  "headers": _headers(),
                   "body": json.dumps({
                       "status": "error",
                       "error": "METHOD_NOT_ALLOWED",
@@ -80,7 +72,7 @@ data "archive_file" "wake_backend" {
           if running_count > 0 and desired_count > 0:
               return {
                   "statusCode": 200,
-                  "headers": _headers(origin),
+                  "headers": _headers(),
                   "body": json.dumps({
                       "status": "already_running",
                       "cluster": CLUSTER_NAME,
@@ -97,7 +89,7 @@ data "archive_file" "wake_backend" {
 
           return {
               "statusCode": 202,
-              "headers": _headers(origin),
+              "headers": _headers(),
               "body": json.dumps({
                   "status": "waking",
                   "cluster": CLUSTER_NAME,
