@@ -1,10 +1,10 @@
 # LiveCap As-Deployed Architecture
 
-This document describes the AWS environment serving the public LiveCap demo.
-It is intentionally separate from the reviewed target architecture so that
-planned controls are not presented as already deployed.
+This document describes the AWS environment serving the public LiveCap site at
+[livecap.logantai.com](https://livecap.logantai.com/).
 
-Verified on 2026-07-07 in `ap-southeast-1`.
+Verified on 2026-07-14 in `ap-southeast-1`. CloudFront and its WAF are global;
+the CloudFront WAF is managed through the required `us-east-1` provider scope.
 
 ## Resource Topology
 
@@ -13,113 +13,166 @@ flowchart TB
     User["Browser"]
 
     subgraph Global["AWS global edge"]
-        CFWAF["CloudFront WAF - blocking"]
+        CFWAF["CloudFront WAF - BLOCK"]
         CF["CloudFront distribution"]
     end
 
-    subgraph SG["AWS Region ap-southeast-1"]
+    subgraph Region["ap-southeast-1"]
         Frontend["S3 frontend bucket - private OAC access"]
+        Wake["Wake Lambda - AWS_IAM Function URL"]
+        ECS["ECS service - desired 0 or 1 - max 1"]
         ECR["ECR repository - immutable tags"]
         Transcript["S3 transcript bucket - private"]
-        CW["CloudWatch logs and metrics"]
-        Service["ECS service control plane - desired 1"]
+        CW["CloudWatch logs, metrics, and dashboard"]
+        Budget["AWS Budget - monthly cost guard"]
 
-        subgraph VPC["Existing default VPC"]
+        subgraph VPC["Custom VPC 10.20.0.0/16"]
+            ALBWAF["Regional ALB WAF - BLOCK"]
+            ALB["Internet-facing ALB - HTTPS"]
+
             subgraph AZA["ap-southeast-1a"]
-                PublicA[Public subnet A]
+                PublicA["Public subnet 10.20.0.0/24"]
+                PrivateA["Private subnet 10.20.10.0/24"]
+                NAT["NAT Gateway"]
             end
+
             subgraph AZB["ap-southeast-1b"]
-                PublicB[Public subnet B]
+                PublicB["Public subnet 10.20.1.0/24"]
+                PrivateB["Private subnet 10.20.11.0/24"]
             end
-            ALB["Internet-facing ALB spanning both subnets"]
-            ALBWAF["Regional ALB WAF - blocking"]
-            Task["Fargate task - public IP - possible placement in either AZ"]
+
+            Task["One possible Fargate task placement - no public IP"]
         end
 
-        Transcribe[Amazon Transcribe Streaming]
-        Translate[Amazon Translate]
+        Transcribe["Amazon Transcribe Streaming"]
+        Translate["Amazon Translate"]
     end
 
-    User -->|HTTPS / WSS| CFWAF
+    User -->|HTTPS and WSS| CFWAF
     CFWAF --> CF
     CF -->|OAC origin fetch| Frontend
-    CF -->|verified origin header - /api/* and /ws/*| ALBWAF
+    CF -->|/api/wake - OAC SigV4| Wake
+    Wake -->|DescribeServices and UpdateService desired 1| ECS
+    CF -->|HTTPS /api and WSS /ws| ALBWAF
     ALBWAF --> ALB
     PublicA --- ALB
     PublicB --- ALB
-    PublicA -.->|possible task placement| Task
-    PublicB -.->|possible task placement| Task
-    ALB -->|Target group - HTTP 8000| Task
-    Service -->|maintains one healthy task| Task
-    ECR -.->|pull immutable 1ef4250-amd64 image| Task
-    Task -->|16 kHz PCM stream| Transcribe
-    Transcribe -->|partial and finalized text| Task
-    Task -->|finalized text| Translate
-    Translate -->|translated text| Task
+    ALB -->|Target group HTTP 8000| Task
+    ECS -->|maintains at most one task| Task
+    PrivateA -.->|possible placement| Task
+    PrivateB -.->|possible placement| Task
+    Task -->|private-subnet egress| NAT
+    NAT --> Transcribe
+    NAT --> Translate
+    ECR -.->|pull immutable 84c95f5-amd64 image| Task
     Task -->|exported TXT only| Transcript
     Task -.->|structured application logs| CW
-    ALB -.->|service metrics| CW
+    ALB -.->|traffic and health metrics| CW
+    Wake -.->|invocation metrics and logs| CW
 ```
 
-The single task is not duplicated across both Availability Zones. ECS can place
-the one desired task in either configured public subnet and replaces it if it
-fails. This provides self-healing, not active-active high availability; an
-in-flight WebSocket session is lost during task replacement.
+Only one Fargate task runs at a time. ECS may place it in either configured
+private subnet and replaces it after failure. This is self-healing rather than
+active-active high availability; an in-flight WebSocket session is lost during
+task replacement.
 
 ## Runtime Flows
 
 ### Frontend
 
 1. The browser requests `/` over HTTPS from CloudFront.
-2. A viewer-request CloudFront Function rewrites extensionless React routes
-   such as `/app` to `/index.html` without masking WAF or API errors.
-3. CloudFront fetches the private React/Vite assets from S3 through Origin
-   Access Control and caches static assets at edge locations.
+2. CloudFront WAF evaluates blocking managed rules and the rate-based rule.
+3. A viewer-request CloudFront Function rewrites extensionless React routes
+   such as `/app` to `/index.html` without rewriting API or WAF errors.
+4. CloudFront fetches private React/Vite assets from S3 through Origin Access
+   Control and caches static assets at edge locations.
+
+### Wake and Health
+
+1. The user selects **Start session**.
+2. The browser posts to same-origin `/api/wake` through CloudFront.
+3. CloudFront signs the origin request with Lambda OAC. The Function URL uses
+   `AWS_IAM`, so direct public invocation is denied.
+4. Lambda reads the target ECS service and calls `UpdateService(desiredCount=1)`
+   only when needed.
+5. The frontend polls `/api/health` through CloudFront and the ALB until the
+   target is healthy, then opens the WebSocket.
 
 ### Live Caption Session
 
 1. The browser opens `/ws/transcribe` through CloudFront using WSS.
-2. CloudFront adds the private origin verification header and forwards the
-   upgraded request through the regional ALB WAF over the current HTTP origin
-   connection.
-3. The ALB sends traffic only to the healthy Fargate target on port 8000.
+2. CloudFront forwards the upgraded request over HTTPS through the regional ALB
+   WAF to the multi-AZ ALB.
+3. The ALB sends traffic only to a healthy Fargate target on port 8000.
 4. The browser streams 16 kHz, 16-bit, mono PCM chunks.
 5. FastAPI streams audio to Amazon Transcribe and sends finalized text to
    Amazon Translate.
-6. Finalized bilingual segments return over the same WebSocket path:
+6. Finalized bilingual segments return over the same path:
    Fargate -> ALB -> CloudFront -> browser.
+
+### Idle Scale-Down
+
+1. When the final active WebSocket session ends, the backend starts a 300-second
+   grace timer.
+2. A new session cancels the pending timer.
+3. If the registry remains empty, the backend calls ECS
+   `UpdateService(desiredCount=0)`.
 
 ### Transcript Export
 
 1. The browser posts finalized segments to `/api/sessions/{session_id}/export`.
 2. The backend serializes the transcript and stores the TXT object in the
    private transcript bucket.
-3. The backend returns a time-limited presigned download URL.
+3. The backend returns a time-limited presigned download URL and the browser
+   starts the download.
 4. Raw microphone audio is never stored.
 
 ## Verified Current State
 
 | Area | Current deployment |
 |---|---|
-| Frontend entrypoint | CloudFront HTTPS |
-| Backend entrypoint | CloudFront `/api/*` and `/ws/*` -> public ALB |
-| ALB placement | Public subnets in `ap-southeast-1a` and `ap-southeast-1b` |
-| Backend compute | One healthy ECS Fargate task, task definition revision 5 |
-| Task networking | Default VPC public subnets, public IP enabled |
-| Backend image | Immutable `1ef4250-amd64` ECR tag |
-| Viewer TLS | Terminates at CloudFront |
-| CloudFront to ALB | HTTP origin |
-| Origin TLS prerequisite | ACM certificate for `api.livecap.logantai.com` requested in `ap-southeast-1`; pending external DNS validation |
-| WAF | Blocking Web ACLs associated with CloudFront and ALB; BLOCK/COUNT logs retained for 14 days with sensitive headers redacted |
-| ALB ingress | Port 80 restricted to the AWS-managed CloudFront origin-facing prefix list; direct requests are denied by security group and ALB WAF |
-| Wake and scale-to-zero | Not deployed; desired count remains 1 |
-| Transcript retention | 14 days; no raw audio storage |
-| CloudWatch log retention | 14 days |
+| Public entrypoint | `https://livecap.logantai.com/` through CloudFront |
+| Static frontend | Private S3 bucket through CloudFront OAC |
+| Backend entrypoint | CloudFront `/api/*` and `/ws/*` -> HTTPS target ALB |
+| VPC | Dedicated `10.20.0.0/16` VPC across `ap-southeast-1a` and `ap-southeast-1b` |
+| ALB placement | Two public subnets; ingress restricted to the CloudFront origin-facing prefix list |
+| Task networking | Two private subnets; `assign_public_ip=false` |
+| ECS capacity | Desired count changes `0 <-> 1`; maximum capacity is 1 |
+| Backend task definition | `livecap-target-backend-dev:3` |
+| Backend image | Immutable `84c95f5-amd64` ECR tag |
+| Wake endpoint | IAM-protected Lambda Function URL reached through CloudFront OAC |
+| WAF | Separate blocking Web ACLs for CloudFront and the ALB |
+| Transcript storage | Private S3, 14-day retention, no raw audio storage |
+| Observability | CloudWatch logs, metrics, dashboard, and WAF logs; Terraform-managed log groups use 14-day retention, while the direct Watchtower group still needs a policy |
+| Cost guard | AWS Budget with a `$50` monthly threshold; no notification subscriber is currently configured and billing data is not real time |
+| CI | Backend, Frontend, Terraform, and Secret scan jobs pass; CI does not deploy |
 
-## Target Delta
+## Security Boundaries
 
-The Terraform target introduces a dedicated two-AZ VPC, private Fargate
-subnets, one NAT Gateway, `assign_public_ip=false`,
-CloudFront-authenticated wake Lambda, ECS `0 <-> 1` idle scaling, a CloudWatch
-dashboard, and an AWS Budget. These resources require state import, plan review,
-and a blue/green cutover before they can be described as deployed.
+- The frontend and transcript S3 buckets block public access.
+- CloudFront OAC is used for both the S3 frontend origin and the wake Lambda
+  origin.
+- The ALB security group accepts HTTPS only from the AWS-managed CloudFront
+  origin-facing prefix list.
+- The task security group accepts port 8000 only from the ALB security group.
+- The wake Lambda role is limited to `ecs:DescribeServices` and
+  `ecs:UpdateService` for the target ECS service, plus basic Lambda logging.
+- Runtime AWS access uses ECS task and execution roles; credentials are not
+  stored in the frontend or container image.
+
+## Known Boundaries
+
+- One NAT Gateway in `ap-southeast-1a` is a cost-sensitive single-AZ dependency
+  for private task egress.
+- A maximum of one task preserves correctness for the in-memory active-session
+  registry but does not provide active-active availability.
+- ALB, NAT Gateway, and WAF retain baseline cost while ECS is at zero.
+- Container Insights is intentionally disabled for cost control; the dashboard
+  uses standard ECS metrics.
+- The direct Watchtower `livecap` log group needs an explicit retention policy,
+  and the budget needs a notification subscriber before either can be treated
+  as a complete production guardrail.
+- Legacy default-VPC ALB/ECS/EC2 and storage resources remain outside this
+  request path until ownership and deletion are reviewed separately.
+- ECR operating-system package findings must be reviewed during every base-image
+  rebuild before commercial production release.
