@@ -14,6 +14,13 @@ with Amazon Translate, and displays bilingual captions side by side.
 - [Three-minute demo guide](docs/demo-guide.md)
 - [Verified as-deployed architecture](docs/as-deployed-architecture.md)
 
+> **Cold-start notice:** To reduce idle cost, LiveCap scales its ECS backend to
+> zero after five minutes without an active session. The first **Start session**
+> after an idle period usually takes 30-60 seconds while Fargate starts and
+> passes its health check. During that window, `/api/health` may temporarily
+> return `503 Service Unavailable`; keep the workspace open while it shows
+> **Starting backend**. The UI retries for up to 120 seconds.
+
 The latest tagged release is `v1.5.2`. The live environment also includes
 post-release frontend and AWS hardening tracked in
 [PR #4](https://github.com/9ducanh9/livecap/pull/4).

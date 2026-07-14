@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   startCapture: vi.fn<() => Promise<void>>(),
   stopCapture: vi.fn(),
   wakeBackend: vi.fn<() => Promise<void>>(),
+  wakeConfigured: false,
 }));
 
 vi.mock('../hooks/useWebSocket', () => ({
@@ -36,7 +37,7 @@ vi.mock('../hooks/useAudioCapture', () => ({
 }));
 
 vi.mock('../services/wakeService', () => ({
-  isWakeBackendConfigured: () => false,
+  isWakeBackendConfigured: () => mocks.wakeConfigured,
   isBackendWakeError: () => false,
   wakeBackendIfConfigured: mocks.wakeBackend,
 }));
@@ -46,6 +47,7 @@ describe('DashboardPage start flow', () => {
     vi.clearAllMocks();
     mocks.wakeBackend.mockResolvedValue();
     mocks.startCapture.mockResolvedValue();
+    mocks.wakeConfigured = false;
   });
 
   afterEach(() => {
@@ -87,5 +89,25 @@ describe('DashboardPage start flow', () => {
     ).toBeTruthy();
     expect(mocks.startCapture).not.toHaveBeenCalled();
     expect(mocks.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('explains the expected cold start while the backend is waking', async () => {
+    mocks.wakeConfigured = true;
+    mocks.wakeBackend.mockImplementation(() => new Promise<void>(() => undefined));
+
+    render(<DashboardPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
+
+    expect(
+      await screen.findByText(
+        'The backend is waking from idle. This usually takes 30-60 seconds; temporary 503 responses are expected.'
+      )
+    ).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: 'Starting backend' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+    expect(mocks.connect).not.toHaveBeenCalled();
+    expect(mocks.startCapture).not.toHaveBeenCalled();
   });
 });

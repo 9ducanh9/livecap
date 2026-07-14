@@ -70,8 +70,10 @@ export default function ControlPanel({
 
         <div className="flex items-start gap-2 px-1">
           <Info className="w-3 h-3 text-ink/40 shrink-0 mt-0.5" />
-          <p className="text-xs leading-relaxed text-ink-muted">
-            Starting the session will ask for microphone access.
+          <p className="text-xs leading-relaxed text-ink-muted" role="status" aria-live="polite">
+            {isConnecting && connectionStatusLabel === 'Starting backend'
+              ? 'The backend is waking from idle. This usually takes 30-60 seconds; temporary 503 responses are expected.'
+              : 'Starting the session will ask for microphone access.'}
           </p>
         </div>
 

@@ -108,7 +108,7 @@ export default function DashboardPage() {
     let startPhase: 'wake' | 'socket' | 'audio' = 'wake';
     dispatch({ type: 'CLEAR_ERROR' });
     setIsStarting(true);
-    setStartStatusLabel(isWakeBackendConfigured() ? 'Waking Node' : 'Linking');
+    setStartStatusLabel(isWakeBackendConfigured() ? 'Starting backend' : 'Linking');
     try {
       await wakeBackendIfConfigured();
       startPhase = 'socket';
@@ -123,7 +123,7 @@ export default function DashboardPage() {
         dispatch({
           type: 'SET_ERROR',
           error: isBackendWakeError(err)
-            ? 'Backend is still starting. Please try again shortly.'
+            ? 'Backend did not become ready within 120 seconds. Please wait a moment and try again.'
             : startPhase === 'socket'
               ? 'Unable to connect to the backend stream. Please try again.'
               : 'Failed to start audio capture. Please check your microphone.',
