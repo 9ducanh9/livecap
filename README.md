@@ -26,8 +26,8 @@ post-release frontend and AWS hardening tracked in
 
 ### Caption Workspace
 
-This screenshot was captured from the production UI while a test WAV passed
-through the complete WebSocket, Transcribe, and Translate path.
+This screenshot shows the current production caption workspace in its ready
+state before microphone capture begins.
 
 ![LiveCap caption dashboard](docs/livecap-dashboard.png)
 
