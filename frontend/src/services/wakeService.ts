@@ -41,6 +41,7 @@ function configuredWakeBackendUrl(): string | undefined {
   return (
     import.meta.env.VITE_WAKE_BACKEND_URL ||
     import.meta.env.VITE_WAKE_API_URL ||
+    (import.meta.env.PROD ? '/api/wake' : undefined) ||
     undefined
   );
 }

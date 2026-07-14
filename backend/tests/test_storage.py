@@ -306,9 +306,31 @@ class TestGeneratePresignedDownloadLink:
         assert url.startswith("https://")
         mock_client.generate_presigned_url.assert_called_once_with(
             "get_object",
-            Params={"Bucket": "bucket", "Key": "transcripts/sess/file.txt"},
+            Params={
+                "Bucket": "bucket",
+                "Key": "transcripts/sess/file.txt",
+                "ResponseContentDisposition": 'attachment; filename="file.txt"',
+                "ResponseContentType": "text/plain; charset=utf-8",
+            },
             ExpiresIn=86400,
         )
+
+    def test_presigned_url_requests_attachment_download(self):
+        """The presigned URL should instruct browsers to download the TXT file."""
+        mock_client = MagicMock()
+        mock_client.generate_presigned_url.return_value = "https://url"
+        with patch("boto3.client", return_value=mock_client):
+            generate_presigned_download_link(
+                bucket="bucket",
+                key="transcripts/sess/livecap-output.txt",
+                expiration_seconds=3600,
+            )
+
+        params = mock_client.generate_presigned_url.call_args[1]["Params"]
+        assert params["ResponseContentDisposition"] == (
+            'attachment; filename="livecap-output.txt"'
+        )
+        assert params["ResponseContentType"] == "text/plain; charset=utf-8"
 
     def test_passes_expiration_seconds(self):
         """Requirement 9.3: configurable expiration time."""

@@ -1,553 +1,102 @@
-import { useEffect, useRef } from 'react';
-import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { ProButton } from './ui';
-import { Activity, Mic, Zap, Cpu, MessageSquare, Languages, Download, ArrowRight, Layers, CheckCircle2, Info, ShieldAlert } from 'lucide-react';
+import { ArrowRight, AudioLines, Check, Clock3, Cloud, FileText, Globe2, LockKeyhole, Mic2, Radio, Sparkles } from 'lucide-react';
 
-gsap.registerPlugin(ScrollTrigger);
+const capabilities = [
+  { icon: AudioLines, label: 'Live captions', copy: 'Turn speech into readable, continuously updating captions.' },
+  { icon: Globe2, label: 'Bilingual output', copy: 'Keep Vietnamese and English conversations in one shared flow.' },
+  { icon: FileText, label: 'Session exports', copy: 'Keep a clean record when the conversation is complete.' },
+];
 
-const mockupSteps = [
-  {
-    eyebrow: 'Step 01',
-    title: 'Microphone connected',
-    body: 'Capture starts only after the backend is awake and the WebSocket is ready.',
-    primary: 'Default microphone',
-    secondary: '16 kHz PCM stream ready',
-    icon: <Mic className="w-4 h-4" />,
-  },
-  {
-    eyebrow: 'Step 02',
-    title: 'Vietnamese speech appears',
-    body: 'Finalized source captions are appended as meeting participants speak.',
-    primary: 'Nghe rõ mọi ý trong cuộc họp.',
-    secondary: 'Speaker 1 · 00:14',
-    icon: <MessageSquare className="w-4 h-4" />,
-  },
-  {
-    eyebrow: 'Step 03',
-    title: 'English translation appears',
-    body: 'LiveCap renders the translated line beside the original text.',
-    primary: 'Understand every point in the meeting.',
-    secondary: 'Speaker 1 · 00:14',
-    icon: <Languages className="w-4 h-4" />,
-  },
-  {
-    eyebrow: 'Step 04',
-    title: 'Export TXT becomes ready',
-    body: 'When the session ends, finalized lines can be exported through the backend.',
-    primary: 'Transcript exported',
-    secondary: 'Presigned TXT link ready',
-    icon: <Download className="w-4 h-4" />,
-  },
-] as const;
-
-const architectureNodes = [
-  { id: 'mic', label: 'Microphone', icon: <Mic className="w-4 h-4" /> },
-  { id: 'cf', label: 'CloudFront', icon: <Zap className="w-4 h-4" /> },
-  { id: 'alb', label: 'ALB', icon: <Cpu className="w-4 h-4" /> },
-  { id: 'ecs', label: 'ECS Fargate', icon: <Layers className="w-4 h-4" /> },
-  { id: 'tr', label: 'Transcribe', icon: <Activity className="w-4 h-4" /> },
-  { id: 'tl', label: 'Translate', icon: <Languages className="w-4 h-4" /> },
-  { id: 'lc', label: 'Live Caption', icon: <CheckCircle2 className="w-4 h-4" /> },
-] as const;
-
-const transcriptLines = [
-  {
-    speaker: 'Speaker 1',
-    vi: 'Chúng ta bắt đầu với phần cập nhật kiến trúc.',
-    en: 'Let us begin with the architecture update.',
-  },
-  {
-    speaker: 'Speaker 2',
-    vi: 'Backend sẽ tự bật khi có phiên capture mới.',
-    en: 'The backend wakes when a new capture session starts.',
-  },
-  {
-    speaker: 'Speaker 1',
-    vi: 'Transcript chỉ lưu 14 ngày để kiểm soát chi phí.',
-    en: 'Transcripts are kept for 14 days to control cost.',
-  },
-] as const;
-
-const useCases = [
-  {
-    title: 'Telehealth',
-    desc: 'Bilingual sessions between specialists and patients with medical-grade terminology accuracy.',
-    metric: '99% Terminology Recall',
-  },
-  {
-    title: 'Legal Council',
-    desc: 'E2E encrypted transcription for confidential proceedings with automated data purging.',
-    metric: 'SOC2 Type II Compliant',
-  },
-  {
-    title: 'Engineering',
-    desc: 'Ultra-low latency syncing for cross-border sprint planning and technical specifications.',
-    metric: '<100ms Stream Latency',
-  },
-] as const;
+const workflow = [
+  ['01', 'Connect', 'Choose a microphone and start a secure live session.'],
+  ['02', 'Capture', 'LiveCap streams speech into captions as people speak.'],
+  ['03', 'Understand', 'Follow the original and translated conversation side by side.'],
+  ['04', 'Keep', 'Export the session when you need a shareable record.'],
+];
 
 export default function LandingPage() {
-  const rootRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (rootRef.current === null) return undefined;
-
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduceMotion) return undefined;
-
-    const ctx = gsap.context(() => {
-      gsap.from('.hero-copy', {
-        y: 40,
-        autoAlpha: 0,
-        duration: 1.2,
-        ease: 'power4.out',
-      });
-
-      const mockupStepsEls = gsap.utils.toArray<HTMLElement>('.mockup-step');
-
-      const mockupTimeline = gsap.timeline({
-        scrollTrigger: {
-          trigger: '.mockup-section',
-          start: 'top top',
-          end: '+=1800',
-          scrub: 1,
-          pin: true,
-        },
-      });
-
-      mockupStepsEls.forEach((step, index) => {
-        if (index === 0) return;
-
-        mockupTimeline
-          .to(
-            mockupStepsEls[index - 1],
-            {
-              autoAlpha: 0,
-              y: -40,
-              scale: 0.95,
-              filter: 'blur(10px)',
-              duration: 0.5,
-            },
-            index,
-          )
-          .fromTo(
-            step,
-            { autoAlpha: 0, y: 40, scale: 0.95, filter: 'blur(10px)' },
-            {
-              autoAlpha: 1,
-              y: 0,
-              scale: 1,
-              filter: 'blur(0px)',
-              duration: 0.5,
-            },
-            index,
-          );
-      });
-
-      gsap.from('.transcript-line', {
-        y: 30,
-        autoAlpha: 0,
-        filter: 'blur(8px)',
-        stagger: 0.15,
-        duration: 1,
-        ease: 'power3.out',
-        scrollTrigger: {
-          trigger: '.transcript-section',
-          start: 'top 80%',
-        },
-      });
-
-      // Architecture Pulse
-      const paths = gsap.utils.toArray<SVGPathElement>('.arch-path');
-      paths.forEach((path) => {
-        const length = path.getTotalLength();
-        gsap.set(path, { strokeDasharray: length, strokeDashoffset: length });
-
-        gsap.to(path, {
-          strokeDashoffset: 0,
-          duration: 2,
-          repeat: -1,
-          ease: 'power1.inOut',
-          scrollTrigger: {
-            trigger: '.architecture-section',
-            start: 'top 70%',
-          }
-        });
-      });
-
-      const nodes = gsap.utils.toArray<HTMLElement>('.architecture-node');
-      nodes.forEach((node, i) => {
-        gsap.from(node, {
-          autoAlpha: 0,
-          y: 20,
-          duration: 0.8,
-          delay: i * 0.08,
-          scrollTrigger: {
-            trigger: '.architecture-section',
-            start: 'top 85%',
-          },
-        });
-      });
-    }, rootRef);
-
-    return () => ctx.revert();
-  }, []);
-
   return (
-    <div ref={rootRef} className="bg-obsidian text-white font-ui selection:bg-crimson selection:text-white antialiased">
-      <LandingNav />
-      <HeroSection />
-      <PinnedMockupSection />
-      <UseCasesSection />
-      <TranscriptAnimationSection />
-      <ArchitectureSection />
-      <FinalCtaSection />
-      <SectionNav />
-    </div>
-  );
-}
+    <div className="min-h-screen overflow-x-hidden bg-[#f7f8fc] text-[#102247] selection:bg-[#70e0ca] selection:text-[#102247]">
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-56 left-[18%] h-[34rem] w-[34rem] rounded-full bg-[#a9c7ff]/40 blur-3xl" />
+        <div className="absolute right-[-12rem] top-[22rem] h-[30rem] w-[30rem] rounded-full bg-[#8ee6d4]/30 blur-3xl" />
+      </div>
 
-function LandingNav() {
-  return (
-    <nav className="fixed top-0 left-0 right-0 z-[100] border-b border-white/5 bg-obsidian/40 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 sm:px-10">
-        <a href="/" className="text-xl font-bold tracking-tighter flex items-center gap-2">
-          <Activity className="w-5 h-5 text-crimson" />
+      <header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8 lg:px-10">
+        <a href="/" className="flex items-center gap-2.5 font-instrument text-xl font-bold tracking-[-0.08em] text-[#102247]" aria-label="LiveCap home">
+          <span className="grid h-8 w-8 place-items-center rounded-xl bg-[#102247] text-[#7ee5d0]"><Radio className="h-4 w-4" /></span>
           LIVECAP
         </a>
-        <div className="flex items-center gap-6">
-          <a href="#architecture" className="hidden text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white sm:block">Architecture</a>
-          <a
-            href="/app"
-            className="font-mono text-[10px] uppercase tracking-widest border border-white/20 px-4 py-2 hover:bg-white hover:text-black transition-colors"
-          >
-            Launch App
-          </a>
-        </div>
-      </div>
-    </nav>
-  );
-}
-
-function SectionNav() {
-  const sections = [
-    { id: 'hero', label: 'Intro' },
-    { id: 'flow', label: 'Flow' },
-    { id: 'use-cases', label: 'Domains' },
-    { id: 'precision', label: 'Accuracy' },
-    { id: 'architecture', label: 'Stack' },
-  ];
-
-  return (
-    <div className="fixed right-6 top-1/2 z-[100] hidden -translate-y-1/2 space-y-4 lg:block">
-      {sections.map((s) => (
-        <a
-          key={s.id}
-          href={`#${s.id}`}
-          className="group flex items-center justify-end gap-3 outline-none"
-        >
-          <span className="text-[9px] font-bold uppercase tracking-widest opacity-0 transition-opacity group-hover:opacity-60 text-white/80">
-            {s.label}
-          </span>
-          <div className="h-1 w-4 bg-white/10 transition-all group-hover:w-8 group-hover:bg-crimson" />
+        <nav className="hidden items-center gap-7 text-sm font-medium text-[#52647f] md:flex" aria-label="Main navigation">
+          <a className="transition-colors hover:text-[#102247]" href="#how-it-works">How it works</a>
+          <a className="transition-colors hover:text-[#102247]" href="#features">Features</a>
+          <a className="transition-colors hover:text-[#102247]" href="#security">Security</a>
+        </nav>
+        <a href="/app" className="inline-flex items-center gap-2 rounded-full bg-[#102247] px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-[#102247]/15 transition-transform hover:-translate-y-0.5 hover:bg-[#18376f] sm:px-5">
+          Open workspace <ArrowRight className="h-4 w-4" />
         </a>
-      ))}
-    </div>
-  );
-}
+      </header>
 
-function HeroSection() {
-  return (
-    <section id="hero" className="hero-section relative flex min-h-[90vh] overflow-hidden px-6 py-12 sm:px-10 items-center justify-center">
-      {/* Background Video */}
-      <div className="absolute inset-0 z-0">
-        <video
-          autoPlay
-          muted
-          loop
-          playsInline
-          className="h-full w-full object-cover opacity-50 grayscale"
-          poster="https://images.pexels.com/videos/28561007/3d-4k-abstract-backdrop-28561007.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=630&w=1200"
-        >
-          <source src="https://videos.pexels.com/video-files/28561007/12421211_640_360_30fps.mp4" type="video/mp4" />
-        </video>
-        <div className="absolute inset-0 bg-gradient-to-b from-obsidian/30 via-obsidian/50 to-obsidian" />
-      </div>
-
-      <div className="absolute inset-0 z-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:80px_80px]" />
-
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-col items-center">
-        <div className="hero-copy flex flex-col items-center text-center">
-          <p className="mb-6 font-mono text-[10px] uppercase tracking-[0.4em] text-white/60 flex items-center gap-3">
-            <span className="w-8 h-px bg-white/20" />
-            Bilingual Processing
-            <span className="w-8 h-px bg-white/20" />
-          </p>
-          <h1 className="max-w-5xl text-6xl font-bold tracking-tighter text-white sm:text-8xl lg:text-9xl uppercase leading-[0.85]">
-            Precision. <br /> Real Time.
-          </h1>
-          <p className="mt-10 max-w-2xl text-lg leading-relaxed text-white/70 font-light">
-            Sub-100ms latency translation for Vietnamese and English.
-            98.5% word accuracy powered by private secure compute.
-          </p>
-          <div className="mt-12 flex flex-col gap-4 sm:flex-row">
-            <ProButton variant="primary" size="lg" onClick={() => window.location.href = '/app'} className="min-w-[200px]">
-              Start Capturing
-            </ProButton>
-            <ProButton variant="outline" size="lg" onClick={() => document.getElementById('flow')?.scrollIntoView({ behavior: 'smooth' })} className="min-w-[200px]">
-              How it works
-            </ProButton>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function PinnedMockupSection() {
-  return (
-    <section id="flow" className="mockup-section relative min-h-screen px-6 py-12 sm:px-10">
-      <div className="mx-auto grid h-full min-h-[700px] w-full max-w-7xl gap-16 lg:grid-cols-[0.7fr_1.3fr] lg:items-center">
-        <div className="z-10 bg-obsidian py-4 lg:bg-transparent">
-          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.4em] text-crimson">
-            01 / Workflow
-          </p>
-          <h2 className="mt-6 text-5xl font-bold tracking-tighter uppercase sm:text-7xl leading-tight">
-            Stream <br /> Context.
-          </h2>
-          <p className="mt-8 max-w-lg text-lg leading-relaxed text-white/70 font-light">
-            LiveCap orchestrates browser audio and AWS managed speech services
-            to deliver contextual bilingual transcripts as you speak.
-          </p>
-        </div>
-
-        <div className="relative min-h-[500px] border border-white/10 bg-white/[0.03] p-3 backdrop-blur-pro">
-          <div className="h-full border border-white/5 bg-black/60 p-6 sm:p-10">
-            <div className="mb-8 flex items-center justify-between border-b border-white/10 pb-8">
-              <div>
-                <p className="font-mono text-xs font-bold uppercase tracking-widest">Global Stream</p>
-                <p className="mt-2 font-mono text-[9px] text-white/50 tracking-widest uppercase">ESTABLISHED: SECURE ENCRYPTED</p>
-              </div>
-              <div className="flex items-center gap-3 font-mono text-[10px] text-crimson font-bold">
-                <span className="h-2 w-2 rounded-full bg-crimson animate-ping" />
-                LIVE
-              </div>
+      <main>
+        <section className="mx-auto grid max-w-7xl gap-12 px-5 pb-20 pt-14 sm:px-8 sm:pt-20 lg:grid-cols-[1.05fr_.95fr] lg:px-10 lg:pb-32 lg:pt-28">
+          <div className="flex max-w-2xl flex-col justify-center">
+            <div className="mb-7 inline-flex w-fit items-center gap-2 rounded-full border border-[#9ce5d7] bg-white/70 px-3 py-1.5 text-xs font-bold tracking-wide text-[#087b6c] shadow-sm">
+              <span className="h-2 w-2 rounded-full bg-[#16ae96] shadow-[0_0_0_4px_rgba(22,174,150,.14)]" />
+              REAL-TIME CONVERSATION SUPPORT
             </div>
-
-            <div className="relative min-h-[350px] overflow-hidden">
-              {mockupSteps.map((step) => (
-                <MockupStep key={step.title} {...step} />
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function UseCasesSection() {
-  return (
-    <section id="use-cases" className="px-6 py-20 sm:px-10 border-t border-white/5">
-      <div className="mx-auto max-w-7xl">
-        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.4em] text-crimson">
-          01.5 / Domains
-        </p>
-        <h2 className="mt-6 text-5xl font-bold tracking-tighter uppercase sm:text-7xl leading-tight">
-          Built for <br /> Specialists.
-        </h2>
-
-        <div className="mt-16 grid gap-6 md:grid-cols-3">
-          {useCases.map((uc) => (
-            <div key={uc.title} className="group border border-white/10 bg-white/[0.02] p-8 hover:bg-white/[0.05] transition-all">
-              <div className="text-emerald-pro font-mono text-[10px] font-bold uppercase tracking-widest mb-8 flex items-center gap-2">
-                <ShieldAlert className="w-3.5 h-3.5" />
-                {uc.metric}
-              </div>
-              <h3 className="text-xl font-bold uppercase tracking-tighter text-white/90 mb-4">{uc.title}</h3>
-              <p className="text-sm text-white/50 leading-relaxed font-light">{uc.desc}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function MockupStep({
-  eyebrow,
-  title,
-  body,
-  primary,
-  secondary,
-  icon,
-}: {
-  eyebrow: string;
-  title: string;
-  body: string;
-  primary: string;
-  secondary: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="mockup-step absolute inset-0 flex flex-col justify-between">
-      <div>
-        <div className="flex items-center gap-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-crimson font-bold">
-            {eyebrow}
-          </p>
-          <div className="h-px flex-1 bg-white/10" />
-        </div>
-        <h3 className="mt-4 text-3xl font-bold tracking-tighter text-white uppercase leading-tight">
-          {title}
-        </h3>
-        <p className="mt-4 max-w-md text-sm leading-relaxed text-white/70 font-light">{body}</p>
-      </div>
-
-      <div className="border border-white/10 bg-white/5 p-6 mt-8">
-        <div className="flex items-center justify-between mb-4">
-          <p className="font-mono text-[9px] uppercase tracking-widest text-white/40">
-            Node Data
-          </p>
-          <div className="text-white/30">{icon}</div>
-        </div>
-        <p className="text-xl sm:text-2xl font-mono tracking-tight text-white leading-snug">
-          {primary}
-        </p>
-        <p className="mt-4 font-mono text-[9px] text-emerald-pro uppercase tracking-widest font-bold bg-emerald-pro/10 px-2 py-1 inline-block">
-          {secondary}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function TranscriptAnimationSection() {
-  return (
-    <section id="precision" className="transcript-section px-6 py-20 sm:px-10 border-y border-white/5 bg-white/[0.01]">
-      <div className="mx-auto grid max-w-7xl gap-16 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
-        <div className="sticky top-24">
-          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.4em] text-crimson">
-            02 / Quality
-          </p>
-          <h2 className="mt-6 text-5xl font-bold tracking-tighter uppercase leading-tight sm:text-7xl">
-            Extreme <br /> Precision.
-          </h2>
-          <p className="mt-8 text-lg leading-relaxed text-white/70 font-light max-w-md">
-            LiveCap leverages AWS Transcribe Medical and custom-tuned Transformer models to achieve 98.5% accuracy on technical domain vocabulary.
-          </p>
-          <div className="mt-10 flex gap-4 border border-white/5 bg-white/[0.02] p-4 max-w-xs">
-            <Info className="w-4 h-4 text-white/30 shrink-0" />
-            <p className="text-[10px] leading-relaxed text-white/50 uppercase tracking-wider">
-              Privacy first: data is encrypted in transit and purged after 14 days.
+            <h1 className="font-instrument text-5xl font-bold leading-[.94] tracking-[-0.07em] text-[#102247] sm:text-6xl lg:text-8xl">
+              Every voice,<br />
+              <span className="text-[#0a9c88]">in the room.</span>
+            </h1>
+            <p className="mt-7 max-w-xl text-lg leading-8 text-[#52647f] sm:text-xl">
+              Live captions and bilingual translation for conversations that need everyone to stay in sync.
             </p>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          {transcriptLines.map((line) => (
-            <div
-              key={line.vi}
-              className="transcript-line border border-white/10 bg-white/[0.03] p-8 backdrop-blur-pro"
-            >
-              <div className="mb-6 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.3em] text-white/40">
-                <span className="flex items-center gap-2">
-                  <Activity className="w-3 h-3" />
-                  {line.speaker}
-                </span>
-                <span className="text-emerald-pro font-bold tracking-widest uppercase">Finalized</span>
-              </div>
-              <div className="grid gap-8 md:grid-cols-2">
-                <div className="space-y-3">
-                  <span className="text-[8px] font-mono text-white/40 uppercase tracking-widest font-bold">SOURCE // VI</span>
-                  <p className="text-lg leading-relaxed text-white font-mono tracking-tight">{line.vi}</p>
-                </div>
-                <div className="space-y-3">
-                  <span className="text-[8px] font-mono text-emerald-pro/50 uppercase tracking-widest font-bold">TRANS // EN</span>
-                  <p className="text-lg leading-relaxed text-emerald-pro/80 font-mono tracking-tight">{line.en}</p>
-                </div>
-              </div>
+            <div className="mt-9 flex flex-wrap items-center gap-4">
+              <a href="/app" className="inline-flex items-center gap-3 rounded-full bg-[#0a9c88] px-6 py-4 text-sm font-bold text-white shadow-xl shadow-[#0a9c88]/20 transition-all hover:-translate-y-0.5 hover:bg-[#087b6c]">
+                <Mic2 className="h-4 w-4" /> Start a live session <ArrowRight className="h-4 w-4" />
+              </a>
+              <a href="#how-it-works" className="rounded-full px-4 py-3 text-sm font-bold text-[#435572] transition-colors hover:text-[#0a9c88]">See how it works</a>
             </div>
-          ))}
-        </div>
-      </div>
-    </section>
+            <div className="mt-12 flex flex-wrap gap-x-7 gap-y-3 text-sm font-medium text-[#52647f]">
+              {['No download needed', 'Microphone controls', 'Export-ready sessions'].map((item) => <span key={item} className="flex items-center gap-2"><Check className="h-4 w-4 text-[#0a9c88]" />{item}</span>)}
+            </div>
+          </div>
+
+          <div className="relative mx-auto w-full max-w-xl self-center">
+            <div className="absolute -inset-5 rounded-[2.5rem] bg-gradient-to-br from-white/70 to-[#8ee6d4]/40 blur-2xl" />
+            <div className="relative overflow-hidden rounded-[2rem] border border-white/80 bg-white/75 p-5 shadow-2xl shadow-[#102247]/10 backdrop-blur-xl sm:p-7">
+              <div className="flex items-center justify-between border-b border-[#dce5f2] pb-5">
+                <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-[#e2fbf5] text-[#0a9c88]"><AudioLines className="h-5 w-5" /></span><div><p className="text-sm font-bold">Design review</p><p className="text-xs text-[#71819a]">Live transcription</p></div></div>
+                <span className="flex items-center gap-1.5 rounded-full bg-[#e4fbf5] px-2.5 py-1 text-[10px] font-bold tracking-wider text-[#087b6c]"><span className="h-1.5 w-1.5 rounded-full bg-[#16ae96] animate-pulse" />LIVE</span>
+              </div>
+              <div className="space-y-6 py-7">
+                <Caption language="VI" text="Chúng ta bắt đầu phần cập nhật kiến trúc nhé." />
+                <Caption language="EN" text="Let's begin with the architecture update." emphasis />
+                <div className="flex items-end gap-1.5 pt-1" aria-label="Audio activity indicator">{[12, 26, 40, 20, 52, 32, 16, 36, 24, 46, 14, 28].map((height, index) => <span key={index} className="w-1 rounded-full bg-[#0a9c88]/70" style={{ height }} />)}</div>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl bg-[#f3f6fb] px-4 py-3"><span className="flex items-center gap-2 text-xs font-medium text-[#71819a]"><Clock3 className="h-3.5 w-3.5" />00:12:48 elapsed</span><span className="text-xs font-bold text-[#0a9c88]">Capturing clearly</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="features" className="border-y border-[#dce5f2] bg-white/65">
+          <div className="mx-auto grid max-w-7xl divide-y divide-[#dce5f2] px-5 sm:grid-cols-3 sm:divide-x sm:divide-y-0 sm:px-8 lg:px-10">
+            {capabilities.map(({ icon: Icon, label, copy }) => <article key={label} className="py-8 sm:px-7 sm:py-10 first:sm:pl-0 last:sm:pr-0"><Icon className="mb-6 h-5 w-5 text-[#0a9c88]" /><h2 className="text-lg font-bold tracking-tight">{label}</h2><p className="mt-2 text-sm leading-6 text-[#71819a]">{copy}</p></article>)}
+          </div>
+        </section>
+
+        <section id="how-it-works" className="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:px-10 lg:py-28">
+          <div className="flex flex-col justify-between gap-8 md:flex-row md:items-end"><div><p className="text-xs font-bold tracking-[.18em] text-[#0a9c88]">SIMPLE BY DESIGN</p><h2 className="mt-3 font-instrument text-4xl font-bold tracking-[-.06em] sm:text-5xl">Ready when the conversation is.</h2></div><p className="max-w-sm text-sm leading-6 text-[#71819a]">A calm, focused workspace that gets out of the way when the discussion starts.</p></div>
+          <div className="mt-14 grid gap-4 md:grid-cols-4">{workflow.map(([number, title, copy]) => <article key={number} className="rounded-2xl border border-[#dce5f2] bg-white p-6 transition-transform hover:-translate-y-1 hover:shadow-lg hover:shadow-[#102247]/5"><span className="text-xs font-bold tracking-widest text-[#0a9c88]">{number}</span><h3 className="mt-10 text-xl font-bold tracking-tight">{title}</h3><p className="mt-3 text-sm leading-6 text-[#71819a]">{copy}</p></article>)}</div>
+        </section>
+
+        <section id="security" className="mx-auto max-w-7xl px-5 pb-20 sm:px-8 lg:px-10 lg:pb-28"><div className="overflow-hidden rounded-[2rem] bg-[#102247] px-7 py-10 text-white sm:px-12 sm:py-14"><div className="grid gap-10 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-6 grid h-11 w-11 place-items-center rounded-xl bg-white/10 text-[#7ee5d0]"><LockKeyhole className="h-5 w-5" /></div><h2 className="font-instrument text-4xl font-bold tracking-[-.06em]">A focused space for sensitive conversations.</h2><p className="mt-4 max-w-xl leading-7 text-[#c4d0e4]">LiveCap keeps controls, status, and captions visible—so you always know what your session is doing.</p></div><a href="/app" className="inline-flex w-fit items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-bold text-[#102247] transition-transform hover:-translate-y-0.5">Enter LiveCap <ArrowRight className="h-4 w-4" /></a></div><div className="mt-10 flex flex-wrap gap-x-7 gap-y-3 border-t border-white/10 pt-6 text-sm text-[#c4d0e4]"><span className="flex items-center gap-2"><LockKeyhole className="h-4 w-4 text-[#7ee5d0]" />Secure browser connection</span><span className="flex items-center gap-2"><Cloud className="h-4 w-4 text-[#7ee5d0]" />Cloud-powered processing</span><span className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#7ee5d0]" />Built for clarity</span></div></div></section>
+      </main>
+
+      <footer className="border-t border-[#dce5f2] px-5 py-7 sm:px-8 lg:px-10"><div className="mx-auto flex max-w-7xl flex-col justify-between gap-3 text-xs font-medium text-[#71819a] sm:flex-row"><span>© {new Date().getFullYear()} LiveCap</span><span>Real-time captions for shared understanding.</span></div></footer>
+    </div>
   );
 }
 
-function ArchitectureSection() {
-  return (
-    <section id="architecture" className="architecture-section px-6 py-20 sm:px-10">
-      <div className="mx-auto max-w-7xl">
-        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.4em] text-crimson">
-          03 / Infrastructure
-        </p>
-        <h2 className="mt-6 max-w-3xl text-5xl font-bold tracking-tighter uppercase sm:text-7xl leading-tight">
-          Cloud Path.
-        </h2>
-
-        <div className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-7 lg:items-center">
-          {architectureNodes.map((node, index) => (
-            <div key={node.id} className="relative flex items-center lg:block">
-              <div className="architecture-node group relative z-10 w-full border border-white/10 bg-white/[0.03] p-6 transition-all hover:border-crimson/40">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="font-mono text-[9px] text-white/30 uppercase tracking-widest font-bold">
-                    {String(index + 1).padStart(2, '0')}
-                  </div>
-                  <div className="text-white/30 group-hover:text-crimson transition-colors">{node.icon}</div>
-                </div>
-                <div className="mt-4 text-[10px] font-bold uppercase tracking-widest text-white/80 group-hover:text-white transition-colors">
-                  {node.label}
-                </div>
-              </div>
-
-              {index < architectureNodes.length - 1 && (
-                <div className="absolute left-[calc(100%-8px)] top-1/2 z-0 hidden h-px w-full lg:block">
-                  <svg className="h-px w-full overflow-visible">
-                    <path
-                      d="M 0 0.5 L 64 0.5"
-                      stroke="white"
-                      strokeWidth="1"
-                      strokeOpacity="0.1"
-                      fill="none"
-                      className="arch-path"
-                    />
-                  </svg>
-                  <ArrowRight className="absolute right-0 -top-2 w-4 h-4 text-white/10" />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function FinalCtaSection() {
-  return (
-    <section className="px-6 py-20 sm:px-10">
-      <div className="mx-auto max-w-5xl border border-white/10 bg-white/[0.02] p-12 text-center sm:p-24 relative overflow-hidden">
-        <div className="absolute inset-0 z-0 pointer-events-none opacity-10">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[400px] w-[400px] rounded-full bg-crimson blur-[120px]" />
-        </div>
-
-        <div className="relative z-10">
-          <h2 className="text-5xl font-bold tracking-tighter uppercase sm:text-8xl leading-none">
-            Join the <br /> Stream.
-          </h2>
-          <p className="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-white/60 font-light">
-            Launch the secure bilingual dashboard to start captioning.
-          </p>
-          <div className="mt-12 flex flex-col items-center gap-4">
-            <ProButton variant="primary" size="lg" onClick={() => window.location.href = '/app'} className="min-w-[240px]">
-              Launch Dashboard
-            </ProButton>
-            <p className="text-[10px] font-mono text-white/40 uppercase tracking-widest">No Registration Required</p>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
+function Caption({ language, text, emphasis = false }: { language: string; text: string; emphasis?: boolean }) {
+  return <div className={emphasis ? 'border-l-2 border-[#0a9c88] pl-4' : ''}><span className={`text-[10px] font-bold tracking-[.16em] ${emphasis ? 'text-[#0a9c88]' : 'text-[#8795aa]'}`}>{language}</span><p className={`mt-2 text-base leading-7 ${emphasis ? 'font-bold text-[#102247]' : 'text-[#52647f]'}`}>{text}</p></div>;
 }

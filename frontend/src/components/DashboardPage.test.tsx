@@ -62,7 +62,7 @@ describe('DashboardPage start flow', () => {
     );
 
     render(<DashboardPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'START STREAM' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
 
     await waitFor(() => expect(mocks.connect).toHaveBeenCalledOnce());
     expect(mocks.startCapture).not.toHaveBeenCalled();
@@ -78,7 +78,7 @@ describe('DashboardPage start flow', () => {
     mocks.connect.mockRejectedValue(new Error('connection refused'));
 
     render(<DashboardPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'START STREAM' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
 
     expect(
       await screen.findByText(

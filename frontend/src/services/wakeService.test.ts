@@ -33,7 +33,13 @@ describe('wakeBackendIfConfigured', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0][0]).toBe('https://example.test/api/wake');
-    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' });
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      method: 'POST',
+      headers: {
+        'x-amz-content-sha256':
+          'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      },
+    });
     expect(fetchMock.mock.calls[1][0]).toBe(
       'https://example.test/api/health'
     );
