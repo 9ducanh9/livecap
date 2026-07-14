@@ -461,8 +461,9 @@ are enabled; there were zero open Dependabot alerts at verification time.
 The same production flow was also exercised through the real dashboard UI with
 an isolated Edge session and a fake microphone WAV. The UI reached Recording,
 appended three finalized English/Vietnamese rows, retained bounded session
-state, and stopped cleanly. The resulting evidence image is stored at
-`docs/livecap-dashboard.png`.
+state, and stopped cleanly. The current production workspace UI reference is
+stored at `docs/livecap-dashboard.png`; the verification result above remains
+recorded as historical test evidence.
 
 Local Terraform state files were moved out of the repository to:
 
