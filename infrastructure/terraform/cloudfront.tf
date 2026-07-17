@@ -1,13 +1,7 @@
 # CloudFront Distribution for Frontend
 
 locals {
-  legacy_backend_origin_id = "ALB-${aws_lb.main.name}"
   target_backend_origin_id = "ALB-${aws_lb.target.name}"
-  selected_backend_origin_id = (
-    var.route_backend_to_target
-    ? local.target_backend_origin_id
-    : local.legacy_backend_origin_id
-  )
   frontend_allowed_origin = join(",", compact([
     var.custom_domain != "" ? "https://${var.custom_domain}" : "",
     "https://${aws_cloudfront_distribution.frontend.domain_name}",
@@ -61,27 +55,6 @@ resource "aws_cloudfront_distribution" "frontend" {
     domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
     origin_id                = "S3-${aws_s3_bucket.frontend.id}"
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
-  }
-
-  origin {
-    domain_name = var.alb_ssl_certificate_arn != "" ? var.backend_domain_name : aws_lb.main.dns_name
-    origin_id   = local.legacy_backend_origin_id
-
-    dynamic "custom_header" {
-      for_each = var.enable_waf ? [1] : []
-
-      content {
-        name  = "X-LiveCap-Origin-Verify"
-        value = var.origin_verify_secret
-      }
-    }
-
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = var.alb_ssl_certificate_arn != "" ? "https-only" : "http-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
-    }
   }
 
   origin {
@@ -171,7 +144,7 @@ resource "aws_cloudfront_distribution" "frontend" {
     path_pattern     = "/api/*"
     allowed_methods  = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
     cached_methods   = ["GET", "HEAD"]
-    target_origin_id = local.selected_backend_origin_id
+    target_origin_id = local.target_backend_origin_id
 
     forwarded_values {
       query_string = true
@@ -195,7 +168,7 @@ resource "aws_cloudfront_distribution" "frontend" {
     path_pattern     = "/ws/*"
     allowed_methods  = ["GET", "HEAD", "OPTIONS"]
     cached_methods   = ["GET", "HEAD"]
-    target_origin_id = local.selected_backend_origin_id
+    target_origin_id = local.target_backend_origin_id
 
     forwarded_values {
       query_string = true
@@ -261,10 +234,9 @@ resource "aws_cloudfront_distribution" "frontend" {
   lifecycle {
     precondition {
       condition = (
-        (var.alb_ssl_certificate_arn == "" || var.backend_domain_name != "")
-        && (var.target_alb_ssl_certificate_arn == "" || var.target_backend_domain_name != "")
+        var.target_alb_ssl_certificate_arn == "" || var.target_backend_domain_name != ""
       )
-      error_message = "Each ALB domain is required when its corresponding ACM certificate ARN is set."
+      error_message = "target_backend_domain_name is required when target_alb_ssl_certificate_arn is set."
     }
   }
 }
