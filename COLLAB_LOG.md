@@ -71,6 +71,21 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-18 — Claude (Cowork) — B3 multi-AZ NAT + B4 cold-start doc
+- **B3** (`vpc.tf`, `variables.tf`, `terraform.tfvars.example`): optional second
+  NAT gateway via `enable_multi_az_nat` (default false). Additive — the primary
+  NAT is untouched and private route associations are unchanged when disabled,
+  so `plan` shows no diff by default. When enabled, private subnets route via the
+  NAT in their own AZ (removes single-AZ egress dependency; +1 NAT/EIP cost).
+- **B4** (`docs/cold-start.md`): documented the cold-start levers. The warm-window
+  mechanism already exists (`enable_demo_scheduled_scaling`); no risky code added.
+- **B5 deferred:** session-id continuity on reconnect touches `websocket.py` and
+  frontend `useWebSocket.ts`, both of which Codex is currently editing (A1+ REST
+  redesign, uncommitted). Left untouched to avoid clobbering — see Open items.
+- Verified: HCL parses. Terraform-only + docs; not deployed.
+- Note: B1 (DynamoDB store) is done & live; B2 (multi-task) is prepared but max
+  stays 1 pending load test.
+
 ### 2026-07-18 — Claude (Cowork) — document A1+ enablement for Codex
 - Added an explicit "A1+ — what it is and how to make it live" block under Open
   items (flag, IAM/env wiring, Bedrock model access, image rebuild, plan/apply)
@@ -225,10 +240,15 @@ To make it **live on the deployed stack** (all human-run, reviewed):
   manually). Configure the repo vars/secrets to use the manual plan-gate.
 - **Phase 2 C4 (deferred):** X-Ray tracing — needs FastAPI instrumentation + an
   X-Ray daemon sidecar; decide before implementing.
+- **B5 session-id continuity on reconnect (coordinate with Codex):** planned as
+  frontend sending its prior `session_id` on reconnect + backend reusing it
+  (registry try_register is already idempotent). Deferred because it edits
+  `websocket.py` + `useWebSocket.ts`, which Codex has uncommitted changes in.
+  Whoever owns those files after the A1+ REST redesign lands should do it.
 - **Not started (roadmap):** A2 Polly, A3 Comprehend, A4 Bedrock translation,
-  A5 Transcribe custom vocabulary; B3 second NAT, B4 cold-start reduction,
-  B5 session resume; C5 Cognito + transcript history, C6 Secrets Manager,
-  C7 Container Insights; D2 Fargate Spot, D3 S3 tiering, D5 cost reporting.
+  A5 Transcribe custom vocabulary; C5 Cognito + transcript history,
+  C6 Secrets Manager, C7 Container Insights; D2 Fargate Spot, D3 S3 tiering,
+  D5 cost reporting. (B3 done flag-gated; B4 documented.)
 - **Operational follow-up:** monitor alarms/WAF/target health/cost; confirm any
   SNS/budget subscription emails.
 - Optional: repo-wide `git add --renormalize .` to clear the CRLF doc churn.

@@ -68,6 +68,18 @@ variable "backend_max_capacity" {
   default     = 1
 }
 
+variable "enable_multi_az_nat" {
+  description = "Add a second NAT gateway in the other AZ and route each private subnet through the NAT in its own AZ (removes the single-AZ egress dependency). Costs one extra NAT + EIP. Default keeps the single cost-optimized NAT."
+  type        = bool
+  default     = false
+}
+
+variable "target_nat_gateway_secondary_subnet_key" {
+  description = "Public subnet key that hosts the second NAT gateway when enable_multi_az_nat is true."
+  type        = string
+  default     = "b"
+}
+
 variable "task_cpu_architecture" {
   description = "Fargate CPU architecture for the backend task: X86_64 or ARM64 (Graviton, ~20% cheaper). Must match the pushed image architecture."
   type        = string
