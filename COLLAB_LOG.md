@@ -40,12 +40,14 @@ Companion docs: `HANDOFF.md` (push/deploy steps for the current branch),
 
 ---
 
-## Current state (2026-07-17)
+## Current state (2026-07-18)
 
-Branch `Update` = `main` + 9 commits. DynamoDB is provisioned and enabled in
-the ignored dev `terraform.tfvars`, but the running ECS task has not yet been
-redeployed with the DynamoDB session-store configuration. Working tree is clean
-except the known CRLF churn on the two docs above.
+Branch `Update` = `main` + 9 commits plus the deployment-validation log entry
+below. The target ECS service is live on image `cf920cd-amd64` with the DynamoDB
+session store enabled. It is configured for scale-to-zero (`desired/min = 0`,
+`max = 1`) and the 300-second idle shutdown has been verified. CloudWatch alarms
+and their SNS topic are deployed. Working tree is clean except ignored local
+Terraform settings.
 
 **Feature flags and defaults:**
 
@@ -54,19 +56,34 @@ except the known CRLF churn on the two docs above.
 | Bedrock meeting summary | `ENABLE_MEETING_SUMMARY` / `enable_meeting_summary`; `BEDROCK_MODEL_ID`, `BEDROCK_REGION` | off |
 | CloudWatch alarms → SNS | `enable_alarms` (+ `alert_notification_email`) | on (topic; email only if set) |
 | Budget email alerts | `budget_notification_email` | off until email set |
-| DynamoDB session store | `enable_dynamodb_session_store` / `SESSION_STORE_BACKEND` | Terraform enabled; runtime activation pending task deployment |
+| DynamoDB session store | `enable_dynamodb_session_store` / `SESSION_STORE_BACKEND` | enabled in the deployed target task |
 | Multi-task (>1) | `backend_max_capacity` | 1 |
 | Graviton (arm64) | `task_cpu_architecture` | X86_64 |
 | CI/CD plan-gate | `.github/workflows/deploy.yml` (manual dispatch) | needs repo vars/secrets |
 
-**Pending human actions before any of this is live:** set the relevant tfvars,
-build/push a new backend image (new code), enable Bedrock model access in-region,
-`terraform plan` → review → `apply`, confirm SNS/budget subscription emails.
+**Remaining human actions:** confirm any SNS/budget subscription emails, enable
+Bedrock model access in-region only before enabling that feature, and configure
+the CI/CD repository variables and secrets before using the manual pipeline.
 Details in `HANDOFF.md`.
 
 ---
 
 ## Change log (newest first)
+
+### 2026-07-18 - Codex - User-approved Update deployment and live validation
+- Built and pushed immutable linux/amd64 backend image `cf920cd-amd64`, then
+  applied the reviewed Terraform changes for the target task definition,
+  CloudWatch log retention, CloudWatch alarms/SNS, and idle-scaler IAM cleanup.
+  Terraform result: 8 added, 3 changed, 1 ECS task-definition revision replaced.
+- Synced the production frontend build to its S3 origin and completed a
+  CloudFront invalidation. The ignored local tfvars enable the DynamoDB session
+  store and select the deployed image; no credentials or secrets were committed.
+- Verification passed: backend `232 passed`; frontend `15` tests and build;
+  Terraform fmt/init/validate. Runtime smoke test passed through the public
+  domain: wake returned `202`, health reached `200`, WebSocket returned
+  `session_start` and `pong`, DynamoDB held one active session and was empty
+  after disconnect, and the ECS service automatically scaled `1 -> 0` after
+  the configured 300-second idle grace period.
 
 ### 2026-07-17 - Codex - DynamoDB session-store provisioning
 - User-approved targeted Terraform apply created `livecap-sessions-dev` with
@@ -141,6 +158,7 @@ Details in `HANDOFF.md`.
   auto-deploy pipeline with a plan gate (no auto-apply).
 - **Phase 2 C4** (deferred): X-Ray tracing — needs FastAPI instrumentation + an
   X-Ray daemon sidecar; decide before implementing.
-- **Deploy validation:** none of the new capability is live yet; see the pending
-  human actions above and `HANDOFF.md`.
+- **Operational follow-up:** monitor the deployed alarms, WAF, target health,
+  and cost during normal use; keep max task count at 1 until multi-task load
+  testing and operational approval are complete.
 - Optional: repo-wide `git add --renormalize .` to clear the CRLF doc churn.
