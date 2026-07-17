@@ -64,6 +64,8 @@ deployed. Ignored local Terraform settings remain untracked.
 | Multi-task (>1) | `backend_max_capacity` | 1 |
 | Graviton (arm64) | `task_cpu_architecture` | X86_64 |
 | CI/CD plan-gate | `.github/workflows/deploy.yml` (manual dispatch) | needs repo vars/secrets |
+| Multi-AZ NAT (B3) | `enable_multi_az_nat` | off (single NAT) |
+| Transcribe custom vocabulary (A5) | `enable_transcribe_custom_vocabulary` / `TRANSCRIBE_VOCABULARY_NAME_VI`,`_EN` | off |
 
 **Remaining human actions:** confirm any SNS/budget subscription emails, enable
 Bedrock model access in-region only before enabling that feature, and configure
@@ -73,6 +75,18 @@ Details in `HANDOFF.md`.
 ---
 
 ## Change log (newest first)
+
+### 2026-07-18 — Claude (Cowork) — A5 Transcribe custom vocabulary (vi + en)
+- Commit `3ac2909`. `transcription.py` reads `TRANSCRIBE_VOCABULARY_NAME_VI/EN`
+  from env and passes `vocabulary_name` to `start_stream_transcription` per
+  stream language (None = off). `transcribe.tf` (new) creates the vi + en
+  vocabularies with editable phrase-list vars, gated by
+  `enable_transcribe_custom_vocabulary`; `ecs.tf` wires the names into the task.
+- Config read via env, not `config.py`, to avoid Codex's in-flight A1+ changes
+  there. No task-role IAM change (covered by StartStreamTranscription). Default
+  off → no behaviour change. Verified: 38 transcription tests pass, HCL parses.
+  Not deployed. VI phrases must follow the Transcribe VI charset (tones as
+  numbers) — noted in `transcribe.tf`.
 
 ### 2026-07-18 - Codex - README audience wording
 - Replaced internal roadmap labels in the public README with product language:

@@ -171,7 +171,24 @@ batch commits only my files. When you commit that refactor:
 - No infra change. To see it live, enable the summary feature and redeploy the
   backend image (new code).
 
+## A5 Transcribe custom vocabulary (batch, commit 3ac2909)
+
+- `transcribe.tf` creates vi + en custom vocabularies (editable phrase lists);
+  `transcription.py` passes `vocabulary_name` per stream from env. Off by default.
+- To enable: set `enable_transcribe_custom_vocabulary = true` (+ edit the phrase
+  lists) in tfvars, then `terraform apply` (creation waits for the vocabularies
+  to reach READY) and redeploy the backend image if not already on this code.
+  No task-role IAM change needed. VI phrases must follow the Transcribe VI
+  charset (tones as numbers).
+
+## B3 multi-AZ NAT (commit 61d8acc)
+
+- Set `enable_multi_az_nat = true` to add a second NAT in the other AZ (+1 NAT/
+  EIP cost). Default off keeps the single NAT and shows no plan diff.
+
 ## Follow-up (not in this branch)
 
+- B5 (session-id continuity on reconnect) is still open; coordinate on
+  `websocket.py` + `useWebSocket.ts` after the A1+ REST work settles.
 - Optional cleanup: `git add --renormalize . && git commit -m "Normalize line
   endings to LF"` to clear the unrelated CRLF noise repo-wide.
