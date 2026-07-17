@@ -112,6 +112,12 @@ log_retention_days = 14  # Retain logs for 14 days
 # transcribe_vocabulary_phrases_en    = ["LiveCap", "Amazon-Transcribe", "Fargate"]
 # transcribe_vocabulary_phrases_vi    = ["LiveCap", "CloudFront"]
 
+# A2 Text-to-speech (Amazon Polly) — English only (no Vietnamese voice).
+# enable_tts      = true
+# tts_voice_id_en = "Joanna"
+# A3 Text analysis (Amazon Comprehend) — English only (no Vietnamese support).
+# enable_text_analysis = true
+
 # CloudFront Configuration
 cloudfront_price_class = "PriceClass_100" # Cost-focused; use 200/All for more Asia edge coverage.
 

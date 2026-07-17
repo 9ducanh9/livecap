@@ -64,6 +64,9 @@ resource "aws_ecs_task_definition" "target_backend" {
       { name = "SESSION_TTL_SECONDS", value = tostring(var.session_ttl_seconds) },
       { name = "TRANSCRIBE_VOCABULARY_NAME_EN", value = local.transcribe_vocabulary_name_en },
       { name = "TRANSCRIBE_VOCABULARY_NAME_VI", value = local.transcribe_vocabulary_name_vi },
+      { name = "ENABLE_TTS", value = tostring(var.enable_tts) },
+      { name = "TTS_VOICE_ID_EN", value = var.tts_voice_id_en },
+      { name = "ENABLE_TEXT_ANALYSIS", value = tostring(var.enable_text_analysis) },
     ]
 
     logConfiguration = {

@@ -186,6 +186,20 @@ batch commits only my files. When you commit that refactor:
 - Set `enable_multi_az_nat = true` to add a second NAT in the other AZ (+1 NAT/
   EIP cost). Default off keeps the single NAT and shows no plan diff.
 
+## A2 Polly TTS + A3 Comprehend analysis (backend, new `enrichment.py`)
+
+- Endpoints `POST /api/tts` (Polly) and `POST /api/analyze` (Comprehend),
+  env-gated (`ENABLE_TTS`, `ENABLE_TEXT_ANALYSIS`), best-effort. `iam.tf` adds
+  count-gated Polly/Comprehend policies; enable via `enable_tts` /
+  `enable_text_analysis` in tfvars.
+- **English only — both AWS services lack Vietnamese support.** Call with the
+  English translation text. Verify Polly + Comprehend availability and the
+  Polly voice id in the deployed region before enabling.
+- **Router not registered yet** (main.py was being edited concurrently): add
+  `from app.routers import enrichment as enrichment_router` +
+  `app.include_router(enrichment_router.router)` to `backend/app/main.py`.
+- Frontend Play button / sentiment display still to wire.
+
 ## Follow-up (not in this branch)
 
 - B5 (session-id continuity on reconnect) is still open; coordinate on

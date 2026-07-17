@@ -66,6 +66,8 @@ deployed. Ignored local Terraform settings remain untracked.
 | CI/CD plan-gate | `.github/workflows/deploy.yml` (manual dispatch) | needs repo vars/secrets |
 | Multi-AZ NAT (B3) | `enable_multi_az_nat` | off (single NAT) |
 | Transcribe custom vocabulary (A5) | `enable_transcribe_custom_vocabulary` / `TRANSCRIBE_VOCABULARY_NAME_VI`,`_EN` | off |
+| TTS / Polly (A2) | `enable_tts` / `ENABLE_TTS`, `TTS_VOICE_ID_EN` | off (English only) |
+| Text analysis / Comprehend (A3) | `enable_text_analysis` / `ENABLE_TEXT_ANALYSIS` | off (English only) |
 
 **Remaining human actions:** confirm any SNS/budget subscription emails, enable
 Bedrock model access in-region only before enabling that feature, and configure
@@ -75,6 +77,28 @@ Details in `HANDOFF.md`.
 ---
 
 ## Change log (newest first)
+
+### 2026-07-18 — Claude (Cowork) — A2 Polly TTS + A3 Comprehend analysis (backend)
+- New `backend/app/routers/enrichment.py`: `POST /api/tts` (Amazon Polly) and
+  `POST /api/analyze` (Amazon Comprehend sentiment + key phrases). Env-gated
+  (`ENABLE_TTS`, `ENABLE_TEXT_ANALYSIS`), best-effort (502 on AWS error), config
+  read from env. `iam.tf` adds count-gated Polly + Comprehend policies;
+  `variables.tf`/`ecs.tf`/`tfvars.example` wire the flags. 7 tests pass.
+- **AWS-service constraints — Codex/human MUST verify (I cannot):**
+  - **Amazon Polly has NO Vietnamese voice.** TTS is **English only**; call it
+    with the English translation text (LiveCap always fills the English column).
+  - **Amazon Comprehend does NOT support Vietnamese** for sentiment/key phrases.
+    Analysis is **English only** — pass the English text.
+  - Confirm **Polly and Comprehend are available in `ap-southeast-1`** for the
+    task role (they generally are, but verify) and that the Polly neural voice
+    id (`Joanna`) is valid in-region; otherwise set `tts_voice_id_en`.
+- **TODO for Codex (I could not touch — you were editing `main.py`):**
+  1. Register the router: `from app.routers import enrichment as enrichment_router`
+     and `app.include_router(enrichment_router.router)` in `backend/app/main.py`.
+  2. Frontend wiring (your area): a per-line/summary **Play** button calling
+     `POST /api/tts` (English text), and optional sentiment/key-phrase display
+     from `POST /api/analyze`.
+- Not deployed; default off. `.env.example` note not added (you own that file).
 
 ### 2026-07-18 — Claude (Cowork) — A5 Transcribe custom vocabulary (vi + en)
 - Commit `3ac2909`. `transcription.py` reads `TRANSCRIBE_VOCABULARY_NAME_VI/EN`

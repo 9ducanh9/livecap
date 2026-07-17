@@ -80,6 +80,24 @@ variable "target_nat_gateway_secondary_subnet_key" {
   default     = "b"
 }
 
+variable "enable_tts" {
+  description = "Enable the text-to-speech endpoint (A2, Amazon Polly). English only — Polly has no Vietnamese voice."
+  type        = bool
+  default     = false
+}
+
+variable "tts_voice_id_en" {
+  description = "Amazon Polly English (neural) voice id for TTS."
+  type        = string
+  default     = "Joanna"
+}
+
+variable "enable_text_analysis" {
+  description = "Enable the text-analysis endpoint (A3, Amazon Comprehend sentiment + key phrases). English only — Comprehend does not support Vietnamese."
+  type        = bool
+  default     = false
+}
+
 variable "task_cpu_architecture" {
   description = "Fargate CPU architecture for the backend task: X86_64 or ARM64 (Graviton, ~20% cheaper). Must match the pushed image architecture."
   type        = string

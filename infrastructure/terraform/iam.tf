@@ -147,6 +147,49 @@ resource "aws_iam_role_policy" "bedrock_access" {
   })
 }
 
+# Policy for the optional text-to-speech feature (A2, Amazon Polly). Only
+# created when enable_tts is true.
+resource "aws_iam_role_policy" "polly_access" {
+  count = var.enable_tts ? 1 : 0
+
+  name = "${var.project_name}-polly-access"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["polly:SynthesizeSpeech"]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# Policy for the optional text-analysis feature (A3, Amazon Comprehend). Only
+# created when enable_text_analysis is true.
+resource "aws_iam_role_policy" "comprehend_access" {
+  count = var.enable_text_analysis ? 1 : 0
+
+  name = "${var.project_name}-comprehend-access"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "comprehend:DetectSentiment",
+          "comprehend:DetectKeyPhrases"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # Policy for optional backend idle scale-to-zero.
 resource "aws_iam_role_policy" "ecs_idle_scale_down_access" {
   name = "${var.project_name}-ecs-idle-scale-down-access"
