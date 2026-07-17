@@ -131,10 +131,18 @@ batch commits only my files. When you commit that refactor:
 - The `enable_dynamodb_session_store` / `session_ttl_seconds` variables live in
   `dynamodb.tf` (committed here), so `ecs.tf` and `dynamodb.tf` resolve together.
 
-### Phase 3 slice 2 — NOT done
+### Phase 3 slice 2 — multi-task enablement + load test (batch 5)
 
-Actually raising ECS max task count above 1 and validating cross-task limits is
-the next slice; do it only after enabling the DynamoDB store and load-testing.
+- `infrastructure/terraform/checks.tf` (new) — advisory `check` block that warns
+  on plan/apply if `backend_max_capacity > 1` while the DynamoDB store is off.
+- `tools/ws_load_test.py` (new) — standalone WebSocket load tester (opens N
+  concurrent sessions of valid silent PCM) to validate the shared global limit
+  and watch scale-out. `pip install websockets` to run.
+- `docs/multi-task-runbook.md` (new) — enable, apply, load-test, watch, rollback.
+- Raising tasks is a tfvars change: `enable_dynamodb_session_store = true` +
+  `backend_max_capacity = N`, then build/push image and apply. The actual
+  load test must be run against the deployed endpoint (cannot be done offline).
+- Not changed: `backend_max_capacity` default stays 1 (safe).
 
 ## Follow-up (not in this branch)
 
