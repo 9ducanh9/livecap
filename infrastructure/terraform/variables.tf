@@ -63,9 +63,20 @@ variable "backend_min_capacity" {
 }
 
 variable "backend_max_capacity" {
-  description = "Maximum ECS backend tasks for autoscaling. Keep at 1 while session limits are in-memory."
+  description = "Maximum ECS backend tasks for autoscaling. Keep at 1 while session limits are in-memory; raise only with enable_dynamodb_session_store = true."
   type        = number
   default     = 1
+}
+
+variable "task_cpu_architecture" {
+  description = "Fargate CPU architecture for the backend task: X86_64 or ARM64 (Graviton, ~20% cheaper). Must match the pushed image architecture."
+  type        = string
+  default     = "X86_64"
+
+  validation {
+    condition     = contains(["X86_64", "ARM64"], var.task_cpu_architecture)
+    error_message = "task_cpu_architecture must be X86_64 or ARM64."
+  }
 }
 
 variable "backend_image_tag" {

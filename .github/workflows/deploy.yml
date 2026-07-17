@@ -1,0 +1,116 @@
+# Deploy pipeline — build/push the backend image and produce a Terraform PLAN.
+#
+# Plan gate by design: this workflow NEVER runs `terraform apply`. It builds an
+# immutable, architecture-specific image, pushes it to ECR, and uploads a
+# reviewed `terraform plan`. A human applies from a trusted environment after
+# reviewing the plan (see infrastructure/terraform/README.md and HANDOFF.md).
+#
+# Manual trigger only. Requires the following to be configured in the repo:
+#   Variables (Settings > Variables):
+#     AWS_REGION            e.g. ap-southeast-1
+#     AWS_DEPLOY_ROLE_ARN   IAM role for GitHub OIDC (least privilege)
+#     ECR_REPOSITORY        backend ECR repo name
+#   Secrets (Settings > Secrets):
+#     TF_BACKEND_HCL        contents of infrastructure/terraform/backend.hcl
+#     TF_VARS               contents of a terraform.tfvars for planning
+#
+# Until these are set the workflow will fail fast; it does not run on push.
+
+name: Deploy (build + plan)
+
+on:
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: "Image/Fargate architecture"
+        type: choice
+        default: arm64
+        options: [arm64, amd64]
+
+permissions:
+  id-token: write   # OIDC to assume the AWS role
+  contents: read
+
+jobs:
+  build-push:
+    name: Build & push image (${{ inputs.architecture }})
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compute immutable tag
+        id: meta
+        run: echo "image_tag=${GITHUB_SHA::7}-${{ inputs.architecture }}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          platforms: linux/${{ inputs.architecture }}
+          push: true
+          provenance: false
+          tags: ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ steps.meta.outputs.image_tag }}
+
+  terraform-plan:
+    name: Terraform plan (no apply)
+    runs-on: ubuntu-latest
+    needs: build-push
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.10.5"
+
+      - name: Write backend + vars from secrets
+        working-directory: infrastructure/terraform
+        run: |
+          printf '%s' "${{ secrets.TF_BACKEND_HCL }}" > backend.hcl
+          printf '%s' "${{ secrets.TF_VARS }}" > ci.auto.tfvars
+
+      - name: Init
+        working-directory: infrastructure/terraform
+        run: terraform init -backend-config=backend.hcl
+
+      - name: Plan (image ${{ needs.build-push.outputs.image_tag }})
+        working-directory: infrastructure/terraform
+        run: |
+          terraform plan -no-color -input=false \
+            -var "backend_image_tag=${{ needs.build-push.outputs.image_tag }}" \
+            -var "task_cpu_architecture=${{ inputs.architecture == 'arm64' && 'ARM64' || 'X86_64' }}" \
+            -out=tfplan | tee plan.txt
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: |
+            infrastructure/terraform/tfplan
+            infrastructure/terraform/plan.txt
+          retention-days: 7
+
+      # NOTE: no apply step. A human applies the reviewed plan from a trusted
+      # environment. Do not add `terraform apply` here.

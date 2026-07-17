@@ -23,6 +23,13 @@ resource "aws_ecs_task_definition" "target_backend" {
   execution_role_arn       = aws_iam_role.ecs_task_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
+  # CPU architecture. Switch to ARM64 (Graviton, ~20% cheaper) only alongside an
+  # arm64 image build; the pushed image arch must match this value.
+  runtime_platform {
+    cpu_architecture        = var.task_cpu_architecture
+    operating_system_family = "LINUX"
+  }
+
   container_definitions = jsonencode([{
     name      = "${var.project_name}-backend"
     image     = "${aws_ecr_repository.backend.repository_url}:${var.backend_image_tag}"
