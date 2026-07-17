@@ -95,6 +95,13 @@ export function buildSummaryText(summary: SessionSummary): string {
   block('Key points', summary.key_points);
   block('Decisions', summary.decisions);
   block('Action items', summary.action_items);
+  block('Insights', summary.insights);
+  if (summary.glossary.length > 0) {
+    const lines = summary.glossary.map((g) => (g.definition ? `  - ${g.term}: ${g.definition}` : `  - ${g.term}`));
+    parts.push(`Glossary:\n${lines.join('\n')}`);
+  }
+  block('Follow-up questions', summary.follow_up_questions);
+  if (summary.keywords.length > 0) parts.push(`Keywords: ${summary.keywords.join(', ')}`);
   if (summary.topics.length > 0) parts.push(`Topics: ${summary.topics.join(', ')}`);
   if (parts.length === 0) return '';
   return `=== MEETING SUMMARY ===\n\n${parts.join('\n\n')}\n\n${'='.repeat(24)}`;

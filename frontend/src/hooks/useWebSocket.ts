@@ -178,6 +178,13 @@ function parseServerMessage(raw: unknown): ServerMessage | null {
       const asStr = (v: unknown): string => (typeof v === 'string' ? v : '');
       const asStrList = (v: unknown): string[] =>
         Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+      const asGlossary = (v: unknown) =>
+        Array.isArray(v)
+          ? v
+              .filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
+              .map((x) => ({ term: asStr(x['term']), definition: asStr(x['definition']) }))
+              .filter((g) => g.term !== '')
+          : [];
       return {
         type: 'session_summary',
         session_id: obj['session_id'] as string,
@@ -188,6 +195,10 @@ function parseServerMessage(raw: unknown): ServerMessage | null {
           decisions: asStrList(s['decisions']),
           action_items: asStrList(s['action_items']),
           topics: asStrList(s['topics']),
+          keywords: asStrList(s['keywords']),
+          insights: asStrList(s['insights']),
+          glossary: asGlossary(s['glossary']),
+          follow_up_questions: asStrList(s['follow_up_questions']),
         },
       } as SummaryMessage;
     }

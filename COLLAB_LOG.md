@@ -71,6 +71,18 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-18 — Claude (Cowork) — A1+ knowledge extraction (NotebookLM-style)
+- Extended the Bedrock end-of-session summary with keywords, insights/takeaways,
+  a glossary (`term` + `definition`), and follow-up questions — one-shot, no new
+  flag (same `enable_meeting_summary`). Backward compatible (new optional fields).
+- Backend: `models.py` (`GlossaryItem` + fields), `services/summarization.py`
+  (prompt, tolerant parse incl. glossary, export text), tests updated.
+- Frontend: `types`, `useWebSocket` parse, `SummaryPanel` renders the new
+  sections, export text includes them.
+- Verified: backend 62 summary/model tests pass; frontend `tsc` + `vite build`
+  + useWebSocket/DashboardPage tests pass. Not committed to a new deploy — the
+  feature stays behind the (currently off) summary flag.
+
 ### 2026-07-18 — Claude (Cowork) — log hygiene
 - Corrected the stale "Open items" (Phase 4 is committed, not "not started";
   deployment done single-task) and the commit count (9 → 11). No code changes.

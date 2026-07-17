@@ -170,8 +170,15 @@ class PongMessage(BaseModel):
     type: Literal["pong"] = "pong"
 
 
+class GlossaryItem(BaseModel):
+    """A term extracted from the transcript with a short definition."""
+
+    term: str = ""
+    definition: str = ""
+
+
 class SessionSummary(BaseModel):
-    """AI-generated wrap-up of a finished Session.
+    """AI-generated wrap-up and knowledge extraction of a finished Session.
 
     Produced by the Summarization_Service (Amazon Bedrock) from the finalized
     transcript. Text fields are bilingual; list fields are written in the
@@ -185,6 +192,11 @@ class SessionSummary(BaseModel):
     decisions: List[str] = Field(default_factory=list)
     action_items: List[str] = Field(default_factory=list)
     topics: List[str] = Field(default_factory=list)
+    # Knowledge-extraction fields (NotebookLM-style).
+    keywords: List[str] = Field(default_factory=list)
+    insights: List[str] = Field(default_factory=list)
+    glossary: List[GlossaryItem] = Field(default_factory=list)
+    follow_up_questions: List[str] = Field(default_factory=list)
 
     def is_empty(self) -> bool:
         """Return True when the model produced no usable content."""
@@ -196,6 +208,10 @@ class SessionSummary(BaseModel):
                 self.decisions,
                 self.action_items,
                 self.topics,
+                self.keywords,
+                self.insights,
+                self.glossary,
+                self.follow_up_questions,
             )
         )
 

@@ -80,6 +80,11 @@ export interface PongMessage {
   type: 'pong';
 }
 
+export interface GlossaryItem {
+  term: string;
+  definition: string;
+}
+
 /** AI-generated end-of-session wrap-up (mirrors backend SessionSummary). */
 export interface SessionSummary {
   summary_vi: string;
@@ -88,6 +93,10 @@ export interface SessionSummary {
   decisions: string[];
   action_items: string[];
   topics: string[];
+  keywords: string[];
+  insights: string[];
+  glossary: GlossaryItem[];
+  follow_up_questions: string[];
 }
 
 export interface SummaryMessage {

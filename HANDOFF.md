@@ -155,6 +155,17 @@ batch commits only my files. When you commit that refactor:
   vars/secrets (AWS_REGION, AWS_DEPLOY_ROLE_ARN, ECR_REPOSITORY, TF_BACKEND_HCL,
   TF_VARS). See `docs/graviton-and-cicd.md`.
 
+## A1+ knowledge extraction (batch 7)
+
+- Extended the Bedrock summary with keywords, insights, glossary
+  (`term`/`definition`), and follow-up questions. Same `enable_meeting_summary`
+  flag; new fields are optional and render in `SummaryPanel` + the exported TXT.
+- Files: backend `models.py`, `services/summarization.py`, `tests/`; frontend
+  `types/index.ts`, `hooks/useWebSocket.ts`, `components/SummaryPanel.tsx`,
+  `services/exportService.ts`.
+- No infra change. To see it live, enable the summary feature and redeploy the
+  backend image (new code).
+
 ## Follow-up (not in this branch)
 
 - Optional cleanup: `git add --renormalize . && git commit -m "Normalize line
