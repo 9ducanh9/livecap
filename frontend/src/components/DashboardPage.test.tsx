@@ -11,16 +11,24 @@ const mocks = vi.hoisted(() => ({
   stopCapture: vi.fn(),
   wakeBackend: vi.fn<() => Promise<void>>(),
   wakeConfigured: false,
+  webSocketOptions: undefined as unknown as {
+    onSessionStart: (sessionId: string, isReconnect: boolean) => void;
+    onFinalizedSegment: (segment: Record<string, unknown>) => void;
+    onSessionEnd: () => void;
+  },
 }));
 
 vi.mock('../hooks/useWebSocket', () => ({
-  useWebSocket: () => ({
-    isConnectionLost: false,
-    connectionStatus: 'idle',
-    connect: mocks.connect,
-    disconnect: mocks.disconnect,
-    sendAudioChunk: mocks.sendAudioChunk,
-  }),
+  useWebSocket: (options: typeof mocks.webSocketOptions) => {
+    mocks.webSocketOptions = options;
+    return {
+      isConnectionLost: false,
+      connectionStatus: 'idle',
+      connect: mocks.connect,
+      disconnect: mocks.disconnect,
+      sendAudioChunk: mocks.sendAudioChunk,
+    };
+  },
 }));
 
 vi.mock('../hooks/useAudioCapture', () => ({
@@ -52,6 +60,7 @@ describe('DashboardPage start flow', () => {
 
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
   });
 
   it('waits for the WebSocket before starting microphone capture', async () => {
@@ -109,5 +118,37 @@ describe('DashboardPage start flow', () => {
     ).toBe(true);
     expect(mocks.connect).not.toHaveBeenCalled();
     expect(mocks.startCapture).not.toHaveBeenCalled();
+  });
+
+  it('requests AI meeting notes only after the user chooses to create them', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        summary_en: 'Launch planning is underway.', summary_vi: 'Dang lap ke hoach ra mat.',
+        key_points: [], decisions: [], action_items: [], topics: [], keywords: [],
+        insights: [], glossary: [], follow_up_questions: [],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DashboardPage />);
+    act(() => {
+      mocks.webSocketOptions.onSessionStart('session-1', false);
+      for (let index = 0; index < 3; index += 1) {
+        mocks.webSocketOptions.onFinalizedSegment({
+          segmentId: `segment-${index}`, speakerLabel: 'Speaker 1',
+          textVi: 'Xin chao', textEn: 'Hello', spokenLanguage: 'vi',
+          isFinal: true, timestampStart: index, timestampEnd: index + 1,
+        });
+      }
+      mocks.webSocketOptions.onSessionEnd();
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Create meeting notes' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/sessions/session-1/summary');
+    expect(screen.getByText('AI meeting summary')).toBeTruthy();
   });
 });

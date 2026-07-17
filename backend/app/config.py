@@ -45,7 +45,7 @@ DEFAULT_BEDROCK_MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0"
 DEFAULT_SUMMARY_MIN_SEGMENTS = 3
 # Upper bound on transcript characters sent to Bedrock (cost/latency guard).
 DEFAULT_SUMMARY_MAX_INPUT_CHARS = 12_000
-# Wall-clock budget for the Bedrock call during session teardown.
+# Wall-clock budget for one user-requested Bedrock call.
 DEFAULT_SUMMARY_TIMEOUT_SECONDS = 20
 # Session registry backend. "memory" is process-local (single task). "dynamodb"
 # shares the active-session limits across tasks, unblocking horizontal scaling.

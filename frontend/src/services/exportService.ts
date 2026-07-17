@@ -33,6 +33,10 @@ interface ExportRequestBody {
   summary_text?: string;
 }
 
+interface SummaryRequestBody {
+  segments: ExportSegmentPayload[];
+}
+
 /** Successful response from the export endpoint. */
 export interface ExportResponse {
   download_url: string;
@@ -47,6 +51,17 @@ export class ExportError extends Error {
   ) {
     super(message);
     this.name = 'ExportError';
+  }
+}
+
+/** Error returned when user-requested AI meeting notes cannot be created. */
+export class MeetingSummaryError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode?: number,
+  ) {
+    super(message);
+    this.name = 'MeetingSummaryError';
   }
 }
 
@@ -176,4 +191,58 @@ export async function exportTranscript(
 
   const data = await response.json() as ExportResponse;
   return data;
+}
+
+/**
+ * Request optional AI meeting notes for the completed transcript.
+ *
+ * The call is deliberately user-initiated rather than part of Stop so Bedrock
+ * is only used when the participant asks for notes.
+ */
+export async function generateMeetingSummary(
+  sessionId: string,
+  segments: Segment[],
+  baseUrl?: string,
+): Promise<SessionSummary> {
+  const finalizedSegments = segments.filter((segment) => segment.isFinal);
+  const payload: SummaryRequestBody = {
+    segments: finalizedSegments.map((segment) => ({
+      segment_id: segment.segmentId,
+      speaker_label: segment.speakerLabel,
+      text_vi: segment.textVi,
+      text_en: segment.textEn,
+      spoken_language: segment.spokenLanguage,
+      timestamp_start: segment.timestampStart,
+      timestamp_end: segment.timestampEnd,
+    })),
+  };
+
+  const apiBaseUrl = resolveApiBaseUrl(baseUrl);
+  const url = `${apiBaseUrl}/api/sessions/${encodeURIComponent(sessionId)}/summary`;
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (networkError) {
+    throw new MeetingSummaryError(
+      `Network error while creating meeting notes: ${(networkError as Error).message}`,
+    );
+  }
+
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      const body = await response.json();
+      if (typeof body?.detail === 'string') detail = body.detail;
+    } catch {
+      // Use the HTTP status text if an error response is not JSON.
+    }
+    throw new MeetingSummaryError(detail, response.status);
+  }
+
+  return response.json() as Promise<SessionSummary>;
 }

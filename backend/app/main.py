@@ -4,7 +4,7 @@ Assembles the FastAPI application (task 9.1, Requirements 11.1, 11.3, 10.1):
 
 - Creates the FastAPI app instance.
 - Registers the WebSocket router (``GET /ws/transcribe``).
-- Registers the export router (``POST /api/sessions/{session_id}/export``).
+- Registers the export and on-demand meeting-summary routers.
 - Configures CORS for the explicitly configured frontend origins.
 - Adds the ``GET /api/health`` endpoint.
 - Initialises the Logging_Service at application startup via the
@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.routers import export as export_router
+from app.routers import summary as summary_router
 from app.routers import websocket as websocket_router
 from app.services.logging_service import get_logger, setup_logging
 
@@ -106,6 +107,9 @@ app.include_router(websocket_router.router)
 
 # Export REST endpoint: POST /api/sessions/{session_id}/export
 app.include_router(export_router.router)
+
+# On-demand meeting notes: POST /api/sessions/{session_id}/summary
+app.include_router(summary_router.router)
 
 
 # ---------------------------------------------------------------------------

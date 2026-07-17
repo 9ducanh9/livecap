@@ -85,7 +85,7 @@ export interface GlossaryItem {
   definition: string;
 }
 
-/** AI-generated end-of-session wrap-up (mirrors backend SessionSummary). */
+/** AI-generated, user-requested meeting notes (mirrors backend SessionSummary). */
 export interface SessionSummary {
   summary_vi: string;
   summary_en: string;
@@ -99,12 +99,6 @@ export interface SessionSummary {
   follow_up_questions: string[];
 }
 
-export interface SummaryMessage {
-  type: 'session_summary';
-  session_id: string;
-  summary: SessionSummary;
-}
-
 /** Union of all messages the backend can send to the frontend. */
 export type ServerMessage =
   | SessionStartMessage
@@ -112,8 +106,7 @@ export type ServerMessage =
   | FinalizedSegmentMessage
   | ErrorMessage
   | SessionEndMessage
-  | PongMessage
-  | SummaryMessage;
+  | PongMessage;
 
 // ---------------------------------------------------------------------------
 // WebSocket Messages — Frontend → Backend (discriminated union)

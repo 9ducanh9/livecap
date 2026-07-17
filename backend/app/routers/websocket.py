@@ -58,7 +58,6 @@ from app.models import (
     SessionEndMessage,
     SessionStartMessage,
     StopMessage,
-    SummaryMessage,
 )
 from app.services.logging_service import (
     get_logger,
@@ -73,7 +72,6 @@ from app.services.session_registry import (
     active_session_registry,
     get_session_registry,
 )
-from app.services.summarization import summarize_session
 from app.services.transcription import TranscriptionService
 from app.services.translation import translate_segment
 from app.utils.audio import validate_audio_chunk
@@ -838,39 +836,11 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     reader_task = asyncio.ensure_future(_read_frames())
 
     session_end_sent = False
-    # Finalized segments accumulated for the optional end-of-session summary.
-    finalized_segments: list[FinalizedSegmentMessage] = []
-    # Cleared when the client disconnects mid-session, so we skip the summary
-    # (there is no one to receive it) and avoid a pointless Bedrock call.
-    client_connected = True
-
-    async def _maybe_send_summary() -> None:
-        """Generate and send an AI meeting summary before ``session_end``.
-
-        Best effort: guarded by the feature flag, only runs while the client is
-        still connected, and never raises (summarize_session swallows errors).
-        """
-        if not settings.enable_meeting_summary or not client_connected:
-            return
-        if len(finalized_segments) < settings.summary_min_segments:
-            return
-        summary = await summarize_session(
-            session_id=session_id,
-            segments=finalized_segments,
-            settings=settings,
-        )
-        if summary is not None:
-            await _send(
-                websocket,
-                SummaryMessage(session_id=session_id, summary=summary),
-            )
-
     async def _teardown(send_session_end: bool = True) -> None:
-        """Send summary + ``session_end`` (once), cancel the reader, log."""
+        """Send ``session_end`` once, cancel the reader, and log cleanup."""
         nonlocal session_end_sent
         if send_session_end and not session_end_sent:
             session_end_sent = True
-            await _maybe_send_summary()
             await _send(websocket, SessionEndMessage(session_id=session_id))
             # Record session-end event (Requirement 10.2).
             log_session_end(session_id)
@@ -974,8 +944,6 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                                 code=ErrorCode.TRANSCRIBE_ERROR,
                             )
                             break
-                        if isinstance(msg, FinalizedSegmentMessage):
-                            finalized_segments.append(msg)
                         await _send(websocket, msg)
                 finally:
                     for task in (vi_task, en_task, arbiter_task, partial_task):
@@ -1038,7 +1006,6 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                                 timestamp_start=translated.timestamp_start,
                                 timestamp_end=translated.timestamp_end,
                             )
-                            finalized_segments.append(translated_msg)
                             await _send(websocket, translated_msg)
                         except Exception as exc:
                             # Translation error: log and forward untranslated
@@ -1048,7 +1015,6 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                                 service_name="Amazon Translate",
                                 error=exc,
                             )
-                            finalized_segments.append(msg)
                             await _send(websocket, msg)
 
                     elif isinstance(msg, Exception):
@@ -1094,9 +1060,6 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         await _signal_end_of_stream()
 
     except WebSocketDisconnect:
-        # Client disconnected mid-session; teardown proceeds normally. No client
-        # remains to receive a summary, so skip it.
-        client_connected = False
         _logger.info(
             "WebSocket disconnected",
             extra={"event": "websocket_disconnect_mid_session", "session_id": session_id},

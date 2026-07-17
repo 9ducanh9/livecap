@@ -216,14 +216,6 @@ class SessionSummary(BaseModel):
         )
 
 
-class SummaryMessage(BaseModel):
-    """Delivers the AI-generated :class:`SessionSummary` before ``session_end``."""
-
-    type: Literal["session_summary"] = "session_summary"
-    session_id: str
-    summary: SessionSummary
-
-
 # A discriminated union of every message the Backend sends to the Frontend.
 ServerMessage = Union[
     SessionStartMessage,
@@ -232,7 +224,6 @@ ServerMessage = Union[
     ErrorMessage,
     SessionEndMessage,
     PongMessage,
-    SummaryMessage,
 ]
 
 
@@ -291,6 +282,17 @@ class ExportResponse(BaseModel):
 
     download_url: str
     expires_at: datetime
+
+
+class SummaryRequest(BaseModel):
+    """Finalized client-side captions supplied for an on-demand AI summary.
+
+    LiveCap does not persist an in-progress transcript on the backend. The
+    browser submits its finalized rows only when the user explicitly requests
+    meeting notes after stopping a session.
+    """
+
+    segments: List[ExportSegment] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
