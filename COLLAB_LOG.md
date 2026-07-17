@@ -42,9 +42,7 @@ Companion docs: `HANDOFF.md` (push/deploy steps for the current branch),
 
 ## Current state (2026-07-18)
 
-Branch `Update` = `main` + 14 commits (latest are Codex's provisioning and
-deployment-validation records plus Claude's optional multi-AZ NAT and A5
-custom-vocabulary work). The target ECS service is live on image
+Branch `Update` = `main` + 20 commits. The target ECS service is live on image
 `cf920cd-amd64` with the DynamoDB
 session store enabled. It is configured for scale-to-zero (`desired/min = 0`,
 `max = 1`) and the 300-second idle shutdown has been verified. CloudWatch alarms
@@ -77,6 +75,14 @@ Details in `HANDOFF.md`.
 ---
 
 ## Change log (newest first)
+
+### 2026-07-18 - Codex - mount optional enrichment routes
+- Registered Claude's flag-gated `enrichment_router` in FastAPI so a reviewed
+  deployment can expose `POST /api/tts` and `POST /api/analyze`. Added the
+  disabled-by-default English-only Polly/Comprehend settings to `.env.example`.
+  Verified: backend `249 passed`; Terraform `init -backend=false`, `fmt -check`,
+  and `validate` pass. No UI, AWS deployment, Terraform apply, or feature
+  enablement was performed.
 
 ### 2026-07-18 — Claude (Cowork) — A2 Polly TTS + A3 Comprehend analysis (backend)
 - New `backend/app/routers/enrichment.py`: `POST /api/tts` (Amazon Polly) and
