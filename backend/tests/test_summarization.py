@@ -13,7 +13,7 @@ import json
 from unittest.mock import patch
 
 from app.config import Settings
-from app.models import FinalizedSegmentMessage, SessionSummary
+from app.models import FinalizedSegmentMessage, GlossaryItem, SessionSummary
 from app.services import summarization
 from app.services.summarization import (
     build_prompt,
@@ -102,6 +102,10 @@ def test_parse_valid_json():
             "decisions": [],
             "action_items": ["do x"],
             "topics": ["t1"],
+            "keywords": ["budget", "timeline"],
+            "insights": ["ship earlier"],
+            "glossary": [{"term": "MVP", "definition": "minimum viable product"}],
+            "follow_up_questions": ["When do we launch?"],
         }
     )
     summary = parse_summary_response(raw)
@@ -110,6 +114,21 @@ def test_parse_valid_json():
     assert summary.key_points == ["a", "b"]
     assert summary.action_items == ["do x"]
     assert summary.decisions == []
+    assert summary.keywords == ["budget", "timeline"]
+    assert summary.insights == ["ship earlier"]
+    assert summary.glossary[0].term == "MVP"
+    assert summary.glossary[0].definition == "minimum viable product"
+    assert summary.follow_up_questions == ["When do we launch?"]
+
+
+def test_parse_glossary_tolerates_string_entries():
+    raw = json.dumps({"glossary": ["API: application programming interface", "SLA"]})
+    summary = parse_summary_response(raw)
+    assert summary is not None
+    assert summary.glossary[0].term == "API"
+    assert summary.glossary[0].definition == "application programming interface"
+    assert summary.glossary[1].term == "SLA"
+    assert summary.glossary[1].definition == ""
 
 
 def test_parse_json_with_surrounding_prose_and_fences():
@@ -149,6 +168,10 @@ def test_summary_to_text_renders_sections():
         key_points=["point one"],
         action_items=["follow up"],
         topics=["budget", "timeline"],
+        keywords=["kw1", "kw2"],
+        insights=["a takeaway"],
+        glossary=[GlossaryItem(term="MVP", definition="minimum viable product")],
+        follow_up_questions=["What next?"],
     )
     text = summary_to_text(summary)
     assert "MEETING SUMMARY" in text
@@ -157,6 +180,10 @@ def test_summary_to_text_renders_sections():
     assert "- point one" in text
     assert "- follow up" in text
     assert "budget, timeline" in text
+    assert "kw1, kw2" in text
+    assert "a takeaway" in text
+    assert "MVP: minimum viable product" in text
+    assert "What next?" in text
 
 
 # ---------------------------------------------------------------------------

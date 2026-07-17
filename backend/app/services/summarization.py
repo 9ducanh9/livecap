@@ -27,12 +27,12 @@ import logging
 from typing import Sequence
 
 from app.config import Settings, get_settings
-from app.models import FinalizedSegmentMessage, SessionSummary
+from app.models import FinalizedSegmentMessage, GlossaryItem, SessionSummary
 from app.services.logging_service import get_logger, log_integration_error
 
 _SERVICE_NAME = "Amazon Bedrock"
 _ANTHROPIC_VERSION = "bedrock-2023-05-31"
-_MAX_OUTPUT_TOKENS = 1024
+_MAX_OUTPUT_TOKENS = 1536
 
 _SYSTEM_PROMPT = (
     "You are a meeting-notes assistant for a bilingual Vietnamese-English "
@@ -72,16 +72,22 @@ def build_transcript_text(
 def build_prompt(transcript: str) -> str:
     """Build the user prompt instructing the model to return summary JSON."""
     return (
-        "Summarize the following meeting transcript.\n\n"
+        "Summarize and extract knowledge from the following transcript.\n\n"
         "Return ONLY a JSON object with exactly these keys:\n"
         '  "summary_vi": string  // 2-4 sentence summary in Vietnamese\n'
         '  "summary_en": string  // 2-4 sentence summary in English\n'
         '  "key_points": string[]   // main points, meeting\'s main language\n'
         '  "decisions": string[]    // decisions made, or empty array\n'
         '  "action_items": string[] // concrete follow-up tasks, or empty array\n'
-        '  "topics": string[]       // short topic tags\n\n'
-        "Use empty strings or empty arrays when a field does not apply. Do not "
-        "wrap the JSON in markdown fences.\n\n"
+        '  "topics": string[]       // short topic tags\n'
+        '  "keywords": string[]     // salient keywords/terms from the content\n'
+        '  "insights": string[]     // takeaways/conclusions drawn from the text\n'
+        '  "glossary": object[]     // [{"term": string, "definition": string}] '
+        "for notable terms/concepts, short definitions\n"
+        '  "follow_up_questions": string[] // open questions to explore further\n\n'
+        "Base everything strictly on the transcript; do not invent facts. Use "
+        "empty strings or empty arrays when a field does not apply. Do not wrap "
+        "the JSON in markdown fences.\n\n"
         "Transcript:\n"
         f"{transcript}\n"
     )
@@ -94,6 +100,28 @@ def _coerce_str_list(value: object) -> list[str]:
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return []
+
+
+def _coerce_glossary(value: object) -> list[GlossaryItem]:
+    """Coerce a model-provided glossary into a list of GlossaryItem.
+
+    Accepts a list of ``{"term", "definition"}`` objects; tolerates strings
+    shaped like ``"term: definition"`` as a fallback.
+    """
+    items: list[GlossaryItem] = []
+    if not isinstance(value, list):
+        return items
+    for entry in value:
+        if isinstance(entry, dict):
+            term = str(entry.get("term", "")).strip()
+            definition = str(entry.get("definition", "")).strip()
+        elif isinstance(entry, str) and ":" in entry:
+            term, definition = (part.strip() for part in entry.split(":", 1))
+        else:
+            term, definition = str(entry).strip(), ""
+        if term:
+            items.append(GlossaryItem(term=term, definition=definition))
+    return items
 
 
 def parse_summary_response(raw_text: str) -> SessionSummary | None:
@@ -125,6 +153,10 @@ def parse_summary_response(raw_text: str) -> SessionSummary | None:
         decisions=_coerce_str_list(data.get("decisions")),
         action_items=_coerce_str_list(data.get("action_items")),
         topics=_coerce_str_list(data.get("topics")),
+        keywords=_coerce_str_list(data.get("keywords")),
+        insights=_coerce_str_list(data.get("insights")),
+        glossary=_coerce_glossary(data.get("glossary")),
+        follow_up_questions=_coerce_str_list(data.get("follow_up_questions")),
     )
 
 
@@ -252,6 +284,20 @@ def summary_to_text(summary: SessionSummary) -> str:
     if summary.action_items:
         parts.append("\nAction items:")
         parts.extend(f"  - {item}" for item in summary.action_items)
+    if summary.insights:
+        parts.append("\nInsights:")
+        parts.extend(f"  - {item}" for item in summary.insights)
+    if summary.glossary:
+        parts.append("\nGlossary:")
+        parts.extend(
+            f"  - {g.term}: {g.definition}" if g.definition else f"  - {g.term}"
+            for g in summary.glossary
+        )
+    if summary.follow_up_questions:
+        parts.append("\nFollow-up questions:")
+        parts.extend(f"  - {q}" for q in summary.follow_up_questions)
+    if summary.keywords:
+        parts.append("\nKeywords: " + ", ".join(summary.keywords))
     if summary.topics:
         parts.append("\nTopics: " + ", ".join(summary.topics))
     parts.append("\n" + "=" * 24)

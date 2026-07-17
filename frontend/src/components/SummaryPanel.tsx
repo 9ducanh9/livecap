@@ -1,5 +1,5 @@
 import type { SessionSummary } from '../types';
-import { Sparkles, ListChecks, CheckSquare, Flag, Tag, X } from 'lucide-react';
+import { Sparkles, ListChecks, CheckSquare, Flag, Tag, X, Lightbulb, BookOpen, HelpCircle, Hash } from 'lucide-react';
 
 interface SummaryPanelProps {
   summary: SessionSummary;
@@ -13,7 +13,11 @@ function hasContent(summary: SessionSummary): boolean {
       summary.key_points.length ||
       summary.decisions.length ||
       summary.action_items.length ||
-      summary.topics.length,
+      summary.topics.length ||
+      summary.keywords.length ||
+      summary.insights.length ||
+      summary.glossary.length ||
+      summary.follow_up_questions.length,
   );
 }
 
@@ -67,6 +71,45 @@ export default function SummaryPanel({ summary, onDismiss }: SummaryPanelProps) 
         <SummaryList icon={<ListChecks className="h-3.5 w-3.5 text-emerald-pro" />} title="Key points" items={summary.key_points} />
         <SummaryList icon={<Flag className="h-3.5 w-3.5 text-emerald-pro" />} title="Decisions" items={summary.decisions} />
         <SummaryList icon={<CheckSquare className="h-3.5 w-3.5 text-emerald-pro" />} title="Action items" items={summary.action_items} />
+        <SummaryList icon={<Lightbulb className="h-3.5 w-3.5 text-emerald-pro" />} title="Insights" items={summary.insights} />
+
+        {summary.glossary.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5">
+              <BookOpen className="h-3.5 w-3.5 text-emerald-pro" />
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-ink/45">Glossary</p>
+            </div>
+            <dl className="mt-1.5 space-y-1.5">
+              {summary.glossary.map((g, i) => (
+                <div key={`${g.term}-${i}`} className="text-sm leading-relaxed">
+                  <dt className="inline font-semibold text-ink/85">{g.term}</dt>
+                  {g.definition && <dd className="inline text-ink/70"> — {g.definition}</dd>}
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
+
+        <SummaryList icon={<HelpCircle className="h-3.5 w-3.5 text-emerald-pro" />} title="Follow-up questions" items={summary.follow_up_questions} />
+
+        {summary.keywords.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5">
+              <Hash className="h-3.5 w-3.5 text-emerald-pro" />
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-ink/45">Keywords</p>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {summary.keywords.map((kw, i) => (
+                <span
+                  key={`${kw}-${i}`}
+                  className="rounded-full border border-emerald-pro/20 bg-emerald-pro/5 px-2.5 py-1 text-xs font-medium text-ink/75"
+                >
+                  {kw}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {summary.topics.length > 0 && (
           <div>
