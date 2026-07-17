@@ -563,3 +563,41 @@ class TestErrorPropagation:
                 assert call_args[2] is exc
 
         asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# A5: custom vocabulary selection
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_vocabulary_name_by_language(monkeypatch):
+    from app.services.transcription import _resolve_vocabulary_name
+
+    monkeypatch.setenv("TRANSCRIBE_VOCABULARY_NAME_VI", "livecap-vi")
+    monkeypatch.setenv("TRANSCRIBE_VOCABULARY_NAME_EN", "livecap-en")
+
+    assert _resolve_vocabulary_name("vi-VN") == "livecap-vi"
+    assert _resolve_vocabulary_name("en-US") == "livecap-en"
+
+
+def test_resolve_vocabulary_name_unset_returns_none(monkeypatch):
+    from app.services.transcription import _resolve_vocabulary_name
+
+    monkeypatch.delenv("TRANSCRIBE_VOCABULARY_NAME_VI", raising=False)
+    monkeypatch.delenv("TRANSCRIBE_VOCABULARY_NAME_EN", raising=False)
+
+    assert _resolve_vocabulary_name("vi-VN") is None
+    assert _resolve_vocabulary_name("en-US") is None
+    assert _resolve_vocabulary_name("fr-FR") is None
+
+
+def test_service_picks_vocabulary_for_its_language(monkeypatch):
+    monkeypatch.setenv("TRANSCRIBE_VOCABULARY_NAME_VI", "livecap-vi")
+    monkeypatch.setenv("TRANSCRIBE_VOCABULARY_NAME_EN", "livecap-en")
+    settings = Settings()
+
+    vi = TranscriptionService(session_id="s", settings=settings, language_code="vi-VN")
+    en = TranscriptionService(session_id="s", settings=settings, language_code="en-US")
+
+    assert vi._vocabulary_name == "livecap-vi"
+    assert en._vocabulary_name == "livecap-en"

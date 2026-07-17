@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import AsyncIterator
 
 from amazon_transcribe.client import TranscribeStreamingClient
@@ -62,6 +63,22 @@ _LANG_MAP: dict[str, str] = {
     "vi-VN": "vi",
     "en-US": "en",
 }
+
+
+def _resolve_vocabulary_name(language_code: str) -> str | None:
+    """Return the custom-vocabulary name configured for this stream's language.
+
+    Read from the environment (``TRANSCRIBE_VOCABULARY_NAME_VI`` /
+    ``TRANSCRIBE_VOCABULARY_NAME_EN``) so recognition can be biased toward
+    domain terms and proper nouns. Returns ``None`` when unset (feature off),
+    which leaves Transcribe on its default vocabulary. Custom vocabularies are
+    per-language, so each of the parallel vi/en streams uses its own.
+    """
+    if language_code.startswith("vi"):
+        return os.getenv("TRANSCRIBE_VOCABULARY_NAME_VI", "").strip() or None
+    if language_code.startswith("en"):
+        return os.getenv("TRANSCRIBE_VOCABULARY_NAME_EN", "").strip() or None
+    return None
 
 
 class TranscriptionService:
@@ -88,6 +105,8 @@ class TranscriptionService:
         self._session_id = session_id
         self._settings = settings or get_settings()
         self._language_code = language_code or self._settings.transcribe_language_code
+        # Optional per-language custom vocabulary (A5). None = default vocabulary.
+        self._vocabulary_name = _resolve_vocabulary_name(self._language_code)
         self._logger: logging.Logger = get_logger()
 
         # Allocates stable Segment_IDs within this session (CP-2).
@@ -149,6 +168,7 @@ class TranscriptionService:
                 language_code=self._language_code,
                 media_sample_rate_hz=_SAMPLE_RATE_HZ,
                 media_encoding=_MEDIA_ENCODING,
+                vocabulary_name=self._vocabulary_name,
             )
         except Exception as exc:
             log_integration_error(
@@ -263,6 +283,7 @@ class TranscriptionService:
                 language_code=self._language_code,
                 media_sample_rate_hz=_SAMPLE_RATE_HZ,
                 media_encoding=_MEDIA_ENCODING,
+                vocabulary_name=self._vocabulary_name,
             )
         except Exception as exc:
             log_integration_error(

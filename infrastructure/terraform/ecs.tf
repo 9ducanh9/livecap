@@ -62,6 +62,8 @@ resource "aws_ecs_task_definition" "target_backend" {
       { name = "SESSION_STORE_BACKEND", value = var.enable_dynamodb_session_store ? "dynamodb" : "memory" },
       { name = "SESSION_TABLE_NAME", value = local.session_table_name },
       { name = "SESSION_TTL_SECONDS", value = tostring(var.session_ttl_seconds) },
+      { name = "TRANSCRIBE_VOCABULARY_NAME_EN", value = local.transcribe_vocabulary_name_en },
+      { name = "TRANSCRIBE_VOCABULARY_NAME_VI", value = local.transcribe_vocabulary_name_vi },
     ]
 
     logConfiguration = {
