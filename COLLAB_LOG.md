@@ -54,6 +54,8 @@ churn on the two docs above.
 | Budget email alerts | `budget_notification_email` | off until email set |
 | DynamoDB session store | `enable_dynamodb_session_store` / `SESSION_STORE_BACKEND` | off (in-memory) |
 | Multi-task (>1) | `backend_max_capacity` | 1 |
+| Graviton (arm64) | `task_cpu_architecture` | X86_64 |
+| CI/CD plan-gate | `.github/workflows/deploy.yml` (manual dispatch) | needs repo vars/secrets |
 
 **Pending human actions before any of this is live:** set the relevant tfvars,
 build/push a new backend image (new code), enable Bedrock model access in-region,
@@ -63,6 +65,15 @@ Details in `HANDOFF.md`.
 ---
 
 ## Change log (newest first)
+
+### 2026-07-17 — Claude (Cowork) — Phase 4: Graviton + CI/CD plan gate
+- Files: `infrastructure/terraform/ecs.tf` (+`runtime_platform`),
+  `variables.tf` (+`task_cpu_architecture`, default X86_64),
+  `.github/workflows/deploy.yml` (new), `docs/graviton-and-cicd.md` (new).
+- Graviton is opt-in: set `task_cpu_architecture = "ARM64"` + push an arm64
+  image together. New manual-dispatch pipeline builds/pushes an arch-specific
+  image and produces a `terraform plan` artifact — **no apply from CI**.
+- Verified: YAML + HCL parse. Pipeline needs repo vars/secrets before it runs.
 
 ### 2026-07-17 — Claude (Cowork) — Phase 3 slice 2: multi-task enablement
 - Commit `33fcea7`. Files: `infrastructure/terraform/checks.tf`,

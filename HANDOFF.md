@@ -144,6 +144,17 @@ batch commits only my files. When you commit that refactor:
   load test must be run against the deployed endpoint (cannot be done offline).
 - Not changed: `backend_max_capacity` default stays 1 (safe).
 
+## Phase 4 — Graviton + CI/CD plan gate (batch 6)
+
+- `ecs.tf` + `variables.tf`: `task_cpu_architecture` (default X86_64) drives the
+  task `runtime_platform`. Switch to ARM64 (Graviton, ~20% cheaper) only
+  alongside an arm64 image push.
+- `.github/workflows/deploy.yml` (new): manual-dispatch pipeline that builds/
+  pushes an arch-specific image and produces a `terraform plan` artifact.
+  **No apply from CI** — a human applies the reviewed plan. Needs repo
+  vars/secrets (AWS_REGION, AWS_DEPLOY_ROLE_ARN, ECR_REPOSITORY, TF_BACKEND_HCL,
+  TF_VARS). See `docs/graviton-and-cicd.md`.
+
 ## Follow-up (not in this branch)
 
 - Optional cleanup: `git add --renormalize . && git commit -m "Normalize line
