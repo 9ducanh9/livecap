@@ -90,3 +90,34 @@ class ActiveSessionRegistry:
 
 
 active_session_registry = ActiveSessionRegistry()
+
+
+# Cached DynamoDB-backed registry (created on first use when enabled).
+_dynamo_session_registry = None
+
+
+def get_session_registry(settings=None):
+    """Return the configured active-session registry.
+
+    ``memory`` (default) returns the process-local singleton. ``dynamodb``
+    returns a shared, cross-task registry backed by DynamoDB. The choice is
+    driven by ``settings.session_store_backend`` so the default deployment
+    behaviour is unchanged.
+    """
+    from app.config import get_settings  # local import avoids an import cycle
+
+    settings = settings or get_settings()
+    if settings.session_store_backend == "dynamodb":
+        global _dynamo_session_registry
+        if _dynamo_session_registry is None:
+            from app.services.dynamo_session_registry import (  # noqa: PLC0415
+                DynamoDbSessionRegistry,
+            )
+
+            _dynamo_session_registry = DynamoDbSessionRegistry(
+                table_name=settings.session_table_name,
+                region=settings.aws_region,
+                ttl_seconds=settings.session_ttl_seconds,
+            )
+        return _dynamo_session_registry
+    return active_session_registry

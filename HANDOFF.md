@@ -99,6 +99,43 @@ FastAPI app (`aws-xray-sdk`) plus an X-Ray daemon sidecar container and IAM.
 That touches the live WebSocket request path, so it is a larger, riskier change
 than the Terraform-only alarms. Decide separately before implementing.
 
+## Phase 3 slice 1 — DynamoDB session registry (batch 4)
+
+Shared active-session limits so the backend can run more than one task. Opt-in;
+**default is unchanged** (in-memory), so nothing changes until enabled.
+
+- `backend/app/services/dynamo_session_registry.py` (new) — DynamoDB-backed
+  registry (pk = session_id, TTL self-heals crashed rows, counts via consistent
+  scan; idempotent conditional put).
+- `backend/app/services/session_registry.py` — `get_session_registry(settings)`
+  provider picks memory vs dynamodb by `session_store_backend`.
+- `backend/app/routers/websocket.py` — resolves the registry via the provider.
+- `backend/app/config.py` — `session_store_backend`, `session_table_name`,
+  `session_ttl_seconds` flags (default memory).
+- `infrastructure/terraform/dynamodb.tf` (new) — session table + task-role IAM
+  policy + the two variables, all gated by `enable_dynamodb_session_store`.
+- `backend/tests/test_dynamo_session_registry.py` (new) — 8 tests via moto.
+- Verified: 8 + config tests pass; full backend suite = baseline (only the
+  Python-3.10 `asyncio.timeout` websocket failures remain; 22/23 pass polyfilled).
+
+### IMPORTANT — external Terraform refactor in the working tree
+
+Between sessions, someone (you or Codex) refactored the Terraform in the working
+tree (uncommitted): `ecs.tf` was consolidated to a single `target_backend` stack
+(legacy `backend` removed), and `alb.tf`, `vpc.tf`, `cloudfront.tf`, `iam.tf`,
+`waf.tf` were edited. Those changes are **NOT** in the `Update` branch — this
+batch commits only my files. When you commit that refactor:
+
+- `ecs.tf` already carries my 3 `SESSION_*` env entries on the single task def
+  (needed for the DynamoDB store); they ride along with the refactor commit.
+- The `enable_dynamodb_session_store` / `session_ttl_seconds` variables live in
+  `dynamodb.tf` (committed here), so `ecs.tf` and `dynamodb.tf` resolve together.
+
+### Phase 3 slice 2 — NOT done
+
+Actually raising ECS max task count above 1 and validating cross-task limits is
+the next slice; do it only after enabling the DynamoDB store and load-testing.
+
 ## Follow-up (not in this branch)
 
 - Optional cleanup: `git add --renormalize . && git commit -m "Normalize line

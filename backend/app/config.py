@@ -47,6 +47,13 @@ DEFAULT_SUMMARY_MIN_SEGMENTS = 3
 DEFAULT_SUMMARY_MAX_INPUT_CHARS = 12_000
 # Wall-clock budget for the Bedrock call during session teardown.
 DEFAULT_SUMMARY_TIMEOUT_SECONDS = 20
+# Session registry backend. "memory" is process-local (single task). "dynamodb"
+# shares the active-session limits across tasks, unblocking horizontal scaling.
+DEFAULT_SESSION_STORE_BACKEND = "memory"
+DEFAULT_SESSION_TABLE_NAME = "livecap-sessions"
+# TTL for session items; a safety net that reclaims rows from crashed tasks.
+# Keep it comfortably above the session timeout.
+DEFAULT_SESSION_TTL_SECONDS = 3_600
 
 
 def _get_int(name: str, default: int) -> int:
@@ -126,6 +133,9 @@ class Settings:
     summary_min_segments: int = DEFAULT_SUMMARY_MIN_SEGMENTS
     summary_max_input_chars: int = DEFAULT_SUMMARY_MAX_INPUT_CHARS
     summary_timeout_seconds: int = DEFAULT_SUMMARY_TIMEOUT_SECONDS
+    session_store_backend: str = DEFAULT_SESSION_STORE_BACKEND
+    session_table_name: str = DEFAULT_SESSION_TABLE_NAME
+    session_ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS
 
     @property
     def resolved_bedrock_region(self) -> str:
@@ -207,6 +217,15 @@ class Settings:
                 _get_int(
                     "SUMMARY_TIMEOUT_SECONDS", DEFAULT_SUMMARY_TIMEOUT_SECONDS
                 ),
+            ),
+            session_store_backend=_get_str(
+                "SESSION_STORE_BACKEND", DEFAULT_SESSION_STORE_BACKEND
+            ).strip().lower(),
+            session_table_name=_get_str(
+                "SESSION_TABLE_NAME", DEFAULT_SESSION_TABLE_NAME
+            ),
+            session_ttl_seconds=max(
+                60, _get_int("SESSION_TTL_SECONDS", DEFAULT_SESSION_TTL_SECONDS)
             ),
         )
 
