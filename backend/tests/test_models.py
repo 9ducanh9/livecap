@@ -31,6 +31,7 @@ from app.models import (
     SessionEndMessage,
     SessionStartMessage,
     StopMessage,
+    SummaryRequest,
 )
 
 
@@ -354,6 +355,23 @@ class TestExportResponse:
         )
         assert resp.download_url.startswith("https://")
         assert resp.expires_at == expires
+
+
+class TestSummaryRequest:
+    def test_defaults_to_an_empty_segment_list(self):
+        assert SummaryRequest().segments == []
+
+    def test_accepts_finalized_caption_payloads(self):
+        request = SummaryRequest(
+            segments=[
+                ExportSegment(
+                    segment_id="s1",
+                    speaker_label="Speaker 1",
+                    spoken_language="vi",
+                )
+            ]
+        )
+        assert request.segments[0].segment_id == "s1"
 
 
 # ---------------------------------------------------------------------------

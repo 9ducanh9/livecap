@@ -25,6 +25,30 @@ The latest tagged release is `v1.5.2`. The live environment also includes
 post-release frontend and AWS hardening tracked in
 [PR #4](https://github.com/9ducanh9/livecap/pull/4).
 
+## Update Branch Tracking
+
+The active development branch is [`Update`](https://github.com/9ducanh9/livecap/tree/Update).
+It contains the next reviewed batches, tracked in [`COLLAB_LOG.md`](COLLAB_LOG.md).
+The following is **not deployed to the live demo yet**:
+
+- **AI meeting notes:** after a session ends, the participant can choose
+  **Create meeting notes**. Only that explicit action sends finalized captions
+  to Amazon Bedrock for a bilingual summary, decisions, action items, keywords,
+  insights, glossary, and follow-up questions. Pressing Stop never calls
+  Bedrock or creates a Bedrock charge.
+- The API is `POST /api/sessions/{session_id}/summary`. It is disabled by
+  default through `ENABLE_MEETING_SUMMARY=false`; requests need at least three
+  finalized captions and are not persisted by that endpoint.
+- The current `Update` code has passed 242 backend tests and 18 frontend tests,
+  including the explicit-button flow. It still needs a reviewed backend-image
+  deployment plus the existing Terraform/IAM feature flag before it can be
+  enabled in AWS.
+- The branch also contains optional reliability and transcription-accuracy
+  improvements. They remain disabled until their deployment plan is reviewed.
+
+For local Bedrock testing, see [`docs/run-local.md`](docs/run-local.md). For the
+handoff and human-reviewed deployment gate, see [`HANDOFF.md`](HANDOFF.md).
+
 ## Product Preview
 
 ### Landing Page
@@ -125,8 +149,8 @@ behavior, and remaining production boundaries.
 
 ```text
 livecap/
-|-- backend/                  # FastAPI application and 208 tests
-|-- frontend/                 # React application and 14 tests
+|-- backend/                  # FastAPI application and 242 tests on Update
+|-- frontend/                 # React application and 18 tests on Update
 |-- infrastructure/
 |   |-- bootstrap/            # Remote-state S3 bootstrap
 |   `-- terraform/            # As-deployed AWS infrastructure
@@ -272,6 +296,8 @@ The legacy inventory and reconciliation notes remain in
 - [Infrastructure overview](infrastructure/README.md)
 - [Terraform source of truth](infrastructure/terraform/README.md)
 - [Terraform import and legacy inventory](infrastructure/terraform/IMPORT_PLAN.md)
+- [Update branch collaboration log](COLLAB_LOG.md)
+- [Local Bedrock notes test guide](docs/run-local.md)
 
 ## License
 

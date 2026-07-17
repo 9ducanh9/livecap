@@ -6,12 +6,26 @@ import CaptionDisplay from './CaptionDisplay';
 import ExportPanel from './ExportPanel';
 import ControlPanel from './ControlPanel';
 import SummaryPanel from './SummaryPanel';
-import { buildSummaryText } from '../services/exportService';
+import {
+  buildSummaryText,
+  generateMeetingSummary,
+  MeetingSummaryError,
+} from '../services/exportService';
 import {
   isWakeBackendConfigured,
   wakeBackendIfConfigured,
 } from '../services/wakeService';
-import { Radio, Clock, Layers, AlertTriangle, CheckCircle, ArrowLeft } from 'lucide-react';
+import {
+  Radio,
+  Clock,
+  Layers,
+  AlertTriangle,
+  CheckCircle,
+  ArrowLeft,
+  LoaderCircle,
+  RefreshCw,
+  Sparkles,
+} from 'lucide-react';
 
 const DEFAULT_MAX_SESSION_SECONDS = 1_800;
 
@@ -72,6 +86,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
 export default function DashboardPage() {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [summary, setSummary] = useState<SessionSummary | null>(null);
+  const [summaryStatus, setSummaryStatus] = useState<
+    'idle' | 'loading' | 'error' | 'success'
+  >('idle');
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState(Date.now());
   const [isStarting, setIsStarting] = useState(false);
@@ -88,7 +106,6 @@ export default function DashboardPage() {
     onFinalizedSegment(segment) { dispatch({ type: 'FINALIZED_SEGMENT', segment }); },
     onError(message) { dispatch({ type: 'SET_ERROR', error: message }); },
     onSessionEnd() { dispatch({ type: 'SESSION_END' }); },
-    onSummary(next) { setSummary(next); },
     onReconnectFailed() {
       stopCaptureRef.current?.();
       setRecordingStartedAt(null);
@@ -112,6 +129,8 @@ export default function DashboardPage() {
     let startPhase: 'wake' | 'socket' | 'audio' = 'wake';
     dispatch({ type: 'CLEAR_ERROR' });
     setSummary(null);
+    setSummaryStatus('idle');
+    setSummaryError(null);
     setIsStarting(true);
     setStartStatusLabel(isWakeBackendConfigured() ? 'Starting backend' : 'Linking');
     try {
@@ -147,7 +166,35 @@ export default function DashboardPage() {
     dispatch({ type: 'SET_CAPTURING', value: false });
   }, [disconnect, stopCapture]);
 
-  const handleClear = useCallback(() => { dispatch({ type: 'CLEAR_TRANSCRIPT' }); setSummary(null); }, []);
+  const handleClear = useCallback(() => {
+    dispatch({ type: 'CLEAR_TRANSCRIPT' });
+    setSummary(null);
+    setSummaryStatus('idle');
+    setSummaryError(null);
+  }, []);
+
+  const finalizedSegmentCount = useMemo(
+    () => state.segments.filter((segment) => segment.isFinal).length,
+    [state.segments],
+  );
+
+  const handleGenerateSummary = useCallback(async () => {
+    if (!state.sessionId || finalizedSegmentCount === 0 || isCapturing) return;
+    setSummaryStatus('loading');
+    setSummaryError(null);
+    try {
+      const next = await generateMeetingSummary(state.sessionId, state.segments);
+      setSummary(next);
+      setSummaryStatus('success');
+    } catch (err) {
+      setSummaryStatus('error');
+      setSummaryError(
+        err instanceof MeetingSummaryError
+          ? err.message
+          : 'AI meeting notes could not be generated. Please try again.',
+      );
+    }
+  }, [finalizedSegmentCount, isCapturing, state.segments, state.sessionId]);
 
   const summaryText = useMemo(() => (summary ? buildSummaryText(summary) : null), [summary]);
 
@@ -219,6 +266,15 @@ export default function DashboardPage() {
               onStop={handleStop}
               onClear={handleClear}
             />
+            {state.sessionId && !isCapturing && (
+              <MeetingNotesAction
+                finalizedSegmentCount={finalizedSegmentCount}
+                isLoading={summaryStatus === 'loading'}
+                error={summaryError}
+                hasSummary={summaryStatus === 'success' && summary !== null}
+                onGenerate={handleGenerateSummary}
+              />
+            )}
             <ExportPanel
               sessionId={state.sessionId}
               segments={state.segments}
@@ -277,6 +333,62 @@ export default function DashboardPage() {
           </div>
         </section>
       </main>
+    </div>
+  );
+}
+
+function MeetingNotesAction({
+  finalizedSegmentCount,
+  isLoading,
+  error,
+  hasSummary,
+  onGenerate,
+}: {
+  finalizedSegmentCount: number;
+  isLoading: boolean;
+  error: string | null;
+  hasSummary: boolean;
+  onGenerate: () => void;
+}) {
+  const canGenerate = finalizedSegmentCount >= 3 && !isLoading;
+
+  return (
+    <div className="border-t border-[#dce5f2] px-6 py-5">
+      <div className="flex items-start gap-3">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-emerald-pro/10 text-emerald-pro">
+          <Sparkles className="h-4 w-4" />
+        </span>
+        <div>
+          <p className="text-sm font-bold text-ink">AI meeting notes</p>
+          <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+            Create a summary, action items, and optional key insights when you need them.
+          </p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onGenerate}
+        disabled={!canGenerate}
+        className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-ink text-sm font-bold text-white transition-colors hover:bg-emerald-pro disabled:cursor-not-allowed disabled:opacity-35"
+      >
+        {isLoading ? (
+          <><LoaderCircle className="h-4 w-4 animate-spin" />Creating notes...</>
+        ) : hasSummary ? (
+          <><RefreshCw className="h-3.5 w-3.5" />Regenerate meeting notes</>
+        ) : (
+          <><Sparkles className="h-3.5 w-3.5" />Create meeting notes</>
+        )}
+      </button>
+
+      {finalizedSegmentCount < 3 && (
+        <p className="mt-2 text-[11px] leading-relaxed text-ink-muted">
+          Add at least {3 - finalizedSegmentCount} more finalized caption{finalizedSegmentCount === 2 ? '' : 's'} to create notes.
+        </p>
+      )}
+      {error && (
+        <p className="mt-2 text-[11px] leading-relaxed text-crimson">{error}</p>
+      )}
     </div>
   );
 }

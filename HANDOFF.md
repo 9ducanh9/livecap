@@ -23,12 +23,14 @@ git push -u origin Update
   watchtower `livecap` log group with an explicit retention policy.
 - `terraform.tfvars.example` — documents the new inputs.
 
-**Phase 1 — Amazon Bedrock meeting summary (opt-in, default OFF):**
-- `backend/app/services/summarization.py` (new) — end-of-session bilingual
-  summary + key points, decisions, action items, topics via Bedrock (Claude).
-- `backend/app/routers/websocket.py` — collect finalized segments, send a
-  `session_summary` message before `session_end`.
-- `backend/app/models.py` — `SessionSummary`, `SummaryMessage`, optional
+**Phase 1 — Amazon Bedrock meeting notes (opt-in, default OFF):**
+- `backend/app/services/summarization.py` — bilingual summary + key points,
+  decisions, action items, topics, keywords, insights, glossary and follow-up
+  questions via Bedrock (Claude).
+- `backend/app/routers/summary.py` — `POST /api/sessions/{session_id}/summary`;
+  it accepts finalized captions only after the participant explicitly chooses
+  **Create meeting notes**. Stop only ends the audio/WebSocket session.
+- `backend/app/models.py` — `SessionSummary`, `SummaryRequest`, optional
   `summary_text` on `ExportRequest`.
 - `backend/app/services/storage.py` + `routers/export.py` — prepend the summary
   to exported TXT (backward compatible).
@@ -63,11 +65,14 @@ git push -u origin Update
 
 ## Frontend (batch 2 — included in this branch)
 
-- `types/index.ts` — `SessionSummary` + `SummaryMessage` types.
-- `hooks/useWebSocket.ts` — parse `session_summary`, `onSummary` callback.
+- `types/index.ts` — `SessionSummary` type.
+- `services/exportService.ts` — sends only finalized captions to the on-demand
+  notes endpoint when the participant clicks the button.
 - `components/SummaryPanel.tsx` (new) — renders the bilingual summary, key
   points, decisions, action items, and topics after the session ends.
-- `components/DashboardPage.tsx` — summary state + renders the panel.
+- `components/DashboardPage.tsx` — shows **Create meeting notes** after a
+  completed session and renders the returned panel; it never invokes Bedrock on
+  Stop.
 - `components/ExportPanel.tsx` + `services/exportService.ts` — prepend the
   summary text to the exported transcript (`summary_text`).
 - Verified: `tsc --noEmit` clean, `vite build` passes, useWebSocket +

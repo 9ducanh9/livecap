@@ -60,7 +60,7 @@ Mỗi hạng mục ghi: **Ưu tiên** (P0 cao → P2 thấp), **Công sức** (S
 
 | # | Hạng mục | Ưu tiên | Công | Δ chi phí | Ghi chú |
 |---|---|:--:|:--:|---|---|
-| A1 | **Tóm tắt cuộc họp + action items bằng Amazon Bedrock** | P0 | M | ~$0.01–0.05/phiên (Claude Haiku on-demand) | Khi bấm Stop, gom transcript đã finalize → gọi Bedrock (Claude) sinh: tóm tắt, quyết định, action items, chủ đề. Hiển thị panel mới + kèm vào file export. Đây là điểm nhấn "AI/ML application" mạnh nhất. |
+| A1 | **Tóm tắt cuộc họp + action items bằng Amazon Bedrock** | P0 | M | ~$0.01–0.05/phiên (Claude Haiku on-demand) | Sau khi dừng phiên, người dùng bấm **Create meeting notes**. Frontend gửi transcript đã finalize → gọi Bedrock (Claude) sinh: tóm tắt, quyết định, action items, chủ đề. Stop không gọi Bedrock; panel mới và file export nhận nội dung sau khi có kết quả. |
 | A2 | **Đọc bản dịch bằng Amazon Polly (TTS / lồng tiếng)** | P2 | M | ~$4/1M ký tự (Neural) | Nút "phát" cho từng dòng dịch, hoặc auto-play. Tăng khả năng tiếp cận. Cần chú ý độ trễ real-time. |
 | A3 | **Sentiment & keyword bằng Amazon Comprehend** | P2 | S | ~$0.0001/đơn vị | Gắn nhãn cảm xúc + trích từ khoá theo đoạn; hiển thị tag. Nhẹ, dễ demo. |
 | A4 | **Dịch theo ngữ cảnh bằng Bedrock (tuỳ chọn thay Translate)** | P1 | M | cao hơn Translate | Dùng LLM để dịch mượt và giữ ngữ cảnh hội thoại tốt hơn Amazon Translate cho câu dài. Đặt sau feature flag, giữ Translate làm mặc định rẻ. |

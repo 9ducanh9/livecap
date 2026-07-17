@@ -55,13 +55,15 @@ Open `http://127.0.0.1:5173`, go to the caption workspace, allow the microphone.
 1. Speak a few sentences so **at least 3 finalized caption rows** appear
    (`SUMMARY_MIN_SEGMENTS=3`).
 2. Press **Stop** while still connected.
-3. The **AI meeting summary** panel appears with summary (VI/EN), key points,
+3. After the session ends, choose **Create meeting notes**. This is the only
+   action that calls Amazon Bedrock.
+4. The **AI meeting summary** panel appears with summary (VI/EN), key points,
    decisions, action items, plus the A1+ extraction: **keywords, insights,
    glossary, follow-up questions**. The Download TXT export includes them too.
 
 ## Troubleshooting
 
-- No summary panel: fewer than 3 finalized rows, or you disconnected before Stop.
+- The notes button is disabled: fewer than 3 finalized caption rows were captured.
 - Backend logs `Amazon Bedrock` integration error: model access not enabled, or
   the model id/region is wrong for your account. Check `BEDROCK_REGION`.
 - 403/AccessDenied: the credentials lack `bedrock:InvokeModel` (or Transcribe/

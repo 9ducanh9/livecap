@@ -42,13 +42,16 @@ Companion docs: `HANDOFF.md` (push/deploy steps for the current branch),
 
 ## Current state (2026-07-18)
 
-Branch `Update` = `main` + 11 commits (latest are Codex's provisioning and
-deployment-validation records). The target ECS service is live on image
+Branch `Update` = `main` + 14 commits (latest are Codex's provisioning and
+deployment-validation records plus Claude's optional multi-AZ NAT and A5
+custom-vocabulary work). The target ECS service is live on image
 `cf920cd-amd64` with the DynamoDB
 session store enabled. It is configured for scale-to-zero (`desired/min = 0`,
 `max = 1`) and the 300-second idle shutdown has been verified. CloudWatch alarms
-and their SNS topic are deployed. Working tree is clean except ignored local
-Terraform settings.
+and their SNS topic are deployed. Codex's on-demand meeting-notes redesign is
+committed on `Update` but not deployed. Claude's optional multi-AZ NAT work
+(`61d8acc`) and A5 custom vocabulary work (`3ac2909`) are committed but not
+deployed. Ignored local Terraform settings remain untracked.
 
 **Feature flags and defaults:**
 
@@ -70,6 +73,27 @@ Details in `HANDOFF.md`.
 ---
 
 ## Change log (newest first)
+
+### 2026-07-18 - Codex - README audience wording
+- Replaced internal roadmap labels in the public README with product language:
+  **AI meeting notes** and optional reliability/transcription improvements.
+  Phase labels remain in this collaboration log and the roadmap only.
+
+### 2026-07-18 - Codex - A1+ user-triggered meeting notes
+- Replaced automatic Bedrock work during WebSocket teardown with `POST
+  /api/sessions/{session_id}/summary`. The Dashboard shows **Create meeting
+  notes** after a finished session; only that click sends finalized captions to
+  Bedrock. Stop now only ends audio and the WebSocket, so it cannot create an
+  unexpected Bedrock charge.
+- The endpoint is feature-gated (`ENABLE_MEETING_SUMMARY=false` by default),
+  validates the minimum segment count, does not persist the supplied captions,
+  and returns a retryable error on an unusable Bedrock result. The returned
+  notes continue to appear in the existing panel and TXT export.
+- Removed the obsolete `session_summary` WebSocket contract. Updated README,
+  local instructions, handoff, roadmap, and environment comments. Verified locally:
+  `compileall`, backend `242 passed`, frontend `18 passed`, and production
+  build pass. No Terraform, AWS deployment, or commit was performed. Concurrent
+  Claude infrastructure work was left untouched.
 
 ### 2026-07-18 — Claude (Cowork) — B3 multi-AZ NAT + B4 cold-start doc
 - **B3** (`vpc.tf`, `variables.tf`, `terraform.tfvars.example`): optional second
@@ -199,17 +223,18 @@ are live and verified. Phase 4 is committed (`d61c997`) but **not adopted** yet.
 
 ### A1+ meeting summary — what it is and how to make it live
 
-A1+ (commit `b8df135`) is **code only, committed, NOT deployed**. It extends the
-end-of-session Bedrock summary with keywords, insights, glossary
+A1+ (commit `b8df135` plus the uncommitted user-triggered redesign above) is
+**code only, committed on `Update`, NOT deployed**. It extends the Bedrock meeting notes with keywords, insights, glossary
 (`term`/`definition`), and follow-up questions, on top of A1's summary/key points/
 decisions/action items/topics. It is gated by the existing `enable_meeting_summary`
 flag (default **off**) — there is no separate A1+ flag, and no infra beyond the
 existing `dynamodb.tf`/`iam.tf`/`ecs.tf` wiring.
 
 It renders in `SummaryPanel` and is appended to the exported TXT. It is
-**best-effort**: on any Bedrock error the session still ends normally, just
-without a summary. It only fires on **Stop** when there are **≥ 3 finalized
-segments** (`SUMMARY_MIN_SEGMENTS`) and the client is still connected.
+**user-triggered**: after Stop, the participant chooses **Create meeting notes**
+when there are at least `SUMMARY_MIN_SEGMENTS` finalized captions. On any
+Bedrock error the session remains ended normally and the UI shows a retryable
+error. Stop itself never calls Bedrock.
 
 To run it **locally** (no deploy): follow `docs/run-local.md` (set
 `ENABLE_MEETING_SUMMARY=true`, provide AWS creds via a profile, enable Bedrock
@@ -227,8 +252,9 @@ To make it **live on the deployed stack** (all human-run, reviewed):
    `backend_image_tag` to it.
 4. `terraform plan` → expect: new Bedrock IAM policy, task env
    `ENABLE_MEETING_SUMMARY`/`BEDROCK_*`, and a new task-definition revision →
-   review → `apply`. Smoke test: run a short session, Stop, confirm the summary
-   with the new sections and that DynamoDB drains after disconnect.
+   review → `apply`. Smoke test: run a short session, Stop, choose **Create
+   meeting notes**, confirm the new sections, and confirm DynamoDB drains after
+   disconnect.
 
 - **Multi-task (raise > 1):** deployed with the DynamoDB store live but
   `backend_max_capacity` is still 1. Next: run `tools/ws_load_test.py` against the
