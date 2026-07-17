@@ -42,8 +42,10 @@ Companion docs: `HANDOFF.md` (push/deploy steps for the current branch),
 
 ## Current state (2026-07-17)
 
-Branch `Update` = `main` + 6 commits. Working tree clean except the known CRLF
-churn on the two docs above.
+Branch `Update` = `main` + 7 commits. DynamoDB is provisioned and enabled in
+the ignored dev `terraform.tfvars`, but the running ECS task has not yet been
+redeployed with the DynamoDB session-store configuration. Working tree is clean
+except the known CRLF churn on the two docs above.
 
 **Feature flags (all default OFF / unchanged behaviour):**
 
@@ -52,7 +54,7 @@ churn on the two docs above.
 | Bedrock meeting summary | `ENABLE_MEETING_SUMMARY` / `enable_meeting_summary`; `BEDROCK_MODEL_ID`, `BEDROCK_REGION` | off |
 | CloudWatch alarms → SNS | `enable_alarms` (+ `alert_notification_email`) | on (topic; email only if set) |
 | Budget email alerts | `budget_notification_email` | off until email set |
-| DynamoDB session store | `enable_dynamodb_session_store` / `SESSION_STORE_BACKEND` | off (in-memory) |
+| DynamoDB session store | `enable_dynamodb_session_store` / `SESSION_STORE_BACKEND` | Terraform enabled; runtime activation pending task deployment |
 | Multi-task (>1) | `backend_max_capacity` | 1 |
 | Graviton (arm64) | `task_cpu_architecture` | X86_64 |
 | CI/CD plan-gate | `.github/workflows/deploy.yml` (manual dispatch) | needs repo vars/secrets |
@@ -65,6 +67,19 @@ Details in `HANDOFF.md`.
 ---
 
 ## Change log (newest first)
+
+### 2026-07-17 - Codex - DynamoDB session-store provisioning
+- User-approved targeted Terraform apply created `livecap-sessions-dev` with
+  on-demand billing and TTL, plus the `livecap-session-store-access` inline
+  policy on the ECS task role. Result: 2 added, 0 changed, 0 destroyed.
+- Added `enable_dynamodb_session_store = true` only to ignored `terraform.tfvars`
+  so a future full plan retains the table. No ECS task-definition deployment,
+  backend-image deployment, or max-capacity increase was applied.
+- Verified the table is `ACTIVE` and the IAM inline policy exists. Runtime stays
+  on the currently deployed task definition until the next reviewed deployment.
+- Full plan is intentionally pending: it includes the new alarms/SNS resources
+  and a target task-definition revision that will pass `SESSION_STORE_BACKEND=dynamodb`.
+  It was reviewed only; no additional apply was run.
 
 ### 2026-07-17 — Claude (Cowork) — Phase 4: Graviton + CI/CD plan gate
 - Files: `infrastructure/terraform/ecs.tf` (+`runtime_platform`),
