@@ -71,6 +71,11 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-18 — Claude (Cowork) — document A1+ enablement for Codex
+- Added an explicit "A1+ — what it is and how to make it live" block under Open
+  items (flag, IAM/env wiring, Bedrock model access, image rebuild, plan/apply)
+  plus `docs/run-local.md` for local testing. No code change.
+
 ### 2026-07-18 — Claude (Cowork) — A1+ knowledge extraction (NotebookLM-style)
 - Extended the Bedrock end-of-session summary with keywords, insights/takeaways,
   a glossary (`term` + `definition`), and follow-up questions — one-shot, no new
@@ -176,6 +181,39 @@ Details in `HANDOFF.md`.
 
 Done & deployed (single task): Phases 0–3 slice 1 and the DynamoDB session store
 are live and verified. Phase 4 is committed (`d61c997`) but **not adopted** yet.
+
+### A1+ meeting summary — what it is and how to make it live
+
+A1+ (commit `b8df135`) is **code only, committed, NOT deployed**. It extends the
+end-of-session Bedrock summary with keywords, insights, glossary
+(`term`/`definition`), and follow-up questions, on top of A1's summary/key points/
+decisions/action items/topics. It is gated by the existing `enable_meeting_summary`
+flag (default **off**) — there is no separate A1+ flag, and no infra beyond the
+existing `dynamodb.tf`/`iam.tf`/`ecs.tf` wiring.
+
+It renders in `SummaryPanel` and is appended to the exported TXT. It is
+**best-effort**: on any Bedrock error the session still ends normally, just
+without a summary. It only fires on **Stop** when there are **≥ 3 finalized
+segments** (`SUMMARY_MIN_SEGMENTS`) and the client is still connected.
+
+To run it **locally** (no deploy): follow `docs/run-local.md` (set
+`ENABLE_MEETING_SUMMARY=true`, provide AWS creds via a profile, enable Bedrock
+model access).
+
+To make it **live on the deployed stack** (all human-run, reviewed):
+1. In ignored `terraform.tfvars`: `enable_meeting_summary = true`. This both
+   creates the `bedrock:InvokeModel` IAM policy (`iam.tf`, count-gated) and sets
+   `ENABLE_MEETING_SUMMARY=true` on the task (`ecs.tf`).
+2. Enable **Bedrock model access** for the Claude model in the target region
+   (console). If the model is not in `ap-southeast-1`, set `bedrock_region`
+   (tf var) / `BEDROCK_REGION` to a supported region (e.g. `us-east-1`); the
+   task reaches it via NAT egress.
+3. Build & push a **new backend image containing `b8df135`**, set
+   `backend_image_tag` to it.
+4. `terraform plan` → expect: new Bedrock IAM policy, task env
+   `ENABLE_MEETING_SUMMARY`/`BEDROCK_*`, and a new task-definition revision →
+   review → `apply`. Smoke test: run a short session, Stop, confirm the summary
+   with the new sections and that DynamoDB drains after disconnect.
 
 - **Multi-task (raise > 1):** deployed with the DynamoDB store live but
   `backend_max_capacity` is still 1. Next: run `tools/ws_load_test.py` against the
