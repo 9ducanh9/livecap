@@ -37,6 +37,16 @@ DEFAULT_MAX_CONCURRENT_SESSIONS = 4
 DEFAULT_MAX_SESSIONS_PER_IP = 1
 DEFAULT_ENABLE_IDLE_SCALE_DOWN = False
 DEFAULT_IDLE_SCALE_DOWN_GRACE_SECONDS = 300
+# Meeting summary (Amazon Bedrock). Disabled by default so the feature is
+# strictly opt-in and never adds Bedrock cost unless explicitly enabled.
+DEFAULT_ENABLE_MEETING_SUMMARY = False
+DEFAULT_BEDROCK_MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0"
+# Minimum finalized segments before a summary is worth generating.
+DEFAULT_SUMMARY_MIN_SEGMENTS = 3
+# Upper bound on transcript characters sent to Bedrock (cost/latency guard).
+DEFAULT_SUMMARY_MAX_INPUT_CHARS = 12_000
+# Wall-clock budget for the Bedrock call during session teardown.
+DEFAULT_SUMMARY_TIMEOUT_SECONDS = 20
 
 
 def _get_int(name: str, default: int) -> int:
@@ -110,6 +120,17 @@ class Settings:
     idle_scale_down_grace_seconds: int = DEFAULT_IDLE_SCALE_DOWN_GRACE_SECONDS
     ecs_cluster_name: str = ""
     ecs_service_name: str = ""
+    enable_meeting_summary: bool = DEFAULT_ENABLE_MEETING_SUMMARY
+    bedrock_model_id: str = DEFAULT_BEDROCK_MODEL_ID
+    bedrock_region: str = ""
+    summary_min_segments: int = DEFAULT_SUMMARY_MIN_SEGMENTS
+    summary_max_input_chars: int = DEFAULT_SUMMARY_MAX_INPUT_CHARS
+    summary_timeout_seconds: int = DEFAULT_SUMMARY_TIMEOUT_SECONDS
+
+    @property
+    def resolved_bedrock_region(self) -> str:
+        """Region for Bedrock calls, falling back to the main AWS region."""
+        return self.bedrock_region.strip() or self.aws_region
 
     @property
     def allowed_origins(self) -> tuple[str, ...]:
@@ -167,6 +188,26 @@ class Settings:
             ),
             ecs_cluster_name=_get_str("ECS_CLUSTER_NAME", ""),
             ecs_service_name=_get_str("ECS_SERVICE_NAME", ""),
+            enable_meeting_summary=_get_bool(
+                "ENABLE_MEETING_SUMMARY", DEFAULT_ENABLE_MEETING_SUMMARY
+            ),
+            bedrock_model_id=_get_str("BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID),
+            bedrock_region=_get_str("BEDROCK_REGION", ""),
+            summary_min_segments=max(
+                1, _get_int("SUMMARY_MIN_SEGMENTS", DEFAULT_SUMMARY_MIN_SEGMENTS)
+            ),
+            summary_max_input_chars=max(
+                500,
+                _get_int(
+                    "SUMMARY_MAX_INPUT_CHARS", DEFAULT_SUMMARY_MAX_INPUT_CHARS
+                ),
+            ),
+            summary_timeout_seconds=max(
+                1,
+                _get_int(
+                    "SUMMARY_TIMEOUT_SECONDS", DEFAULT_SUMMARY_TIMEOUT_SECONDS
+                ),
+            ),
         )
 
 

@@ -101,6 +101,14 @@ resource "aws_ecs_task_definition" "backend" {
         {
           name  = "ECS_SERVICE_NAME"
           value = "${var.project_name}-backend-service-${var.environment}"
+        },
+        {
+          name  = "ENABLE_MEETING_SUMMARY"
+          value = tostring(var.enable_meeting_summary)
+        },
+        {
+          name  = "BEDROCK_MODEL_ID"
+          value = var.bedrock_model_id
         }
       ]
 
@@ -364,6 +372,14 @@ resource "aws_ecs_task_definition" "target_backend" {
         {
           name  = "ECS_SERVICE_NAME"
           value = "${var.project_name}-target-service-${var.environment}"
+        },
+        {
+          name  = "ENABLE_MEETING_SUMMARY"
+          value = tostring(var.enable_meeting_summary)
+        },
+        {
+          name  = "BEDROCK_MODEL_ID"
+          value = var.bedrock_model_id
         }
       ]
 
