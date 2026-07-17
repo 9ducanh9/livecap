@@ -2,13 +2,18 @@
 
 locals {
   backend_host = (
-    var.alb_ssl_certificate_arn != "" && var.backend_domain_name != ""
-  ) ? var.backend_domain_name : aws_lb.main.dns_name
+    var.target_alb_ssl_certificate_arn != "" && var.target_backend_domain_name != ""
+  ) ? var.target_backend_domain_name : aws_lb.target.dns_name
 
-  backend_base_url  = var.alb_ssl_certificate_arn != "" ? "https://${local.backend_host}" : "http://${local.backend_host}"
-  backend_ws_url    = var.alb_ssl_certificate_arn != "" ? "wss://${local.backend_host}/ws/transcribe" : "ws://${local.backend_host}/ws/transcribe"
+  backend_base_url  = var.target_alb_ssl_certificate_arn != "" ? "https://${local.backend_host}" : "http://${local.backend_host}"
+  backend_ws_url    = var.target_alb_ssl_certificate_arn != "" ? "wss://${local.backend_host}/ws/transcribe" : "ws://${local.backend_host}/ws/transcribe"
   frontend_base_url = "https://${aws_cloudfront_distribution.frontend.domain_name}"
   frontend_ws_url   = "wss://${aws_cloudfront_distribution.frontend.domain_name}/ws/transcribe"
+}
+
+output "alerts_sns_topic_arn" {
+  description = "ARN of the CloudWatch alerts SNS topic (empty when alarms are disabled)."
+  value       = var.enable_alarms ? aws_sns_topic.alerts[0].arn : ""
 }
 
 output "cloudfront_url" {
@@ -23,7 +28,7 @@ output "cloudfront_distribution_id" {
 
 output "alb_dns_name" {
   description = "ALB DNS name for backend API access"
-  value       = aws_lb.main.dns_name
+  value       = aws_lb.target.dns_name
 }
 
 output "alb_backend_base_url" {
@@ -53,7 +58,7 @@ output "frontend_websocket_url" {
 
 output "alb_arn" {
   description = "ARN of the Application Load Balancer"
-  value       = aws_lb.main.arn
+  value       = aws_lb.target.arn
 }
 
 output "ecr_repository_uri" {
@@ -97,18 +102,13 @@ output "ecs_cluster_arn" {
 }
 
 output "ecs_service_name" {
-  description = "Legacy rollback ECS service name."
-  value       = aws_ecs_service.backend.name
-}
-
-output "target_ecs_service_name" {
-  description = "Target private-subnet ECS service name."
+  description = "Private-subnet ECS service name."
   value       = aws_ecs_service.target_backend.name
 }
 
 output "ecs_task_definition_family" {
   description = "ECS task definition family"
-  value       = aws_ecs_task_definition.backend.family
+  value       = aws_ecs_task_definition.target_backend.family
 }
 
 output "ecs_task_role_arn" {
@@ -131,13 +131,8 @@ output "vpc_id" {
   value       = aws_vpc.target.id
 }
 
-output "legacy_vpc_id" {
-  description = "Legacy rollback VPC ID."
-  value       = data.aws_vpc.selected.id
-}
-
 output "target_alb_dns_name" {
-  description = "Blue/green target ALB DNS name."
+  description = "Dedicated VPC ALB DNS name."
   value       = aws_lb.target.dns_name
 }
 
@@ -148,12 +143,12 @@ output "target_private_subnet_ids" {
 
 output "alb_security_group_id" {
   description = "Security group ID for ALB"
-  value       = aws_security_group.alb.id
+  value       = aws_security_group.target_alb.id
 }
 
 output "ecs_security_group_id" {
   description = "Security group ID for ECS tasks"
-  value       = aws_security_group.ecs_tasks.id
+  value       = aws_security_group.target_ecs_tasks.id
 }
 
 output "region" {

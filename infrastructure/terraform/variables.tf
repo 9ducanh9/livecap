@@ -156,6 +156,44 @@ variable "budget_forecast_alert_threshold_pct" {
   default     = 80
 }
 
+# --- Operational alarms (CloudWatch -> SNS) --------------------------------
+
+variable "enable_alarms" {
+  description = "Create CloudWatch alarms (ALB 5XX/latency, ECS CPU/memory, target health) and an SNS alerts topic."
+  type        = bool
+  default     = true
+}
+
+variable "alert_notification_email" {
+  description = "Email subscribed to the CloudWatch alerts SNS topic. Leave empty to create the topic without a subscription (add subscribers later)."
+  type        = string
+  default     = ""
+}
+
+variable "alarm_alb_5xx_threshold" {
+  description = "Alarm when ALB target 5XX responses in a 5-minute window exceed this count."
+  type        = number
+  default     = 5
+}
+
+variable "alarm_alb_target_latency_seconds" {
+  description = "Alarm when average ALB target response time (seconds) exceeds this over the evaluation window."
+  type        = number
+  default     = 2
+}
+
+variable "alarm_cpu_utilization_pct" {
+  description = "Alarm when ECS service average CPU utilization (%) exceeds this."
+  type        = number
+  default     = 85
+}
+
+variable "alarm_memory_utilization_pct" {
+  description = "Alarm when ECS service average memory utilization (%) exceeds this."
+  type        = number
+  default     = 85
+}
+
 variable "enable_demo_scheduled_scaling" {
   description = "Enable demo-safe scheduled scaling for the ECS service."
   type        = bool
