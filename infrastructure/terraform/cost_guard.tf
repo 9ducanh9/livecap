@@ -8,6 +8,21 @@ resource "aws_budgets_budget" "monthly_cost_guard" {
   limit_unit   = "USD"
   time_unit    = "MONTHLY"
 
+  # Early warning: alert when AWS *forecasts* spend will exceed 80% of the
+  # limit, so there is time to react before the cap is hit.
+  dynamic "notification" {
+    for_each = var.budget_notification_email != "" ? [1] : []
+
+    content {
+      comparison_operator        = "GREATER_THAN"
+      threshold                  = var.budget_forecast_alert_threshold_pct
+      threshold_type             = "PERCENTAGE"
+      notification_type          = "FORECASTED"
+      subscriber_email_addresses = [var.budget_notification_email]
+    }
+  }
+
+  # Hard trip: alert when *actual* spend reaches 100% of the limit.
   dynamic "notification" {
     for_each = var.budget_notification_email != "" ? [1] : []
 

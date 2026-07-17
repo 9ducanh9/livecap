@@ -79,6 +79,7 @@ async def export_transcript(
             bucket=settings.s3_bucket,
             expiration_seconds=settings.download_link_expiration,
             region=settings.aws_region,
+            summary_text=body.summary_text,
         )
     except StorageError as exc:
         _logger.error(

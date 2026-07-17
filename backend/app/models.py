@@ -170,6 +170,44 @@ class PongMessage(BaseModel):
     type: Literal["pong"] = "pong"
 
 
+class SessionSummary(BaseModel):
+    """AI-generated wrap-up of a finished Session.
+
+    Produced by the Summarization_Service (Amazon Bedrock) from the finalized
+    transcript. Text fields are bilingual; list fields are written in the
+    meeting's dominant language. All fields are optional so a partial or
+    best-effort model response still yields a usable summary.
+    """
+
+    summary_vi: str = ""
+    summary_en: str = ""
+    key_points: List[str] = Field(default_factory=list)
+    decisions: List[str] = Field(default_factory=list)
+    action_items: List[str] = Field(default_factory=list)
+    topics: List[str] = Field(default_factory=list)
+
+    def is_empty(self) -> bool:
+        """Return True when the model produced no usable content."""
+        return not any(
+            (
+                self.summary_vi.strip(),
+                self.summary_en.strip(),
+                self.key_points,
+                self.decisions,
+                self.action_items,
+                self.topics,
+            )
+        )
+
+
+class SummaryMessage(BaseModel):
+    """Delivers the AI-generated :class:`SessionSummary` before ``session_end``."""
+
+    type: Literal["session_summary"] = "session_summary"
+    session_id: str
+    summary: SessionSummary
+
+
 # A discriminated union of every message the Backend sends to the Frontend.
 ServerMessage = Union[
     SessionStartMessage,
@@ -178,6 +216,7 @@ ServerMessage = Union[
     ErrorMessage,
     SessionEndMessage,
     PongMessage,
+    SummaryMessage,
 ]
 
 
@@ -226,6 +265,9 @@ class ExportRequest(BaseModel):
     """
 
     segments: List[ExportSegment] = Field(default_factory=list)
+    # Optional plain-text meeting summary prepended to the exported transcript.
+    # Backward compatible: older clients that omit it export segments only.
+    summary_text: Optional[str] = None
 
 
 class ExportResponse(BaseModel):

@@ -42,7 +42,11 @@ max_sessions_per_ip               = 1
 
 # Cost guard. AWS Budget notifications are not real-time and can lag behind usage.
 monthly_budget_limit_usd = 50
+# Set an email to receive budget alerts. Two notifications are created when set:
+# a FORECASTED alert at budget_forecast_alert_threshold_pct (default 80%) and an
+# ACTUAL alert at 100%. Leave empty to skip creating budget notifications.
 # budget_notification_email = "billing-alerts@example.com"
+# budget_forecast_alert_threshold_pct = 80
 
 # Scheduled scaling creates Application Auto Scaling schedules. Enable only
 # after reviewing the target service and demo timezone.
@@ -70,6 +74,18 @@ unhealthy_threshold   = 3   # consecutive failures
 
 # CloudWatch Logs
 log_retention_days = 14  # Retain logs for 14 days
+
+# Manage the watchtower application log group ("livecap") so it gets an explicit
+# retention policy. Import the existing group before the first apply:
+#   terraform import aws_cloudwatch_log_group.watchtower livecap
+# manage_watchtower_log_group = true
+# watchtower_log_group_name   = "livecap"
+
+# Amazon Bedrock meeting summary (opt-in). When true, creates a
+# bedrock:InvokeModel policy on the task role and enables the feature in the
+# container. Requires Bedrock model access enabled in the region.
+# enable_meeting_summary = false
+# bedrock_model_id       = "anthropic.claude-3-haiku-20240307-v1:0"
 
 # CloudFront Configuration
 cloudfront_price_class = "PriceClass_100" # Cost-focused; use 200/All for more Asia edge coverage.

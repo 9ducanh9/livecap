@@ -150,6 +150,12 @@ variable "budget_notification_email" {
   default     = ""
 }
 
+variable "budget_forecast_alert_threshold_pct" {
+  description = "Percentage of the monthly budget at which a FORECASTED alert fires (early warning before the 100% ACTUAL alert)."
+  type        = number
+  default     = 80
+}
+
 variable "enable_demo_scheduled_scaling" {
   description = "Enable demo-safe scheduled scaling for the ECS service."
   type        = bool
@@ -413,6 +419,30 @@ variable "log_retention_days" {
   description = "Number of days to retain CloudWatch logs"
   type        = number
   default     = 14
+}
+
+variable "manage_watchtower_log_group" {
+  description = "Manage the watchtower application log group in Terraform so it gets an explicit retention policy. Import the existing group before the first apply."
+  type        = bool
+  default     = true
+}
+
+variable "watchtower_log_group_name" {
+  description = "Name of the watchtower application log group created by the backend logging_service. Must match CLOUDWATCH_LOG_GROUP used by the running task."
+  type        = string
+  default     = "livecap"
+}
+
+variable "enable_meeting_summary" {
+  description = "Enable the Amazon Bedrock end-of-session meeting summary. Adds a bedrock:InvokeModel IAM policy and passes the feature flag to the task."
+  type        = bool
+  default     = false
+}
+
+variable "bedrock_model_id" {
+  description = "Amazon Bedrock model ID used for meeting summaries (Anthropic Claude messages API)."
+  type        = string
+  default     = "anthropic.claude-3-haiku-20240307-v1:0"
 }
 
 variable "enable_cloudwatch_dashboard" {

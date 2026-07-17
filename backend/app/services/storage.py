@@ -53,7 +53,10 @@ class UploadError(StorageError):
     pass
 
 
-def serialize_transcript_to_txt(segments: List[ExportSegment]) -> str:
+def serialize_transcript_to_txt(
+    segments: List[ExportSegment],
+    summary_text: str | None = None,
+) -> str:
     """Serialize a Transcript to TXT format.
 
     Format: One line per segment:
@@ -61,6 +64,9 @@ def serialize_transcript_to_txt(segments: List[ExportSegment]) -> str:
 
     Segments are ordered by finalization sequence (the order in the input list).
     The empty-transcript case (no segments) produces an empty string.
+
+    When *summary_text* is provided (the optional AI meeting summary), it is
+    prepended as a block above the transcript, separated by a blank line.
 
     Requirements:
     - 7.1: Serialize with speaker label, Vietnamese and English text
@@ -71,6 +77,8 @@ def serialize_transcript_to_txt(segments: List[ExportSegment]) -> str:
     ----------
     segments:
         List of finalized segments in finalization order.
+    summary_text:
+        Optional plain-text meeting summary to prepend.
 
     Returns
     -------
@@ -86,7 +94,10 @@ def serialize_transcript_to_txt(segments: List[ExportSegment]) -> str:
         line = f"[{seg.speaker_label}] VI: {seg.text_vi} | EN: {seg.text_en}"
         lines.append(line)
 
-    return "\n".join(lines)
+    transcript = "\n".join(lines)
+    if summary_text and summary_text.strip():
+        return f"{summary_text.strip()}\n\n{transcript}"
+    return transcript
 
 
 def generate_s3_object_key(session_id: str) -> str:
@@ -238,6 +249,7 @@ def store_transcript_and_get_download_link(
     bucket: str,
     expiration_seconds: int,
     region: str = "ap-southeast-1",
+    summary_text: str | None = None,
 ) -> tuple[str, datetime]:
     """Complete storage workflow: serialize, upload, generate download link.
 
@@ -274,7 +286,7 @@ def store_transcript_and_get_download_link(
         If presigned URL generation fails.
     """
     # Serialize the transcript (Requirements 7.1, 7.2, 7.3)
-    txt_content = serialize_transcript_to_txt(segments)
+    txt_content = serialize_transcript_to_txt(segments, summary_text=summary_text)
 
     # Generate unique S3 object key (Requirements 8.2, 8.3)
     try:
