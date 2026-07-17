@@ -42,6 +42,16 @@ max_sessions_per_ip               = 1
 
 # Cost guard. AWS Budget notifications are not real-time and can lag behind usage.
 monthly_budget_limit_usd = 50
+# Operational alarms (CloudWatch -> SNS). Set an email to be subscribed to the
+# alerts topic (confirm the AWS subscription email once). Leave empty to create
+# the topic without a subscriber.
+# alert_notification_email        = "ops-alerts@example.com"
+# enable_alarms                   = true
+# alarm_alb_5xx_threshold         = 5
+# alarm_alb_target_latency_seconds = 2
+# alarm_cpu_utilization_pct       = 85
+# alarm_memory_utilization_pct    = 85
+
 # Set an email to receive budget alerts. Two notifications are created when set:
 # a FORECASTED alert at budget_forecast_alert_threshold_pct (default 80%) and an
 # ACTUAL alert at 100%. Leave empty to skip creating budget notifications.

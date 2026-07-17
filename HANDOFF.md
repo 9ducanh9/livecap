@@ -78,6 +78,27 @@ git push -u origin Update
 - `BEDROCK_REGION` wired through `variables.tf` + both ECS task definitions.
   Set `bedrock_region` in tfvars if the model is not available in `aws_region`.
 
+## Phase 2 — Observability: alarms -> SNS (batch 3)
+
+- `infrastructure/terraform/monitoring.tf` (new) — SNS alerts topic + optional
+  email subscription, and CloudWatch alarms:
+  - ALB target 5XX, ALB (ELB) 5XX, ALB target latency, unhealthy hosts
+  - ECS service CPU and memory utilization
+  - All use `treat_missing_data = "notBreaching"` so scale-to-zero idle does
+    not trigger false alerts; all publish to the SNS topic.
+- `variables.tf` — `enable_alarms`, `alert_notification_email`, and thresholds.
+- `outputs.tf` — `alerts_sns_topic_arn`.
+- To enable: set `alert_notification_email` in tfvars, `apply`, then confirm the
+  SNS subscription email AWS sends. Verified: all .tf files parse (python-hcl2);
+  run `terraform fmt` + `validate` before apply.
+
+### Phase 2 remaining — X-Ray (NOT done, needs a decision)
+
+X-Ray tracing (C4) was intentionally deferred: it requires instrumenting the
+FastAPI app (`aws-xray-sdk`) plus an X-Ray daemon sidecar container and IAM.
+That touches the live WebSocket request path, so it is a larger, riskier change
+than the Terraform-only alarms. Decide separately before implementing.
+
 ## Follow-up (not in this branch)
 
 - Optional cleanup: `git add --renormalize . && git commit -m "Normalize line
