@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import type { AppState, Segment } from '../types/index';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import type { AppState, Segment, SessionSummary } from '../types/index';
 import { useAudioCapture } from '../hooks/useAudioCapture';
 import { useWebSocket, type WebSocketConnectionStatus } from '../hooks/useWebSocket';
 import CaptionDisplay from './CaptionDisplay';
 import ExportPanel from './ExportPanel';
 import ControlPanel from './ControlPanel';
+import SummaryPanel from './SummaryPanel';
+import { buildSummaryText } from '../services/exportService';
 import {
   isWakeBackendConfigured,
   wakeBackendIfConfigured,
@@ -69,6 +71,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
 export default function DashboardPage() {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState(Date.now());
   const [isStarting, setIsStarting] = useState(false);
@@ -85,6 +88,7 @@ export default function DashboardPage() {
     onFinalizedSegment(segment) { dispatch({ type: 'FINALIZED_SEGMENT', segment }); },
     onError(message) { dispatch({ type: 'SET_ERROR', error: message }); },
     onSessionEnd() { dispatch({ type: 'SESSION_END' }); },
+    onSummary(next) { setSummary(next); },
     onReconnectFailed() {
       stopCaptureRef.current?.();
       setRecordingStartedAt(null);
@@ -107,6 +111,7 @@ export default function DashboardPage() {
   const handleStart = useCallback(async () => {
     let startPhase: 'wake' | 'socket' | 'audio' = 'wake';
     dispatch({ type: 'CLEAR_ERROR' });
+    setSummary(null);
     setIsStarting(true);
     setStartStatusLabel(isWakeBackendConfigured() ? 'Starting backend' : 'Linking');
     try {
@@ -142,7 +147,9 @@ export default function DashboardPage() {
     dispatch({ type: 'SET_CAPTURING', value: false });
   }, [disconnect, stopCapture]);
 
-  const handleClear = useCallback(() => { dispatch({ type: 'CLEAR_TRANSCRIPT' }); }, []);
+  const handleClear = useCallback(() => { dispatch({ type: 'CLEAR_TRANSCRIPT' }); setSummary(null); }, []);
+
+  const summaryText = useMemo(() => (summary ? buildSummaryText(summary) : null), [summary]);
 
   const wsIsConnecting = isStarting || connectionStatus === 'connecting' || connectionStatus === 'reconnecting';
 
@@ -215,6 +222,7 @@ export default function DashboardPage() {
             <ExportPanel
               sessionId={state.sessionId}
               segments={state.segments}
+              summaryText={summaryText}
             />
           </div>
         </aside>
@@ -249,6 +257,13 @@ export default function DashboardPage() {
               />
             )}
           </div>
+
+          {/* AI meeting summary (appears after the session ends) */}
+          {summary && !isCapturing && (
+            <div className="px-6 pt-4">
+              <SummaryPanel summary={summary} onDismiss={() => setSummary(null)} />
+            </div>
+          )}
 
           {/* Captions */}
           <div className="flex-1 overflow-hidden px-6 py-4">

@@ -1,0 +1,112 @@
+import type { SessionSummary } from '../types';
+import { Sparkles, ListChecks, CheckSquare, Flag, Tag, X } from 'lucide-react';
+
+interface SummaryPanelProps {
+  summary: SessionSummary;
+  onDismiss?: () => void;
+}
+
+function hasContent(summary: SessionSummary): boolean {
+  return Boolean(
+    summary.summary_en.trim() ||
+      summary.summary_vi.trim() ||
+      summary.key_points.length ||
+      summary.decisions.length ||
+      summary.action_items.length ||
+      summary.topics.length,
+  );
+}
+
+/**
+ * Renders the AI-generated end-of-session summary (Amazon Bedrock).
+ * Bilingual paragraphs plus key points, decisions, action items, and topics.
+ */
+export default function SummaryPanel({ summary, onDismiss }: SummaryPanelProps) {
+  if (!hasContent(summary)) return null;
+
+  return (
+    <section
+      role="status"
+      aria-live="polite"
+      className="rounded-2xl border border-emerald-pro/25 bg-emerald-pro/5 overflow-hidden"
+    >
+      <div className="flex items-center justify-between border-b border-emerald-pro/20 bg-white/60 px-5 py-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-emerald-pro" />
+          <p className="text-sm font-bold text-ink">AI meeting summary</p>
+          <span className="rounded-full border border-emerald-pro/25 bg-emerald-pro/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-pro">
+            Bedrock
+          </span>
+        </div>
+        {onDismiss && (
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label="Dismiss summary"
+            className="text-ink/40 hover:text-ink transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      <div className="max-h-[42vh] overflow-y-auto custom-scrollbar px-5 py-4 space-y-4">
+        {summary.summary_en.trim() && (
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-ink/45">Summary (EN)</p>
+            <p className="mt-1 text-sm leading-relaxed text-ink/80">{summary.summary_en}</p>
+          </div>
+        )}
+        {summary.summary_vi.trim() && (
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-ink/45">Tóm tắt (VI)</p>
+            <p className="mt-1 text-sm leading-relaxed text-ink/80">{summary.summary_vi}</p>
+          </div>
+        )}
+
+        <SummaryList icon={<ListChecks className="h-3.5 w-3.5 text-emerald-pro" />} title="Key points" items={summary.key_points} />
+        <SummaryList icon={<Flag className="h-3.5 w-3.5 text-emerald-pro" />} title="Decisions" items={summary.decisions} />
+        <SummaryList icon={<CheckSquare className="h-3.5 w-3.5 text-emerald-pro" />} title="Action items" items={summary.action_items} />
+
+        {summary.topics.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5">
+              <Tag className="h-3.5 w-3.5 text-emerald-pro" />
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-ink/45">Topics</p>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {summary.topics.map((topic, i) => (
+                <span
+                  key={`${topic}-${i}`}
+                  className="rounded-full border border-ink/10 bg-white px-2.5 py-1 text-xs font-medium text-ink/70"
+                >
+                  {topic}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SummaryList({ icon, title, items }: { icon: React.ReactNode; title: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <div className="flex items-center gap-1.5">
+        {icon}
+        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-ink/45">{title}</p>
+      </div>
+      <ul className="mt-1.5 space-y-1">
+        {items.map((item, i) => (
+          <li key={`${title}-${i}`} className="flex gap-2 text-sm leading-relaxed text-ink/80">
+            <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-emerald-pro" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

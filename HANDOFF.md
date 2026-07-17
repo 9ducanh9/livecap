@@ -61,9 +61,24 @@ git push -u origin Update
    `BEDROCK_REGION` or use an inference-profile ID as `bedrock_model_id`.
 4. `terraform plan` → review → `apply`. Confirm the budget SNS subscription email.
 
+## Frontend (batch 2 — included in this branch)
+
+- `types/index.ts` — `SessionSummary` + `SummaryMessage` types.
+- `hooks/useWebSocket.ts` — parse `session_summary`, `onSummary` callback.
+- `components/SummaryPanel.tsx` (new) — renders the bilingual summary, key
+  points, decisions, action items, and topics after the session ends.
+- `components/DashboardPage.tsx` — summary state + renders the panel.
+- `components/ExportPanel.tsx` + `services/exportService.ts` — prepend the
+  summary text to the exported transcript (`summary_text`).
+- Verified: `tsc --noEmit` clean, `vite build` passes, useWebSocket +
+  DashboardPage tests pass.
+
+## Terraform (batch 2)
+
+- `BEDROCK_REGION` wired through `variables.tf` + both ECS task definitions.
+  Set `bedrock_region` in tfvars if the model is not available in `aws_region`.
+
 ## Follow-up (not in this branch)
 
-- Frontend does not yet render the `session_summary` message — add a summary
-  panel + pass `summary_text` into the export request.
 - Optional cleanup: `git add --renormalize . && git commit -m "Normalize line
   endings to LF"` to clear the unrelated CRLF noise repo-wide.

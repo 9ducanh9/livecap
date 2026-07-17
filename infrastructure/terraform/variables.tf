@@ -445,6 +445,12 @@ variable "bedrock_model_id" {
   default     = "anthropic.claude-3-haiku-20240307-v1:0"
 }
 
+variable "bedrock_region" {
+  description = "Region for Amazon Bedrock calls. Leave empty to use aws_region. Set this when the model is not available in aws_region (e.g. ap-southeast-1)."
+  type        = string
+  default     = ""
+}
+
 variable "enable_cloudwatch_dashboard" {
   description = "Create a CloudWatch dashboard for LiveCap operational observability."
   type        = bool

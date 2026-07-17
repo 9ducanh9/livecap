@@ -86,6 +86,8 @@ log_retention_days = 14  # Retain logs for 14 days
 # container. Requires Bedrock model access enabled in the region.
 # enable_meeting_summary = false
 # bedrock_model_id       = "anthropic.claude-3-haiku-20240307-v1:0"
+# Set bedrock_region only if the model is not available in aws_region.
+# bedrock_region         = "us-east-1"
 
 # CloudFront Configuration
 cloudfront_price_class = "PriceClass_100" # Cost-focused; use 200/All for more Asia edge coverage.

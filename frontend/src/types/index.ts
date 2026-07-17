@@ -80,6 +80,22 @@ export interface PongMessage {
   type: 'pong';
 }
 
+/** AI-generated end-of-session wrap-up (mirrors backend SessionSummary). */
+export interface SessionSummary {
+  summary_vi: string;
+  summary_en: string;
+  key_points: string[];
+  decisions: string[];
+  action_items: string[];
+  topics: string[];
+}
+
+export interface SummaryMessage {
+  type: 'session_summary';
+  session_id: string;
+  summary: SessionSummary;
+}
+
 /** Union of all messages the backend can send to the frontend. */
 export type ServerMessage =
   | SessionStartMessage
@@ -87,7 +103,8 @@ export type ServerMessage =
   | FinalizedSegmentMessage
   | ErrorMessage
   | SessionEndMessage
-  | PongMessage;
+  | PongMessage
+  | SummaryMessage;
 
 // ---------------------------------------------------------------------------
 // WebSocket Messages — Frontend → Backend (discriminated union)

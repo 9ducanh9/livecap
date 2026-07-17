@@ -6,6 +6,8 @@ import { Download, AlertCircle, CheckCircle2 } from 'lucide-react';
 interface ExportPanelProps {
   sessionId: string | null;
   segments: Segment[];
+  /** Optional AI summary text prepended to the exported transcript. */
+  summaryText?: string | null;
 }
 
 type ExportStatus =
@@ -14,7 +16,7 @@ type ExportStatus =
   | { kind: 'success'; downloadUrl: string; expiresAt: string }
   | { kind: 'error'; message: string };
 
-export default function ExportPanel({ sessionId, segments }: ExportPanelProps) {
+export default function ExportPanel({ sessionId, segments, summaryText }: ExportPanelProps) {
   const [status, setStatus] = useState<ExportStatus>({ kind: 'idle' });
   const finalizedSegments = useMemo(() => segments.filter((s) => s.isFinal), [segments]);
 
@@ -22,14 +24,14 @@ export default function ExportPanel({ sessionId, segments }: ExportPanelProps) {
     if (!sessionId || finalizedSegments.length === 0) return;
     setStatus({ kind: 'loading' });
     try {
-      const result = await exportTranscript(sessionId, segments);
+      const result = await exportTranscript(sessionId, segments, summaryText);
       triggerTranscriptDownload(result.download_url);
       setStatus({ kind: 'success', downloadUrl: result.download_url, expiresAt: result.expires_at });
     } catch (err) {
       const message = err instanceof ExportError ? err.message : 'An unexpected error occurred during export.';
       setStatus({ kind: 'error', message });
     }
-  }, [finalizedSegments.length, segments, sessionId]);
+  }, [finalizedSegments.length, segments, sessionId, summaryText]);
 
   const isDisabled = !sessionId || finalizedSegments.length === 0 || status.kind === 'loading';
 

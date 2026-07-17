@@ -109,6 +109,10 @@ resource "aws_ecs_task_definition" "backend" {
         {
           name  = "BEDROCK_MODEL_ID"
           value = var.bedrock_model_id
+        },
+        {
+          name  = "BEDROCK_REGION"
+          value = var.bedrock_region
         }
       ]
 
@@ -380,6 +384,10 @@ resource "aws_ecs_task_definition" "target_backend" {
         {
           name  = "BEDROCK_MODEL_ID"
           value = var.bedrock_model_id
+        },
+        {
+          name  = "BEDROCK_REGION"
+          value = var.bedrock_region
         }
       ]
 

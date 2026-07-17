@@ -18,7 +18,9 @@ import type {
   ServerMessage,
   SessionEndMessage,
   SessionStartMessage,
+  SessionSummary,
   SourceLanguageCode,
+  SummaryMessage,
   TargetLanguageCode,
 } from '../types/index';
 
@@ -45,6 +47,7 @@ export interface UseWebSocketOptions {
   onFinalizedSegment?: (segment: Segment) => void;
   onError?: (message: string, code: string) => void;
   onSessionEnd?: (sessionId: string | null) => void;
+  onSummary?: (summary: SessionSummary) => void;
   onReconnectFailed?: () => void;
 }
 
@@ -161,6 +164,32 @@ function parseServerMessage(raw: unknown): ServerMessage | null {
         type: 'session_end',
         session_id: obj['session_id'] as string,
       } as SessionEndMessage;
+    }
+
+    case 'session_summary': {
+      if (
+        typeof obj['session_id'] !== 'string' ||
+        typeof obj['summary'] !== 'object' ||
+        obj['summary'] === null
+      ) {
+        return null;
+      }
+      const s = obj['summary'] as Record<string, unknown>;
+      const asStr = (v: unknown): string => (typeof v === 'string' ? v : '');
+      const asStrList = (v: unknown): string[] =>
+        Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+      return {
+        type: 'session_summary',
+        session_id: obj['session_id'] as string,
+        summary: {
+          summary_vi: asStr(s['summary_vi']),
+          summary_en: asStr(s['summary_en']),
+          key_points: asStrList(s['key_points']),
+          decisions: asStrList(s['decisions']),
+          action_items: asStrList(s['action_items']),
+          topics: asStrList(s['topics']),
+        },
+      } as SummaryMessage;
     }
 
     case 'pong':
@@ -338,6 +367,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         case 'session_end':
           sessionIdRef.current = msg.session_id;
           cb.onSessionEnd?.(msg.session_id);
+          break;
+
+        case 'session_summary':
+          cb.onSummary?.(msg.summary);
           break;
 
         case 'pong':

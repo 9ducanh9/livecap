@@ -7,7 +7,7 @@
  * Requirements: 7.1, 7.2, 7.3, 8.5, 9.2
  */
 
-import type { Segment } from '../types';
+import type { Segment, SessionSummary } from '../types';
 
 const PRODUCTION_BACKEND_ORIGIN = 'https://dpeohr327wt9l.cloudfront.net';
 const CUSTOM_FRONTEND_HOST = 'livecap.logantai.com';
@@ -30,6 +30,7 @@ interface ExportSegmentPayload {
 /** Request body for POST /api/sessions/{session_id}/export */
 interface ExportRequestBody {
   segments: ExportSegmentPayload[];
+  summary_text?: string;
 }
 
 /** Successful response from the export endpoint. */
@@ -79,6 +80,26 @@ export function serializeSegmentsToTxt(segments: Segment[]): string {
     .join('\n');
 }
 
+/**
+ * Render a SessionSummary into the plain-text block prepended to the exported
+ * transcript. Mirrors the backend `summary_to_text` layout. Returns an empty
+ * string when the summary has no content.
+ */
+export function buildSummaryText(summary: SessionSummary): string {
+  const parts: string[] = [];
+  if (summary.summary_en.trim()) parts.push(`Summary (EN):\n${summary.summary_en.trim()}`);
+  if (summary.summary_vi.trim()) parts.push(`Tóm tắt (VI):\n${summary.summary_vi.trim()}`);
+  const block = (title: string, items: string[]): void => {
+    if (items.length > 0) parts.push(`${title}:\n${items.map((i) => `  - ${i}`).join('\n')}`);
+  };
+  block('Key points', summary.key_points);
+  block('Decisions', summary.decisions);
+  block('Action items', summary.action_items);
+  if (summary.topics.length > 0) parts.push(`Topics: ${summary.topics.join(', ')}`);
+  if (parts.length === 0) return '';
+  return `=== MEETING SUMMARY ===\n\n${parts.join('\n\n')}\n\n${'='.repeat(24)}`;
+}
+
 // ---------------------------------------------------------------------------
 // API call (Req 8.5, 9.2)
 // ---------------------------------------------------------------------------
@@ -96,6 +117,7 @@ export function serializeSegmentsToTxt(segments: Segment[]): string {
 export async function exportTranscript(
   sessionId: string,
   segments: Segment[],
+  summaryText?: string | null,
   baseUrl?: string,
 ): Promise<ExportResponse> {
   const finalizedSegments = segments.filter((s) => s.isFinal);
@@ -111,6 +133,9 @@ export async function exportTranscript(
       timestamp_end: s.timestampEnd,
     })),
   };
+  if (summaryText && summaryText.trim() !== '') {
+    payload.summary_text = summaryText;
+  }
 
   const apiBaseUrl = resolveApiBaseUrl(baseUrl);
   const url = `${apiBaseUrl}/api/sessions/${encodeURIComponent(sessionId)}/export`;
