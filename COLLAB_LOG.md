@@ -42,8 +42,9 @@ Companion docs: `HANDOFF.md` (push/deploy steps for the current branch),
 
 ## Current state (2026-07-18)
 
-Branch `Update` = `main` + 9 commits plus the deployment-validation log entry
-below. The target ECS service is live on image `cf920cd-amd64` with the DynamoDB
+Branch `Update` = `main` + 11 commits (latest are Codex's provisioning and
+deployment-validation records). The target ECS service is live on image
+`cf920cd-amd64` with the DynamoDB
 session store enabled. It is configured for scale-to-zero (`desired/min = 0`,
 `max = 1`) and the 300-second idle shutdown has been verified. CloudWatch alarms
 and their SNS topic are deployed. Working tree is clean except ignored local
@@ -69,6 +70,13 @@ Details in `HANDOFF.md`.
 ---
 
 ## Change log (newest first)
+
+### 2026-07-18 — Claude (Cowork) — log hygiene
+- Corrected the stale "Open items" (Phase 4 is committed, not "not started";
+  deployment done single-task) and the commit count (9 → 11). No code changes.
+- Verified against git: Phase 4 commit `d61c997` and its files are present;
+  branch has 11 commits. AWS/runtime state reflects Codex's verified entries
+  (not independently re-checked here).
 
 ### 2026-07-18 - Codex - User-approved Update deployment and live validation
 - Built and pushed immutable linux/amd64 backend image `cf920cd-amd64`, then
@@ -154,11 +162,23 @@ Details in `HANDOFF.md`.
 
 ## Open items / next up
 
-- **Phase 4** (not started): Graviton/arm64 image (~20% cheaper), CI/CD
-  auto-deploy pipeline with a plan gate (no auto-apply).
-- **Phase 2 C4** (deferred): X-Ray tracing — needs FastAPI instrumentation + an
+Done & deployed (single task): Phases 0–3 slice 1 and the DynamoDB session store
+are live and verified. Phase 4 is committed (`d61c997`) but **not adopted** yet.
+
+- **Multi-task (raise > 1):** deployed with the DynamoDB store live but
+  `backend_max_capacity` is still 1. Next: run `tools/ws_load_test.py` against the
+  live endpoint, then raise capacity after operational approval.
+- **Graviton (Phase 4):** code is in place; the service still runs amd64
+  (`X86_64`). Adopting it needs an arm64 image build, then set
+  `task_cpu_architecture = "ARM64"`.
+- **CI/CD pipeline (Phase 4):** `deploy.yml` exists but is unused (Codex deployed
+  manually). Configure the repo vars/secrets to use the manual plan-gate.
+- **Phase 2 C4 (deferred):** X-Ray tracing — needs FastAPI instrumentation + an
   X-Ray daemon sidecar; decide before implementing.
-- **Operational follow-up:** monitor the deployed alarms, WAF, target health,
-  and cost during normal use; keep max task count at 1 until multi-task load
-  testing and operational approval are complete.
+- **Not started (roadmap):** A2 Polly, A3 Comprehend, A4 Bedrock translation,
+  A5 Transcribe custom vocabulary; B3 second NAT, B4 cold-start reduction,
+  B5 session resume; C5 Cognito + transcript history, C6 Secrets Manager,
+  C7 Container Insights; D2 Fargate Spot, D3 S3 tiering, D5 cost reporting.
+- **Operational follow-up:** monitor alarms/WAF/target health/cost; confirm any
+  SNS/budget subscription emails.
 - Optional: repo-wide `git add --renormalize .` to clear the CRLF doc churn.
