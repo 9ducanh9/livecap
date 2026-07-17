@@ -99,6 +99,12 @@ log_retention_days = 14  # Retain logs for 14 days
 # Set bedrock_region only if the model is not available in aws_region.
 # bedrock_region         = "us-east-1"
 
+# Multi-AZ egress (HA): add a second NAT gateway in the other AZ and route each
+# private subnet through the NAT in its own AZ. Costs one extra NAT + EIP.
+# Default keeps the single cost-optimized NAT.
+# enable_multi_az_nat                     = true
+# target_nat_gateway_secondary_subnet_key = "b"
+
 # CloudFront Configuration
 cloudfront_price_class = "PriceClass_100" # Cost-focused; use 200/All for more Asia edge coverage.
 

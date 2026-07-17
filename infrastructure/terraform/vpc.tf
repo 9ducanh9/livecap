@@ -137,11 +137,79 @@ resource "aws_route_table" "target_private" {
   )
 }
 
+# --- Optional second NAT gateway for multi-AZ egress (enable_multi_az_nat) ---
+# Additive by design: the primary NAT above is untouched. When disabled
+# (default) every private subnet keeps routing through the single primary NAT,
+# so `terraform plan` shows no change. When enabled, a second NAT is created in
+# the secondary AZ and private subnets in that AZ route through it, removing the
+# single-AZ egress dependency.
+
+locals {
+  secondary_nat_az = var.target_public_subnets[var.target_nat_gateway_secondary_subnet_key].availability_zone
+}
+
+resource "aws_eip" "target_nat_secondary" {
+  count = var.enable_multi_az_nat ? 1 : 0
+
+  domain = "vpc"
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.project_name}-target-nat-secondary-${var.environment}"
+      Environment = var.environment
+    }
+  )
+
+  depends_on = [aws_internet_gateway.target]
+}
+
+resource "aws_nat_gateway" "target_secondary" {
+  count = var.enable_multi_az_nat ? 1 : 0
+
+  allocation_id = aws_eip.target_nat_secondary[0].id
+  subnet_id     = aws_subnet.target_public[var.target_nat_gateway_secondary_subnet_key].id
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.project_name}-target-nat-secondary-${var.environment}"
+      Environment = var.environment
+    }
+  )
+
+  depends_on = [aws_internet_gateway.target]
+}
+
+resource "aws_route_table" "target_private_secondary" {
+  count = var.enable_multi_az_nat ? 1 : 0
+
+  vpc_id = aws_vpc.target.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.target_secondary[0].id
+  }
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.project_name}-target-private-secondary-${var.environment}"
+      Environment = var.environment
+    }
+  )
+}
+
 resource "aws_route_table_association" "target_private" {
   for_each = var.target_private_subnets
 
-  subnet_id      = aws_subnet.target_private[each.key].id
-  route_table_id = aws_route_table.target_private.id
+  subnet_id = aws_subnet.target_private[each.key].id
+  # Route through the NAT in the subnet's own AZ when multi-AZ egress is on;
+  # otherwise (default) through the single primary NAT.
+  route_table_id = (
+    var.enable_multi_az_nat &&
+    each.value.availability_zone == local.secondary_nat_az
+  ) ? one(aws_route_table.target_private_secondary[*].id) : aws_route_table.target_private.id
 }
 
 resource "aws_security_group" "target_alb" {
