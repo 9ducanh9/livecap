@@ -42,12 +42,12 @@ Companion docs: `HANDOFF.md` (push/deploy steps for the current branch),
 
 ## Current state (2026-07-17)
 
-Branch `Update` = `main` + 7 commits. DynamoDB is provisioned and enabled in
+Branch `Update` = `main` + 9 commits. DynamoDB is provisioned and enabled in
 the ignored dev `terraform.tfvars`, but the running ECS task has not yet been
 redeployed with the DynamoDB session-store configuration. Working tree is clean
 except the known CRLF churn on the two docs above.
 
-**Feature flags (all default OFF / unchanged behaviour):**
+**Feature flags and defaults:**
 
 | Capability | Flag(s) | Default |
 |---|---|---|
