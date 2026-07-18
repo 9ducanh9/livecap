@@ -68,7 +68,7 @@ deployed. Ignored local Terraform settings remain untracked.
 | Text analysis / Comprehend (A3) | `enable_text_analysis` / `ENABLE_TEXT_ANALYSIS` | off (English only) |
 | X-Ray tracing (C4) | `enable_xray` / `ENABLE_XRAY` | off (verify vs live daemon before enabling) |
 | Fargate Spot (D2) | `enable_fargate_spot` (+ `fargate_spot_weight`, `fargate_on_demand_base`) | off (on-demand FARGATE) |
-| Cognito accounts + transcript history (C5) | `enable_cognito_auth` / `ENABLE_AUTH` | off (implemented locally; no AWS apply/deploy) |
+| Cognito accounts + transcript history (C5) | `enable_cognito_auth` provisions; `enable_auth_runtime` / `ENABLE_AUTH` enforces | resources provisioned; runtime enforcement off |
 
 **Remaining human actions:** confirm any SNS/budget subscription emails, enable
 Bedrock model access in-region only before enabling that feature, and configure
@@ -78,6 +78,22 @@ Details in `HANDOFF.md`.
 ---
 
 ## Change log (newest first)
+
+### 2026-07-18 — Codex — C5 Cognito resources provisioned safely
+- Applied a targeted Terraform plan limited to the Cognito User Pool, public
+  PKCE client, Hosted UI domain, transcript-history DynamoDB table, and the
+  task-role policy. Result: **5 added, 0 changed, 0 destroyed**.
+- Verified the Hosted UI domain is ACTIVE and DynamoDB TTL is ENABLED on
+  `expires_at`. The running ECS task has no `ENABLE_AUTH` setting, so the
+  existing anonymous app remains available. A separate reviewed frontend and
+  runtime cutover must set `enable_auth_runtime=true`.
+
+### 2026-07-18 — Codex — C5 safe provisioning gate
+- Split Cognito resource creation from backend enforcement. `enable_cognito_auth`
+  can now create the User Pool, browser client, Hosted UI domain, and history
+  table while `enable_auth_runtime=false` preserves the anonymous production
+  app. Turn enforcement on only after the frontend is rebuilt with its public
+  Cognito settings and the runtime cutover is reviewed.
 
 ### 2026-07-18 — Claude (Cowork) — Group D cost optimization (D2 + D3/D5 docs)
 - **D2 Fargate Spot** (`fargate_spot.tf` + `ecs.tf`): opt-in `enable_fargate_spot`

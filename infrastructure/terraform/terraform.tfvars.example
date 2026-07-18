@@ -135,6 +135,9 @@ log_retention_days = 14  # Retain logs for 14 days
 # VITE_AUTH_ENABLED, VITE_COGNITO_* variables; do not put any client secret in
 # the SPA (the Cognito client is intentionally public + PKCE).
 # enable_cognito_auth = true
+# Keep false while the current frontend is anonymous. Set true only after a
+# frontend build with VITE_AUTH_ENABLED and the Cognito values is deployed.
+# enable_auth_runtime = false
 # cognito_callback_urls = ["https://livecap.example.com/app", "http://localhost:5173/app"]
 # cognito_logout_urls   = ["https://livecap.example.com/app", "http://localhost:5173/app"]
 # cognito_domain_prefix = "livecap-example-dev"
