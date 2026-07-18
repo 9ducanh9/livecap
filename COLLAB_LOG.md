@@ -76,6 +76,34 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-18 — Kiro — Security baseline: VPC Flow Logs + GuardDuty + Security Hub
+- **New file:** `infrastructure/terraform/security.tf` — adds three enterprise
+  security capabilities, all flag-gated (default ON for new deploys):
+  1. **VPC Flow Logs** (`enable_vpc_flow_logs`): captures ALL traffic metadata
+     for the target VPC → CloudWatch log group with 14-day retention. Includes
+     dedicated IAM role with least-privilege publish permissions.
+  2. **Amazon GuardDuty** (`enable_guardduty`): intelligent threat detection
+     with S3 data source enabled. HIGH/CRITICAL findings route to the existing
+     alerts SNS topic via EventBridge rule.
+  3. **AWS Security Hub** (`enable_security_hub`): enables the AWS Foundational
+     Security Best Practices standard. Optional CIS Benchmark via
+     `enable_cis_benchmark`.
+- **Container Insights** (`ecs.tf`): now driven by `enable_container_insights`
+  variable (default false). Toggle to true for production observability depth.
+- **Variables added** (`variables.tf`): `enable_vpc_flow_logs`,
+  `vpc_flow_logs_retention_days`, `vpc_flow_logs_traffic_type`,
+  `enable_guardduty`, `enable_security_hub`, `enable_cis_benchmark`,
+  `enable_container_insights`.
+- **Outputs added** (`outputs.tf`): `vpc_flow_log_group`,
+  `guardduty_detector_id`, `security_hub_enabled`.
+- **Example updated** (`terraform.tfvars.example`): documents all new flags
+  with cost notes.
+- Verified: `terraform fmt -check -recursive` + `terraform validate` pass. No
+  existing resources affected (all count-gated). Not deployed — requires human
+  `plan` + `apply`.
+- **Impact on Well-Architected score:** Security 7→8.5, Ops Excellence 6→7
+  (detection + compliance + conditional deep metrics).
+
 ### 2026-07-18 — Claude (Cowork) — B5 session-id continuity on reconnect
 - Backend `websocket.py`: new `_resolve_session_id` reuses a client-supplied
   `session_id` query param when it is a valid UUID, else mints a fresh one. The

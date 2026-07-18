@@ -165,3 +165,21 @@ tags = {
   CostCenter  = "academic-project"
   Terraform   = "true"
 }
+
+# --- Security Baseline (Well-Architected Security Pillar) ------------------
+
+# VPC Flow Logs: captures network traffic metadata for the target VPC.
+# Essential for security auditing and incident investigation.
+enable_vpc_flow_logs           = true
+vpc_flow_logs_retention_days   = 14    # match log_retention_days
+vpc_flow_logs_traffic_type     = "ALL" # ALL | ACCEPT | REJECT
+
+# Amazon GuardDuty: intelligent threat detection. HIGH/CRITICAL findings route
+# to the alerts SNS topic. Cost: ~$4/GB CloudTrail + ~$1/GB flow logs analysed.
+enable_guardduty = true
+
+# AWS Security Hub: aggregated compliance posture. Enables the AWS Foundational
+# Security Best Practices standard. Requires GuardDuty to be enabled.
+enable_security_hub  = true
+# Optional CIS AWS Foundations Benchmark (more checks, stricter):
+# enable_cis_benchmark = true
