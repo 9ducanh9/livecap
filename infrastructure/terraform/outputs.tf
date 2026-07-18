@@ -161,6 +161,23 @@ output "environment" {
   value       = var.environment
 }
 
+# --- Security outputs ---
+
+output "vpc_flow_log_group" {
+  description = "CloudWatch log group receiving VPC Flow Logs (empty when disabled)."
+  value       = var.enable_vpc_flow_logs ? aws_cloudwatch_log_group.vpc_flow_logs[0].name : ""
+}
+
+output "guardduty_detector_id" {
+  description = "GuardDuty detector ID (empty when disabled)."
+  value       = var.enable_guardduty ? aws_guardduty_detector.main[0].id : ""
+}
+
+output "security_hub_enabled" {
+  description = "Whether Security Hub is enabled."
+  value       = var.enable_security_hub
+}
+
 # Deployment instructions
 output "deployment_instructions" {
   description = "Quick deployment instructions"

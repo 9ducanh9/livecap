@@ -578,3 +578,52 @@ variable "autoscaling_target_memory" {
   type        = number
   default     = 80
 }
+
+# --- Security baseline (Well-Architected Security pillar) ------------------
+
+variable "enable_vpc_flow_logs" {
+  description = "Enable VPC Flow Logs for the target VPC. Essential for security auditing and incident investigation."
+  type        = bool
+  default     = true
+}
+
+variable "vpc_flow_logs_retention_days" {
+  description = "Retention period (days) for VPC Flow Log entries in CloudWatch Logs."
+  type        = number
+  default     = 14
+}
+
+variable "vpc_flow_logs_traffic_type" {
+  description = "Traffic type to capture: ALL, ACCEPT, or REJECT."
+  type        = string
+  default     = "ALL"
+
+  validation {
+    condition     = contains(["ALL", "ACCEPT", "REJECT"], var.vpc_flow_logs_traffic_type)
+    error_message = "vpc_flow_logs_traffic_type must be ALL, ACCEPT, or REJECT."
+  }
+}
+
+variable "enable_guardduty" {
+  description = "Enable Amazon GuardDuty for intelligent threat detection. Findings are routed to the alerts SNS topic."
+  type        = bool
+  default     = true
+}
+
+variable "enable_security_hub" {
+  description = "Enable AWS Security Hub for aggregated compliance and posture management."
+  type        = bool
+  default     = true
+}
+
+variable "enable_cis_benchmark" {
+  description = "Subscribe to the CIS AWS Foundations Benchmark standard in Security Hub (in addition to AWS Foundational Best Practices)."
+  type        = bool
+  default     = false
+}
+
+variable "enable_container_insights" {
+  description = "Enable CloudWatch Container Insights for the ECS cluster. Adds deeper CPU/memory/network metrics per task but incurs additional CloudWatch cost (~$0.01/metric/hour)."
+  type        = bool
+  default     = false
+}
