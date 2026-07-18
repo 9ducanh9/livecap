@@ -262,6 +262,25 @@ def _resolve_language_mode(
     return _ALLOWED_LANGUAGE_MODES.get((source, target))
 
 
+def _resolve_session_id(websocket: WebSocket) -> str:
+    """Reuse the client's prior session id on reconnect, else mint a new one.
+
+    Accepts a ``session_id`` query param only if it is a valid UUID, so a client
+    that reconnects after an unexpected drop can keep one logical session id
+    across the gap (stable logs, export, and active-session accounting). The
+    active-session registry's ``try_register`` is idempotent for a repeated id,
+    so reusing it does not double-count. A missing or invalid value yields a
+    fresh UUID v4 (B5).
+    """
+    provided = websocket.query_params.get("session_id")
+    if provided:
+        try:
+            return str(uuid.UUID(provided))
+        except (ValueError, AttributeError, TypeError):
+            pass
+    return str(uuid.uuid4())
+
+
 def _resolve_client_ip(websocket: WebSocket) -> str:
     """Resolve the caller IP, preferring ALB/CloudFront forwarded headers."""
 
@@ -645,7 +664,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     5. Sends ``session_end`` and closes cleanly on stop, timeout, or error.
     """
     settings = get_settings()
-    session_id = str(uuid.uuid4())
+    session_id = _resolve_session_id(websocket)
     language_mode = _resolve_language_mode(
         websocket,
         fallback_source_language_code=settings.transcribe_language_code,

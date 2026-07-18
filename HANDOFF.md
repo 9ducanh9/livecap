@@ -202,7 +202,7 @@ batch commits only my files. When you commit that refactor:
 
 ## Follow-up (not in this branch)
 
-- B5 (session-id continuity on reconnect) is still open; coordinate on
-  `websocket.py` + `useWebSocket.ts` after the A1+ REST work settles.
+- B5 (session-id continuity on reconnect) is DONE — reconnects reuse the same
+  session id via a `session_id` query param.
 - Optional cleanup: `git add --renormalize . && git commit -m "Normalize line
   endings to LF"` to clear the unrelated CRLF noise repo-wide.

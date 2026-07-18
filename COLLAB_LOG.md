@@ -76,6 +76,17 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-18 — Claude (Cowork) — B5 session-id continuity on reconnect
+- Backend `websocket.py`: new `_resolve_session_id` reuses a client-supplied
+  `session_id` query param when it is a valid UUID, else mints a fresh one. The
+  registry's `try_register` is idempotent for a repeated id, so reconnects keep
+  one logical session (stable logs/export/accounting) without double-counting.
+- Frontend `useWebSocket.ts`: `buildWsUrl` adds `session_id`; openSocket passes
+  the prior id **only on reconnect** (`isRetry`).
+- No infra change. Verified: 4 backend tests pass, `tsc` clean, useWebSocket
+  tests pass. Unblocked now that Codex's A1+ edits to these files are committed.
+  Not deployed.
+
 ### 2026-07-18 - Codex - mount optional enrichment routes
 - Registered Claude's flag-gated `enrichment_router` in FastAPI so a reviewed
   deployment can expose `POST /api/tts` and `POST /api/analyze`. Added the
@@ -310,12 +321,10 @@ To make it **live on the deployed stack** (all human-run, reviewed):
   manually). Configure the repo vars/secrets to use the manual plan-gate.
 - **Phase 2 C4 (deferred):** X-Ray tracing — needs FastAPI instrumentation + an
   X-Ray daemon sidecar; decide before implementing.
-- **B5 session-id continuity on reconnect (coordinate with Codex):** planned as
-  frontend sending its prior `session_id` on reconnect + backend reusing it
-  (registry try_register is already idempotent). Deferred because it edits
-  `websocket.py` + `useWebSocket.ts`, which Codex has uncommitted changes in.
-  Whoever owns those files after the A1+ REST redesign lands should do it.
-- **Not started (roadmap):** A2 Polly, A3 Comprehend, A4 Bedrock translation,
+- **B5 session-id continuity on reconnect — DONE** (see change log). Reconnects
+  now reuse the same session id.
+- **Not started (roadmap):** A4 Bedrock contextual translation (deferred — real-
+  time latency/cost; would suit an on-demand batch pass),
   A5 Transcribe custom vocabulary; C5 Cognito + transcript history,
   C6 Secrets Manager, C7 Container Insights; D2 Fargate Spot, D3 S3 tiering,
   D5 cost reporting. (B3 done flag-gated; B4 documented.)
