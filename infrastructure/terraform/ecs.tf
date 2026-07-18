@@ -30,7 +30,7 @@ resource "aws_ecs_task_definition" "target_backend" {
     operating_system_family = "LINUX"
   }
 
-  container_definitions = jsonencode([{
+  container_definitions = jsonencode(concat([{
     name      = "${var.project_name}-backend"
     image     = "${aws_ecr_repository.backend.repository_url}:${var.backend_image_tag}"
     essential = true
@@ -67,6 +67,8 @@ resource "aws_ecs_task_definition" "target_backend" {
       { name = "ENABLE_TTS", value = tostring(var.enable_tts) },
       { name = "TTS_VOICE_ID_EN", value = var.tts_voice_id_en },
       { name = "ENABLE_TEXT_ANALYSIS", value = tostring(var.enable_text_analysis) },
+      { name = "ENABLE_XRAY", value = tostring(var.enable_xray) },
+      { name = "AWS_XRAY_DAEMON_ADDRESS", value = "127.0.0.1:2000" },
     ]
 
     logConfiguration = {
@@ -87,7 +89,7 @@ resource "aws_ecs_task_definition" "target_backend" {
     }
 
     stopTimeout = 30
-  }])
+  }], local.xray_sidecar_containers))
 
   tags = merge(var.tags, {
     Name        = "${var.project_name}-target-task-${var.environment}"
