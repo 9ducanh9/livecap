@@ -21,6 +21,7 @@ import type {
   SourceLanguageCode,
   TargetLanguageCode,
 } from '../types/index';
+import { getAccessToken, isAuthConfigured } from '../services/authService';
 
 const DEBUG = import.meta.env.VITE_AUDIO_DEBUG === 'true';
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -265,13 +266,17 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 
     let ws: WebSocket;
     try {
-      ws = new WebSocket(
-        buildWsUrl(
-          optionsRef.current.sourceLanguage,
-          optionsRef.current.targetLanguage,
-          isRetry ? sessionIdRef.current : null
-        )
+      const url = buildWsUrl(
+        optionsRef.current.sourceLanguage,
+        optionsRef.current.targetLanguage,
+        isRetry ? sessionIdRef.current : null
       );
+      const token = getAccessToken();
+      // JWT travels in Sec-WebSocket-Protocol instead of the URL, avoiding
+      // accidental token capture in browser history and request logs.
+      ws = isAuthConfigured()
+        ? new WebSocket(url, ['livecap.v1', token ?? 'missing-token'])
+        : new WebSocket(url);
     } catch (err) {
       console.error('[useWebSocket] Failed to construct WebSocket:', err);
       setConnectionStatus('lost');

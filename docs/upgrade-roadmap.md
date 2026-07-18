@@ -90,7 +90,7 @@ mất session; đo p95 thời gian nối lại.
 | C2 | **Budget subscriber + cảnh báo chi phí** | P0 | S | ~$0 | Gắn subscriber email vào AWS Budget $50 hiện có (rubric yêu cầu). |
 | C3 | **Retention cho log group Watchtower `livecap`** | P0 | S | giảm nhẹ | Đặt retention 14 ngày như các log group Terraform-managed khác. |
 | C4 | **AWS X-Ray tracing** | P1 | M | ~$5/1M trace | Trace xuyên CloudFront→ALB→ECS→Transcribe/Translate/Bedrock để soi latency. |
-| C5 | **Cognito auth + lịch sử transcript** | P1 | L | Cognito free tier rộng | Đăng nhập, lưu transcript theo user vào DynamoDB/S3, xem lại lịch sử. Nâng từ "demo" lên "sản phẩm". |
+| C5 | **Cognito auth + lịch sử transcript** | P1 | L | Cognito free tier rộng | Code + Terraform opt-in đã sẵn sàng trên `Update`, chưa apply/deploy. Cognito sign-in, DynamoDB metadata theo user, TXT private trong S3, retention 14 ngày. |
 | C6 | **Secrets Manager cho cấu hình nhạy cảm** | P2 | S | ~$0.40/secret | Nếu phát sinh secret runtime (hiện đang dùng IAM role, tốt). |
 | C7 | **Container Insights (bật có điều kiện)** | P2 | S | ~$ theo metric | Bật cho môi trường prod-ha để quan sát sâu; tắt ở dev để tiết kiệm. |
 
@@ -136,7 +136,9 @@ D1 (Graviton) + D4 (pipeline plan-gate). Củng cố vận hành lâu dài.
 
 **Pha 5 — Sản phẩm hoá (tuỳ chọn, 3–5 ngày)**
 C5 (Cognito + lịch sử) + A2/A3/A4 (Polly, Comprehend, dịch bằng LLM). Nâng từ
-demo lên hướng sản phẩm.
+demo lên hướng sản phẩm. C5 currently remains flag-gated until its
+production OAuth callback URLs, Terraform plan, backend image, and frontend
+build configuration are reviewed together.
 
 ---
 

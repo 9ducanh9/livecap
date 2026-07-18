@@ -8,6 +8,7 @@
  */
 
 import type { Segment, SessionSummary } from '../types';
+import { authenticatedFetch } from './authService';
 
 const PRODUCTION_BACKEND_ORIGIN = 'https://dpeohr327wt9l.cloudfront.net';
 const CUSTOM_FRONTEND_HOST = 'livecap.logantai.com';
@@ -164,7 +165,7 @@ export async function exportTranscript(
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await authenticatedFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -222,7 +223,7 @@ export async function generateMeetingSummary(
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await authenticatedFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

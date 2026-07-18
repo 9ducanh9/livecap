@@ -45,6 +45,12 @@ The following is **not deployed to the live demo yet**:
   enabled in AWS.
 - The branch also contains optional reliability and transcription-accuracy
   improvements. They remain disabled until their deployment plan is reviewed.
+- **Accounts and transcript history:** the next product feature is implemented
+  behind `enable_cognito_auth=false`. When reviewed and enabled, Cognito Hosted
+  UI signs users in, each export is associated with that user in DynamoDB, and
+  the private TXT object stays in S3. History metadata and TXT objects follow
+  the existing 14-day retention; raw audio is never stored. This is not
+  deployed to the live demo yet.
 
 For local Bedrock testing, see [`docs/run-local.md`](docs/run-local.md). For the
 handoff and human-reviewed deployment gate, see [`HANDOFF.md`](HANDOFF.md).
@@ -75,6 +81,8 @@ state before microphone capture begins.
 - TXT transcript export to private S3 through a time-limited presigned URL.
 - Wake-on-demand ECS startup and five-minute idle scale-down.
 - No raw audio storage.
+- Optional Cognito sign-in and owner-scoped transcript history (disabled by
+  default until its reviewed infrastructure rollout).
 
 ## Verified Deployment Baseline
 

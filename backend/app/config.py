@@ -54,6 +54,12 @@ DEFAULT_SESSION_TABLE_NAME = "livecap-sessions"
 # TTL for session items; a safety net that reclaims rows from crashed tasks.
 # Keep it comfortably above the session timeout.
 DEFAULT_SESSION_TTL_SECONDS = 3_600
+# Product accounts and transcript history are deliberately opt-in. Existing
+# workshop/demo deployments remain anonymous until Cognito is provisioned.
+DEFAULT_ENABLE_AUTH = False
+DEFAULT_COGNITO_USER_POOL_ID = ""
+DEFAULT_TRANSCRIPT_HISTORY_TABLE_NAME = "livecap-transcript-history"
+DEFAULT_TRANSCRIPT_HISTORY_RETENTION_DAYS = 14
 
 
 def _get_int(name: str, default: int) -> int:
@@ -136,6 +142,10 @@ class Settings:
     session_store_backend: str = DEFAULT_SESSION_STORE_BACKEND
     session_table_name: str = DEFAULT_SESSION_TABLE_NAME
     session_ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS
+    enable_auth: bool = DEFAULT_ENABLE_AUTH
+    cognito_user_pool_id: str = DEFAULT_COGNITO_USER_POOL_ID
+    transcript_history_table_name: str = DEFAULT_TRANSCRIPT_HISTORY_TABLE_NAME
+    transcript_history_retention_days: int = DEFAULT_TRANSCRIPT_HISTORY_RETENTION_DAYS
 
     @property
     def resolved_bedrock_region(self) -> str:
@@ -226,6 +236,21 @@ class Settings:
             ),
             session_ttl_seconds=max(
                 60, _get_int("SESSION_TTL_SECONDS", DEFAULT_SESSION_TTL_SECONDS)
+            ),
+            enable_auth=_get_bool("ENABLE_AUTH", DEFAULT_ENABLE_AUTH),
+            cognito_user_pool_id=_get_str(
+                "COGNITO_USER_POOL_ID", DEFAULT_COGNITO_USER_POOL_ID
+            ),
+            transcript_history_table_name=_get_str(
+                "TRANSCRIPT_HISTORY_TABLE_NAME",
+                DEFAULT_TRANSCRIPT_HISTORY_TABLE_NAME,
+            ),
+            transcript_history_retention_days=max(
+                1,
+                _get_int(
+                    "TRANSCRIPT_HISTORY_RETENTION_DAYS",
+                    DEFAULT_TRANSCRIPT_HISTORY_RETENTION_DAYS,
+                ),
             ),
         )
 
