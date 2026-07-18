@@ -67,6 +67,7 @@ deployed. Ignored local Terraform settings remain untracked.
 | TTS / Polly (A2) | `enable_tts` / `ENABLE_TTS`, `TTS_VOICE_ID_EN` | off (English only) |
 | Text analysis / Comprehend (A3) | `enable_text_analysis` / `ENABLE_TEXT_ANALYSIS` | off (English only) |
 | X-Ray tracing (C4) | `enable_xray` / `ENABLE_XRAY` | off (verify vs live daemon before enabling) |
+| Fargate Spot (D2) | `enable_fargate_spot` (+ `fargate_spot_weight`, `fargate_on_demand_base`) | off (on-demand FARGATE) |
 | Cognito accounts + transcript history (C5) | `enable_cognito_auth` / `ENABLE_AUTH` | off (implemented locally; no AWS apply/deploy) |
 
 **Remaining human actions:** confirm any SNS/budget subscription emails, enable
@@ -77,6 +78,19 @@ Details in `HANDOFF.md`.
 ---
 
 ## Change log (newest first)
+
+### 2026-07-18 — Claude (Cowork) — Group D cost optimization (D2 + D3/D5 docs)
+- **D2 Fargate Spot** (`fargate_spot.tf` + `ecs.tf`): opt-in `enable_fargate_spot`
+  runs the target service on FARGATE_SPOT (~70% cheaper, interruptible) via a
+  capacity-provider strategy; cluster advertises both providers. `launch_type`
+  becomes null when Spot is on (mutually exclusive). `fargate_on_demand_base > 0`
+  keeps a guaranteed on-demand baseline. Default off → no change.
+- **D3** already satisfied: transcript bucket has a 14-day lifecycle;
+  Intelligent-Tiering (30+ day transition) does not apply — no change.
+- **D5**: no Lambda cost-report built (low value); documented using the existing
+  Budget alerts, dashboard, and cost-allocation tags in Cost Explorer.
+- `docs/cost-optimization.md` (new) summarizes the whole D group. Verified: HCL
+  parses. Not deployed.
 
 ### 2026-07-18 — Codex — C5 Cognito accounts and owner-scoped transcript history
 - Added opt-in Terraform for a Cognito User Pool, public PKCE browser client,

@@ -209,6 +209,15 @@ batch commits only my files. When you commit that refactor:
   non-critical environment and confirm traces appear in the X-Ray console.
   Consider pinning the daemon image (`aws-xray-daemon:latest`) by digest.
 
+## D2 Fargate Spot (`fargate_spot.tf`)
+
+- Opt-in `enable_fargate_spot` — runs the target service on FARGATE_SPOT
+  (~70% cheaper, interruptible). Default off. Review the plan: it associates
+  FARGATE + FARGATE_SPOT with the cluster and switches the service to a
+  capacity-provider strategy. Set `fargate_on_demand_base > 0` to keep a baseline.
+- D3 (S3 tiering) needs nothing — 14-day lifecycle already covers it. D5 uses the
+  existing Budget/dashboard/cost-allocation tags. See `docs/cost-optimization.md`.
+
 ## Follow-up (not in this branch)
 
 - B5 (session-id continuity on reconnect) is DONE — reconnects reuse the same
