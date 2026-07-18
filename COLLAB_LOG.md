@@ -66,6 +66,7 @@ deployed. Ignored local Terraform settings remain untracked.
 | Transcribe custom vocabulary (A5) | `enable_transcribe_custom_vocabulary` / `TRANSCRIBE_VOCABULARY_NAME_VI`,`_EN` | off |
 | TTS / Polly (A2) | `enable_tts` / `ENABLE_TTS`, `TTS_VOICE_ID_EN` | off (English only) |
 | Text analysis / Comprehend (A3) | `enable_text_analysis` / `ENABLE_TEXT_ANALYSIS` | off (English only) |
+| X-Ray tracing (C4) | `enable_xray` / `ENABLE_XRAY` | off (verify vs live daemon before enabling) |
 
 **Remaining human actions:** confirm any SNS/budget subscription emails, enable
 Bedrock model access in-region only before enabling that feature, and configure
@@ -75,6 +76,21 @@ Details in `HANDOFF.md`.
 ---
 
 ## Change log (newest first)
+
+### 2026-07-18 — Claude (Cowork) — C4 AWS X-Ray tracing (opt-in, default off)
+- New `backend/app/tracing.py`: `configure_tracing(app)` — when `ENABLE_XRAY` is
+  set, configures the X-Ray recorder (AsyncContext with a safe fallback,
+  `context_missing=IGNORE`), `patch_all()` for AWS SDK subsegments, and a small
+  Starlette **HTTP-only** middleware. The WebSocket route is intentionally not
+  traced (BaseHTTPMiddleware skips it). `main.py` calls it (no-op when off).
+- `xray.tf` (new): `enable_xray` var + X-Ray daemon **sidecar** (added to the
+  task via `concat`) + task-role `xray:Put*` policy, all count-gated. `ecs.tf`
+  passes `ENABLE_XRAY` + `AWS_XRAY_DAEMON_ADDRESS`. `requirements.txt` adds
+  `aws-xray-sdk`.
+- **Not validated against a live daemon** (cannot here) — enable in a
+  non-critical env first and confirm traces appear. Default off → zero impact.
+  Verified: 3 tracing tests pass, full suite green except the known Py-3.10
+  `asyncio.timeout` websocket failures; app imports/boots with tracing off.
 
 ### 2026-07-18 — Kiro — Security baseline: VPC Flow Logs + GuardDuty + Security Hub
 - **New file:** `infrastructure/terraform/security.tf` — adds three enterprise

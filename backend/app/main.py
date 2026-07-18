@@ -25,6 +25,7 @@ from app.routers import export as export_router
 from app.routers import summary as summary_router
 from app.routers import websocket as websocket_router
 from app.services.logging_service import get_logger, setup_logging
+from app.tracing import configure_tracing
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +98,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Optional AWS X-Ray tracing (C4). No-op unless ENABLE_XRAY is set.
+configure_tracing(app)
 
 
 # ---------------------------------------------------------------------------

@@ -200,6 +200,15 @@ batch commits only my files. When you commit that refactor:
   `app.include_router(enrichment_router.router)` to `backend/app/main.py`.
 - Frontend Play button / sentiment display still to wire.
 
+## C4 AWS X-Ray tracing (new `tracing.py` + `xray.tf`)
+
+- Opt-in via `enable_xray` (tfvars) / `ENABLE_XRAY`. Adds an X-Ray daemon
+  sidecar, task-role `xray:Put*` permission, and app instrumentation (HTTP +
+  AWS SDK calls; WebSocket not traced). Default off → no change.
+- **Verify before enabling:** not tested against a live daemon. Enable in a
+  non-critical environment and confirm traces appear in the X-Ray console.
+  Consider pinning the daemon image (`aws-xray-daemon:latest`) by digest.
+
 ## Follow-up (not in this branch)
 
 - B5 (session-id continuity on reconnect) is DONE — reconnects reuse the same

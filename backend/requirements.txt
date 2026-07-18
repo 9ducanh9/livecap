@@ -11,5 +11,8 @@ amazon-transcribe==0.6.2
 # CloudWatch logging handler
 watchtower==3.2.0
 
+# Optional AWS X-Ray tracing (enabled via ENABLE_XRAY)
+aws-xray-sdk==2.14.0
+
 # Configuration via environment variables
 python-dotenv==1.2.2
