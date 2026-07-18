@@ -167,6 +167,15 @@ waf_rate_limit = 2000
 # cloudfront_ssl_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/abc123..."
 # custom_domain = "livecap.example.com"
 
+# Optional isolated frontend preview environment. It has its own S3 bucket and
+# CloudFront distribution, so Update builds cannot overwrite the stable site.
+# Phase 1: create/test with an empty preview_custom_domain.
+# Phase 2: set detach_custom_domain_from_stable = true and apply.
+# Phase 3: set preview_custom_domain to the detached hostname and update its CNAME.
+# enable_preview_frontend             = true
+# preview_custom_domain               = ""
+# detach_custom_domain_from_stable    = false
+
 # Legacy network discovery remains only for the rollback stack.
 legacy_availability_zones = ["ap-southeast-1a", "ap-southeast-1b"]
 # vpc_id             = "vpc-xxxxx"

@@ -1,60 +1,75 @@
-# CloudFront Distribution for Frontend
+# Isolated frontend preview environment. The stable distribution and bucket keep
+# serving main; this stack is for reviewed Update builds only.
 
 locals {
-  target_backend_origin_id = "ALB-${aws_lb.target.name}"
-  frontend_allowed_origin = join(",", compact([
-    var.custom_domain != "" ? "https://${var.custom_domain}" : "",
-    "https://${aws_cloudfront_distribution.frontend.domain_name}",
-  ]))
+  preview_frontend_bucket_name = "${var.project_name}-frontend-preview-${var.environment}-${data.aws_caller_identity.current.account_id}"
+  preview_frontend_origin_id   = "S3-${local.preview_frontend_bucket_name}"
 }
 
-# Origin Access Control for S3
-resource "aws_cloudfront_origin_access_control" "frontend" {
-  name                              = "${var.project_name}-frontend-${var.environment}-oac"
-  description                       = "OAC for ${var.project_name} frontend bucket"
+resource "aws_s3_bucket" "frontend_preview" {
+  count  = var.enable_preview_frontend ? 1 : 0
+  bucket = local.preview_frontend_bucket_name
+
+  tags = merge(var.tags, {
+    Name        = "${var.project_name}-frontend-preview-${var.environment}"
+    Environment = var.environment
+    Purpose     = "Preview static assets for the Update branch"
+  })
+}
+
+resource "aws_s3_bucket_public_access_block" "frontend_preview" {
+  count  = var.enable_preview_frontend ? 1 : 0
+  bucket = aws_s3_bucket.frontend_preview[0].id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "frontend_preview" {
+  count  = var.enable_preview_frontend ? 1 : 0
+  bucket = aws_s3_bucket.frontend_preview[0].id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "frontend_preview" {
+  count  = var.enable_preview_frontend ? 1 : 0
+  bucket = aws_s3_bucket.frontend_preview[0].id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_cloudfront_origin_access_control" "frontend_preview" {
+  count                             = var.enable_preview_frontend ? 1 : 0
+  name                              = "${var.project_name}-frontend-preview-${var.environment}-oac"
+  description                       = "OAC for ${var.project_name} preview frontend bucket"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
 
-# Rewrite client-side React routes at viewer request time. Keeping SPA routing
-# out of custom error responses preserves real WAF/API 403 and 404 statuses.
-resource "aws_cloudfront_function" "spa_rewrite" {
-  name    = "${var.project_name}-spa-rewrite-${var.environment}"
-  runtime = "cloudfront-js-2.0"
-  comment = "Rewrite extensionless frontend routes to index.html"
-  publish = true
-  code = replace(<<-EOT
-    function handler(event) {
-      var request = event.request;
-      var uri = request.uri;
-
-      if (uri.endsWith('/')) {
-        request.uri = uri + 'index.html';
-      } else if (!uri.split('/').pop().includes('.')) {
-        request.uri = '/index.html';
-      }
-
-      return request;
-    }
-  EOT
-  , "\r\n", "\n")
-}
-
-# CloudFront Distribution
-resource "aws_cloudfront_distribution" "frontend" {
+resource "aws_cloudfront_distribution" "preview" {
+  count               = var.enable_preview_frontend ? 1 : 0
   enabled             = true
   is_ipv6_enabled     = true
-  comment             = "${var.project_name} ${var.environment} frontend distribution"
+  comment             = "${var.project_name} ${var.environment} frontend preview distribution"
   default_root_object = "index.html"
   price_class         = var.cloudfront_price_class
-  aliases             = !var.detach_custom_domain_from_stable && var.custom_domain != "" ? [var.custom_domain] : []
+  aliases             = var.preview_custom_domain != "" ? [var.preview_custom_domain] : []
   web_acl_id          = var.enable_waf ? aws_wafv2_web_acl.cloudfront[0].arn : null
 
   origin {
-    domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
-    origin_id                = "S3-${aws_s3_bucket.frontend.id}"
-    origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
+    domain_name              = aws_s3_bucket.frontend_preview[0].bucket_regional_domain_name
+    origin_id                = local.preview_frontend_origin_id
+    origin_access_control_id = aws_cloudfront_origin_access_control.frontend_preview[0].id
   }
 
   origin {
@@ -98,7 +113,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   default_cache_behavior {
     allowed_methods  = ["GET", "HEAD", "OPTIONS"]
     cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "S3-${aws_s3_bucket.frontend.id}"
+    target_origin_id = local.preview_frontend_origin_id
 
     forwarded_values {
       query_string = false
@@ -111,8 +126,8 @@ resource "aws_cloudfront_distribution" "frontend" {
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
-    default_ttl            = 3600     # 1 hour
-    max_ttl                = 31536000 # 1 year
+    default_ttl            = 3600
+    max_ttl                = 31536000
     compress               = true
 
     function_association {
@@ -121,7 +136,6 @@ resource "aws_cloudfront_distribution" "frontend" {
     }
   }
 
-  # The wake endpoint is more specific than /api/* and must be evaluated first.
   dynamic "ordered_cache_behavior" {
     for_each = var.enable_wake_endpoint ? [1] : []
 
@@ -130,16 +144,13 @@ resource "aws_cloudfront_distribution" "frontend" {
       allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
       cached_methods           = ["GET", "HEAD"]
       target_origin_id         = "WakeLambdaFunctionUrl"
-      cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
-      origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader
-
-      viewer_protocol_policy = "redirect-to-https"
-      compress               = true
+      cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+      origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+      viewer_protocol_policy   = "redirect-to-https"
+      compress                 = true
     }
   }
 
-  # Proxy API requests through the same CloudFront origin to avoid HTTPS page
-  # mixed-content blocks while the backend ALB is still HTTP-only.
   ordered_cache_behavior {
     path_pattern     = "/api/*"
     allowed_methods  = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
@@ -162,8 +173,6 @@ resource "aws_cloudfront_distribution" "frontend" {
     compress               = true
   }
 
-  # Proxy WebSocket upgrade requests through CloudFront so the browser can use
-  # wss://<cloudfront>/ws/transcribe without requiring an ALB certificate yet.
   ordered_cache_behavior {
     path_pattern     = "/ws/*"
     allowed_methods  = ["GET", "HEAD", "OPTIONS"]
@@ -186,12 +195,11 @@ resource "aws_cloudfront_distribution" "frontend" {
     compress               = false
   }
 
-  # Cache behavior for versioned static assets (long TTL)
   ordered_cache_behavior {
     path_pattern     = "/assets/*"
     allowed_methods  = ["GET", "HEAD", "OPTIONS"]
     cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "S3-${aws_s3_bucket.frontend.id}"
+    target_origin_id = local.preview_frontend_origin_id
 
     forwarded_values {
       query_string = false
@@ -204,8 +212,8 @@ resource "aws_cloudfront_distribution" "frontend" {
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
-    default_ttl            = 31536000 # 1 year
-    max_ttl                = 31536000 # 1 year
+    default_ttl            = 31536000
+    max_ttl                = 31536000
     compress               = true
   }
 
@@ -216,27 +224,32 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   viewer_certificate {
-    # Use custom certificate if provided, otherwise use default CloudFront certificate
-    cloudfront_default_certificate = var.cloudfront_ssl_certificate_arn == ""
-    acm_certificate_arn            = var.cloudfront_ssl_certificate_arn != "" ? var.cloudfront_ssl_certificate_arn : null
-    ssl_support_method             = var.cloudfront_ssl_certificate_arn != "" ? "sni-only" : null
+    cloudfront_default_certificate = var.preview_custom_domain == "" || var.cloudfront_ssl_certificate_arn == ""
+    acm_certificate_arn            = var.preview_custom_domain != "" ? var.cloudfront_ssl_certificate_arn : null
+    ssl_support_method             = var.preview_custom_domain != "" ? "sni-only" : null
     minimum_protocol_version       = "TLSv1.2_2021"
   }
+}
 
-  tags = merge(
-    var.tags,
-    {
-      Name        = "${var.project_name}-frontend-${var.environment}"
-      Environment = var.environment
-    }
-  )
+resource "aws_s3_bucket_policy" "frontend_preview_cloudfront_access" {
+  count  = var.enable_preview_frontend ? 1 : 0
+  bucket = aws_s3_bucket.frontend_preview[0].id
 
-  lifecycle {
-    precondition {
-      condition = (
-        var.target_alb_ssl_certificate_arn == "" || var.target_backend_domain_name != ""
-      )
-      error_message = "target_backend_domain_name is required when target_alb_ssl_certificate_arn is set."
-    }
-  }
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowCloudFrontServicePrincipal"
+      Effect = "Allow"
+      Principal = {
+        Service = "cloudfront.amazonaws.com"
+      }
+      Action   = "s3:GetObject"
+      Resource = "${aws_s3_bucket.frontend_preview[0].arn}/*"
+      Condition = {
+        StringEquals = {
+          "AWS:SourceArn" = aws_cloudfront_distribution.preview[0].arn
+        }
+      }
+    }]
+  })
 }

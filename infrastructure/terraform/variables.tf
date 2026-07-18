@@ -384,6 +384,29 @@ variable "custom_domain" {
   default     = ""
 }
 
+variable "enable_preview_frontend" {
+  description = "Create a separate S3 and CloudFront frontend preview environment. It never replaces the stable distribution."
+  type        = bool
+  default     = false
+}
+
+variable "preview_custom_domain" {
+  description = "Optional custom domain for the preview CloudFront distribution, for example livecap.example.com. Attach only after it is detached from the stable distribution."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.preview_custom_domain == "" || var.enable_preview_frontend
+    error_message = "preview_custom_domain requires enable_preview_frontend=true."
+  }
+}
+
+variable "detach_custom_domain_from_stable" {
+  description = "Detach custom_domain from the stable distribution before attaching that hostname to the preview distribution."
+  type        = bool
+  default     = false
+}
+
 # VPC Configuration
 variable "legacy_availability_zones" {
   description = "Availability Zones retained by the legacy ALB/ECS rollback stack."
