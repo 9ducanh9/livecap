@@ -26,6 +26,21 @@ output "cloudfront_distribution_id" {
   value       = aws_cloudfront_distribution.frontend.id
 }
 
+output "preview_cloudfront_url" {
+  description = "Preview CloudFront URL when enable_preview_frontend is true."
+  value       = try("https://${aws_cloudfront_distribution.preview[0].domain_name}", null)
+}
+
+output "preview_cloudfront_distribution_id" {
+  description = "Preview CloudFront distribution ID when enabled."
+  value       = try(aws_cloudfront_distribution.preview[0].id, null)
+}
+
+output "preview_frontend_bucket_name" {
+  description = "S3 bucket for Update/preview frontend builds when enabled."
+  value       = try(aws_s3_bucket.frontend_preview[0].id, null)
+}
+
 output "alb_dns_name" {
   description = "ALB DNS name for backend API access"
   value       = aws_lb.target.dns_name
