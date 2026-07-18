@@ -122,6 +122,12 @@ log_retention_days = 14  # Retain logs for 14 days
 # against a live daemon before enabling. Default off.
 # enable_xray = true
 
+# D2 Fargate Spot — up to ~70% cheaper but interruptible (drops in-flight
+# sessions). Best for dev/demo. fargate_on_demand_base > 0 keeps a baseline.
+# enable_fargate_spot    = true
+# fargate_spot_weight    = 1
+# fargate_on_demand_base = 0
+
 # C5 Product accounts + history (Amazon Cognito + DynamoDB metadata).
 # Off by default: existing anonymous capture/export behaviour is unchanged.
 # Before enabling, replace localhost with the deployed HTTPS /app URL and use a

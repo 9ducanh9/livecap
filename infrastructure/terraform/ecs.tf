@@ -107,7 +107,28 @@ resource "aws_ecs_service" "target_backend" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.target_backend.arn
   desired_count   = var.target_backend_desired_count
-  launch_type     = "FARGATE"
+  # launch_type and capacity_provider_strategy are mutually exclusive. Default
+  # keeps on-demand FARGATE; enabling Spot switches to a capacity-provider
+  # strategy (D2). See fargate_spot.tf.
+  launch_type = var.enable_fargate_spot ? null : "FARGATE"
+
+  dynamic "capacity_provider_strategy" {
+    for_each = var.enable_fargate_spot ? [1] : []
+    content {
+      capacity_provider = "FARGATE_SPOT"
+      weight            = var.fargate_spot_weight
+      base              = 0
+    }
+  }
+
+  dynamic "capacity_provider_strategy" {
+    for_each = var.enable_fargate_spot && var.fargate_on_demand_base > 0 ? [1] : []
+    content {
+      capacity_provider = "FARGATE"
+      weight            = 1
+      base              = var.fargate_on_demand_base
+    }
+  }
 
   network_configuration {
     subnets          = [for subnet in aws_subnet.target_private : subnet.id]
