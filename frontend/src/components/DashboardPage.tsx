@@ -6,6 +6,8 @@ import CaptionDisplay from './CaptionDisplay';
 import ExportPanel from './ExportPanel';
 import ControlPanel from './ControlPanel';
 import SummaryPanel from './SummaryPanel';
+import TranscriptHistoryPanel from './TranscriptHistoryPanel';
+import { isAuthConfigured } from '../services/authService';
 import {
   buildSummaryText,
   generateMeetingSummary,
@@ -280,6 +282,7 @@ export default function DashboardPage() {
               segments={state.segments}
               summaryText={summaryText}
             />
+            {isAuthConfigured() && <TranscriptHistoryPanel />}
           </div>
         </aside>
 

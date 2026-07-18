@@ -46,7 +46,7 @@ import uuid
 from dataclasses import dataclass
 from typing import AsyncIterator, NamedTuple
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from app.config import get_settings
 from app.models import (
@@ -68,6 +68,7 @@ from app.services.logging_service import (
     log_websocket_disconnect,
 )
 from app.services.idle_scaler import get_idle_scale_down_scheduler
+from app.services.auth import authenticate_access_token
 from app.services.session_registry import (
     active_session_registry,
     get_session_registry,
@@ -294,6 +295,30 @@ def _resolve_client_ip(websocket: WebSocket) -> str:
         return websocket.client.host
 
     return "unknown"
+
+
+def _access_token_from_subprotocol(websocket: WebSocket) -> str | None:
+    """Read the JWT from the second requested WebSocket subprotocol.
+
+    Browsers cannot set an Authorization header on a WebSocket handshake. The
+    token is therefore sent as a subprotocol rather than a query parameter so
+    it is not embedded in URLs, application logs, or browser history.
+    """
+
+    values = [
+        value.strip()
+        for value in (websocket.headers.get("sec-websocket-protocol") or "").split(",")
+        if value.strip()
+    ]
+    return values[1] if len(values) == 2 and values[0] == "livecap.v1" else None
+
+
+def _authenticated_subprotocol(websocket: WebSocket, auth_enabled: bool) -> str | None:
+    """Select the negotiated protocol only when it matches the auth contract."""
+
+    if not auth_enabled:
+        return None
+    return "livecap.v1" if _access_token_from_subprotocol(websocket) else None
 
 
 def _final_text(message: FinalizedSegmentMessage, source_language: str) -> str:
@@ -670,7 +695,21 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         fallback_source_language_code=settings.transcribe_language_code,
     )
 
-    await websocket.accept()
+    auth_protocol = _authenticated_subprotocol(websocket, settings.enable_auth)
+    await websocket.accept(subprotocol=auth_protocol)
+
+    if settings.enable_auth:
+        token = _access_token_from_subprotocol(websocket)
+        try:
+            authenticate_access_token(token or "")
+        except HTTPException:
+            await _send_error(
+                websocket,
+                message="Sign in is required to start a LiveCap session.",
+                code=ErrorCode.UNAUTHORIZED,
+            )
+            await websocket.close(code=1008)
+            return
 
     if language_mode is None:
         await _send_error(

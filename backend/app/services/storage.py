@@ -22,6 +22,7 @@ Requirements satisfied:
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 from typing import List
@@ -51,6 +52,15 @@ class UploadError(StorageError):
     """Raised when S3 upload fails."""
 
     pass
+
+
+@dataclass(frozen=True)
+class StoredTranscript:
+    """Export result including the private S3 key used for account history."""
+
+    download_url: str
+    expires_at: datetime
+    object_key: str
 
 
 def serialize_transcript_to_txt(
@@ -100,7 +110,7 @@ def serialize_transcript_to_txt(
     return transcript
 
 
-def generate_s3_object_key(session_id: str) -> str:
+def generate_s3_object_key(session_id: str, owner_id: str | None = None) -> str:
     """Generate a unique S3 object key for a transcript.
 
     Format: transcripts/{session_id}/{timestamp}.txt
@@ -126,6 +136,16 @@ def generate_s3_object_key(session_id: str) -> str:
     """
     try:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+        if owner_id:
+            # Cognito `sub` is a UUID, but retain only a conservative key
+            # alphabet in case another identity provider is introduced later.
+            safe_owner_id = "".join(
+                character
+                for character in owner_id
+                if character.isalnum() or character in {"-", "_"}
+            )
+            if safe_owner_id:
+                return f"transcripts/users/{safe_owner_id}/{session_id}/{timestamp}.txt"
         key = f"transcripts/{session_id}/{timestamp}.txt"
         return key
     except Exception as exc:
@@ -285,12 +305,33 @@ def store_transcript_and_get_download_link(
     StorageError:
         If presigned URL generation fails.
     """
+    stored = store_transcript(
+        session_id=session_id,
+        segments=segments,
+        bucket=bucket,
+        expiration_seconds=expiration_seconds,
+        region=region,
+        summary_text=summary_text,
+    )
+    return stored.download_url, stored.expires_at
+
+
+def store_transcript(
+    session_id: str,
+    segments: List[ExportSegment],
+    bucket: str,
+    expiration_seconds: int,
+    region: str = "ap-southeast-1",
+    summary_text: str | None = None,
+    owner_id: str | None = None,
+) -> StoredTranscript:
+    """Store an export and retain its key for optional owner history metadata."""
     # Serialize the transcript (Requirements 7.1, 7.2, 7.3)
     txt_content = serialize_transcript_to_txt(segments, summary_text=summary_text)
 
     # Generate unique S3 object key (Requirements 8.2, 8.3)
     try:
-        object_key = generate_s3_object_key(session_id)
+        object_key = generate_s3_object_key(session_id, owner_id=owner_id)
     except KeyAssignmentError:
         # Abort the upload (Requirement 8.3)
         raise
@@ -317,4 +358,8 @@ def store_transcript_and_get_download_link(
         seconds=expiration_seconds
     )
 
-    return download_url, expires_at
+    return StoredTranscript(
+        download_url=download_url,
+        expires_at=expires_at,
+        object_key=object_key,
+    )

@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.routers import enrichment as enrichment_router
 from app.routers import export as export_router
+from app.routers import history as history_router
 from app.routers import summary as summary_router
 from app.routers import websocket as websocket_router
 from app.services.logging_service import get_logger, setup_logging
@@ -112,6 +113,9 @@ app.include_router(websocket_router.router)
 
 # Export REST endpoint: POST /api/sessions/{session_id}/export
 app.include_router(export_router.router)
+
+# Optional Cognito-protected transcript history.
+app.include_router(history_router.router)
 
 # On-demand meeting notes: POST /api/sessions/{session_id}/summary
 app.include_router(summary_router.router)

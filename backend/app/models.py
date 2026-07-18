@@ -146,6 +146,7 @@ class ErrorCode(str, Enum):
     SESSION_TIMEOUT = "SESSION_TIMEOUT"
     INVALID_LANGUAGE_MODE = "INVALID_LANGUAGE_MODE"
     TOO_MANY_SESSIONS = "TOO_MANY_SESSIONS"
+    UNAUTHORIZED = "UNAUTHORIZED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
@@ -279,6 +280,28 @@ class ExportRequest(BaseModel):
 
 class ExportResponse(BaseModel):
     """Successful export response carrying the time-limited Download_Link."""
+
+    download_url: str
+    expires_at: datetime
+
+
+class TranscriptHistoryItem(BaseModel):
+    """Owner-scoped metadata for one exported transcript."""
+
+    history_id: str
+    session_id: str
+    created_at: datetime
+    segment_count: int
+
+
+class TranscriptHistoryResponse(BaseModel):
+    """Recent exports belonging to the authenticated Cognito user."""
+
+    items: List[TranscriptHistoryItem] = Field(default_factory=list)
+
+
+class TranscriptDownloadResponse(BaseModel):
+    """A freshly authorized, short-lived download URL for a history item."""
 
     download_url: str
     expires_at: datetime

@@ -67,6 +67,7 @@ deployed. Ignored local Terraform settings remain untracked.
 | TTS / Polly (A2) | `enable_tts` / `ENABLE_TTS`, `TTS_VOICE_ID_EN` | off (English only) |
 | Text analysis / Comprehend (A3) | `enable_text_analysis` / `ENABLE_TEXT_ANALYSIS` | off (English only) |
 | X-Ray tracing (C4) | `enable_xray` / `ENABLE_XRAY` | off (verify vs live daemon before enabling) |
+| Cognito accounts + transcript history (C5) | `enable_cognito_auth` / `ENABLE_AUTH` | off (implemented locally; no AWS apply/deploy) |
 
 **Remaining human actions:** confirm any SNS/budget subscription emails, enable
 Bedrock model access in-region only before enabling that feature, and configure
@@ -76,6 +77,26 @@ Details in `HANDOFF.md`.
 ---
 
 ## Change log (newest first)
+
+### 2026-07-18 — Codex — C5 Cognito accounts and owner-scoped transcript history
+- Added opt-in Terraform for a Cognito User Pool, public PKCE browser client,
+  optional Hosted UI domain, and pay-per-request DynamoDB history table with a
+  TTL aligned to the existing 14-day transcript S3 lifecycle. The task role is
+  limited to `cognito-idp:GetUser` plus `PutItem`/`GetItem`/`Query` on that
+  history table; raw audio is never stored.
+- Backend history endpoints list metadata and issue a fresh owner-authorized
+  S3 download URL. When accounts are enabled, exports validate Cognito access
+  tokens and persist owner metadata; the WebSocket validates a token supplied
+  through `Sec-WebSocket-Protocol`, not a query string. With accounts off,
+  anonymous MVP export/capture behaviour remains unchanged.
+- Frontend adds Hosted UI Authorization Code + PKCE sign-in, sign-out, history
+  list/download UI, and bearer headers for account API calls. Backend and
+  frontend `.env.example` files document the non-secret feature settings. The
+  exact live rollout is documented in `docs/cognito-history-rollout.md`.
+- Verified: C5 targeted backend tests pass, frontend tests/build pass, and
+  Terraform `fmt -check`, `init -backend=false`, and `validate` pass. The full
+  backend suite has one pre-existing environment failure because the local venv
+  lacks declared `aws-xray-sdk`; C5 tests itself does not depend on it.
 
 ### 2026-07-18 — Claude (Cowork) — C4 AWS X-Ray tracing (opt-in, default off)
 - New `backend/app/tracing.py`: `configure_tracing(app)` — when `ENABLE_XRAY` is
