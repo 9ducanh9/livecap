@@ -6,6 +6,7 @@ import CaptionDisplay from './CaptionDisplay';
 import ExportPanel from './ExportPanel';
 import ControlPanel from './ControlPanel';
 import SummaryPanel from './SummaryPanel';
+import EnrichmentPanel from './EnrichmentPanel';
 import TranscriptHistoryPanel from './TranscriptHistoryPanel';
 import { isAuthConfigured } from '../services/authService';
 import {
@@ -281,6 +282,9 @@ export default function DashboardPage() {
               sessionId={state.sessionId}
               segments={state.segments}
               summaryText={summaryText}
+            />
+            <EnrichmentPanel
+              englishText={state.segments.map((s) => s.textEn.trim()).filter(Boolean).join(' ')}
             />
             {isAuthConfigured() && <TranscriptHistoryPanel />}
           </div>
