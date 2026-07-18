@@ -22,8 +22,14 @@ function config(): AuthConfig {
   const domain = String(import.meta.env.VITE_COGNITO_DOMAIN ?? '').trim().replace(/\/$/, '');
   const clientId = String(import.meta.env.VITE_COGNITO_CLIENT_ID ?? '').trim();
   const explicitlyEnabled = String(import.meta.env.VITE_AUTH_ENABLED ?? '').toLowerCase() === 'true';
+  const requiredHosts = String(import.meta.env.VITE_AUTH_REQUIRED_HOSTS ?? '')
+    .split(',')
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+  const hostAllowed = requiredHosts.length === 0
+    || requiredHosts.includes(window.location.hostname.toLowerCase());
   return {
-    enabled: explicitlyEnabled && domain !== '' && clientId !== '',
+    enabled: explicitlyEnabled && hostAllowed && domain !== '' && clientId !== '',
     domain: domain.startsWith('http') ? domain : `https://${domain}`,
     clientId,
     redirectUri: String(import.meta.env.VITE_COGNITO_REDIRECT_URI ?? `${window.location.origin}/app`).trim(),
