@@ -6,9 +6,20 @@
 # DynamoDB table only stores the owning user and S3 object metadata.
 
 variable "enable_cognito_auth" {
-  description = "Enable Cognito sign-in and per-user transcript history. Requires an explicit reviewed apply and frontend Cognito build configuration."
+  description = "Provision Cognito sign-in and per-user transcript history resources. Runtime enforcement stays off until enable_auth_runtime is true."
   type        = bool
   default     = false
+}
+
+variable "enable_auth_runtime" {
+  description = "Require Cognito access tokens in the deployed backend. Enable only after the frontend is rebuilt with the matching Cognito configuration."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.enable_auth_runtime || var.enable_cognito_auth
+    error_message = "enable_auth_runtime requires enable_cognito_auth so the User Pool and history table exist."
+  }
 }
 
 variable "cognito_callback_urls" {

@@ -19,6 +19,7 @@ Add only untracked values to `terraform.tfvars`:
 
 ```hcl
 enable_cognito_auth              = true
+enable_auth_runtime              = false # Enable only with the matching frontend deployment.
 cognito_callback_urls            = ["https://livecap.example.com/app", "http://localhost:5173/app"]
 cognito_logout_urls              = ["https://livecap.example.com/app", "http://localhost:5173/app"]
 cognito_domain_prefix            = "livecap-example-dev"
@@ -42,8 +43,9 @@ VITE_COGNITO_REDIRECT_URI=https://livecap.example.com/app
 ```
 
 Rebuild and deploy the frontend together with a backend image that includes
-the C5 routes. The backend container receives the User Pool ID, history table
-name, and `ENABLE_AUTH=true` from Terraform.
+the C5 routes. Then set `enable_auth_runtime=true` and apply that separate,
+reviewed runtime cutover. The backend container receives the User Pool ID,
+history table name, and `ENABLE_AUTH=true` only at that final step.
 
 ## Verification
 
