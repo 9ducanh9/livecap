@@ -40,6 +40,19 @@ variable "cognito_domain_prefix" {
   default     = ""
 }
 
+variable "google_client_id" {
+  description = "Google OAuth 2.0 Client ID for social login. Leave empty to disable Google sign-in."
+  type        = string
+  default     = ""
+}
+
+variable "google_client_secret" {
+  description = "Google OAuth 2.0 Client Secret. Treat as sensitive — pass via env or untracked tfvars."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "transcript_history_retention_days" {
   description = "How long per-user transcript history metadata remains. Keep aligned with transcript S3 lifecycle retention."
   type        = number
@@ -87,7 +100,9 @@ resource "aws_cognito_user_pool_client" "web" {
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
   callback_urls                        = var.cognito_callback_urls
   logout_urls                          = var.cognito_logout_urls
-  supported_identity_providers         = ["COGNITO"]
+  supported_identity_providers         = var.google_client_id != "" ? ["COGNITO", "Google"] : ["COGNITO"]
+
+  depends_on = [aws_cognito_identity_provider.google]
 
   lifecycle {
     precondition {
@@ -102,6 +117,33 @@ resource "aws_cognito_user_pool_domain" "hosted_ui" {
 
   domain       = var.cognito_domain_prefix
   user_pool_id = aws_cognito_user_pool.livecap[0].id
+}
+
+# --- Google social login (optional) ---
+
+resource "aws_cognito_identity_provider" "google" {
+  count = var.enable_cognito_auth && var.google_client_id != "" ? 1 : 0
+
+  user_pool_id  = aws_cognito_user_pool.livecap[0].id
+  provider_name = "Google"
+  provider_type = "Google"
+
+  provider_details = {
+    client_id                     = var.google_client_id
+    client_secret                 = var.google_client_secret
+    authorize_scopes              = "openid email profile"
+    attributes_url                = "https://people.googleapis.com/v1/people/me?personFields="
+    attributes_url_add_attributes = "true"
+    authorize_url                 = "https://accounts.google.com/o/oauth2/v2/auth"
+    oidc_issuer                   = "https://accounts.google.com"
+    token_request_method          = "POST"
+    token_url                     = "https://www.googleapis.com/oauth2/v4/token"
+  }
+
+  attribute_mapping = {
+    email    = "email"
+    username = "sub"
+  }
 }
 
 resource "aws_dynamodb_table" "transcript_history" {
