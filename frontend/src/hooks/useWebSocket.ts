@@ -65,7 +65,8 @@ interface PendingConnection {
 
 function buildWsUrl(
   sourceLanguage?: SourceLanguageCode,
-  targetLanguage?: TargetLanguageCode
+  targetLanguage?: TargetLanguageCode,
+  resumeSessionId?: string | null
 ): string {
   const configuredUrl = import.meta.env.VITE_WS_URL;
   const baseUrl =
@@ -81,6 +82,10 @@ function buildWsUrl(
   if (sourceLanguage && targetLanguage) {
     url.searchParams.set('source', sourceLanguage);
     url.searchParams.set('target', targetLanguage);
+  }
+  // On reconnect, ask the backend to resume the same logical session id (B5).
+  if (resumeSessionId) {
+    url.searchParams.set('session_id', resumeSessionId);
   }
   return url.toString();
 }
@@ -263,7 +268,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       ws = new WebSocket(
         buildWsUrl(
           optionsRef.current.sourceLanguage,
-          optionsRef.current.targetLanguage
+          optionsRef.current.targetLanguage,
+          isRetry ? sessionIdRef.current : null
         )
       );
     } catch (err) {
