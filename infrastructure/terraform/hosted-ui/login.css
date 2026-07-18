@@ -1,0 +1,77 @@
+/* LiveCap-branded Cognito classic Hosted UI.
+ * Palette: emerald-pro #0a9c88, ink #102247, paper #eef2f8, hairline #dce5f2.
+ * Only Cognito's supported "-customizable" selectors/properties are used. If
+ * set-ui-customization rejects a rule, remove that property and retry. */
+
+.background-customizable {
+  background-color: #eef2f8;
+}
+
+.banner-customizable {
+  padding: 22px 0;
+  background-color: #102247;
+}
+
+.label-customizable {
+  color: #102247;
+}
+
+.textDescription-customizable {
+  color: #5b6b86;
+  font-size: 14px;
+}
+
+.idpDescription-customizable {
+  color: #5b6b86;
+  font-size: 14px;
+}
+
+.legalText-customizable {
+  color: #8a97ad;
+  font-size: 12px;
+}
+
+.inputField-customizable {
+  width: 100%;
+  border: 1px solid #dce5f2;
+  border-radius: 10px;
+  background-color: #ffffff;
+}
+
+.inputField-customizable:focus {
+  border-color: #0a9c88;
+  outline: none;
+}
+
+.submitButton-customizable {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 16px 0 8px 0;
+  background-color: #0a9c88;
+  color: #ffffff;
+  border-radius: 10px;
+  width: 100%;
+}
+
+.submitButton-customizable:hover {
+  background-color: #088a78;
+  color: #ffffff;
+}
+
+.idpButton-customizable {
+  background-color: #102247;
+  color: #ffffff;
+  border-radius: 10px;
+  width: 100%;
+}
+
+.idpButton-customizable:hover {
+  background-color: #1a3160;
+  color: #ffffff;
+}
+
+.errorMessage-customizable {
+  color: #b0223a;
+  background-color: #fdeaed;
+  border-radius: 8px;
+}
