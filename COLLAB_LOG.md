@@ -79,6 +79,30 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-19 — Kiro — Multi-task + Usage Quota system (B2C commercialization)
+- **Multi-task raised to 3:** `backend_max_capacity=3`,
+  `max_concurrent_sessions=12`. DynamoDB session store ensures global limits
+  hold across tasks. Applied to AWS — autoscaling now targets up to 3 tasks.
+- **Usage quota system (new):**
+  - `backend/app/services/usage_quota.py`: per-user monthly usage tracking
+    (sessions + minutes), tier definitions (free/pro/business), quota checks,
+    session time limits, meeting-notes gating.
+  - `backend/app/routers/quota.py`: `GET /api/usage` returns current usage +
+    limits for frontend billing UI.
+  - `infrastructure/terraform/usage_quota.tf`: DynamoDB table
+    `livecap-usage-dev` (pk=USER#id, sk=MONTH#YYYY-MM), PAY_PER_REQUEST, TTL,
+    IAM policy. Gated by `enable_usage_quota` (deployed = true).
+  - `ecs.tf`: wires `USAGE_TABLE_NAME` + `ENABLE_USAGE_QUOTA` env vars.
+  - Registered `quota_router` in `main.py`.
+- **Tier limits:**
+  - Free: 3 sessions/month, 15 min/session, 45 min/month, no AI notes
+  - Pro: unlimited sessions, 60 min/session, 600 min/month, AI notes on
+  - Business: unlimited everything
+- **Applied to AWS:** usage table ACTIVE, IAM policy attached, task env updated.
+- Verified: `terraform validate` pass, `compileall` pass, AWS resources live.
+- **Next:** build + push new image with quota code, then wire frontend to show
+  usage UI + enforce limits before WebSocket connect.
+
 ### 2026-07-19 — Kiro — Enable all remaining feature flags (full adoption)
 - **Applied to AWS:** single `terraform apply` enabling all pending features.
   Infrastructure fully converged (all resources already provisioned, just
