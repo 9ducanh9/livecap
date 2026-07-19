@@ -97,10 +97,12 @@ resource "aws_cognito_user_pool_client" "web" {
   prevent_user_existence_errors        = "ENABLED"
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = ["openid", "email", "profile"]
-  callback_urls                        = var.cognito_callback_urls
-  logout_urls                          = var.cognito_logout_urls
-  supported_identity_providers         = var.google_client_id != "" ? ["COGNITO", "Google"] : ["COGNITO"]
+  # GetUser validates the browser access token for owner-scoped history. Cognito
+  # only permits that API when this built-in scope is present in the token.
+  allowed_oauth_scopes         = ["openid", "email", "profile", "aws.cognito.signin.user.admin"]
+  callback_urls                = var.cognito_callback_urls
+  logout_urls                  = var.cognito_logout_urls
+  supported_identity_providers = var.google_client_id != "" ? ["COGNITO", "Google"] : ["COGNITO"]
 
   depends_on = [aws_cognito_identity_provider.google]
 
@@ -143,6 +145,12 @@ resource "aws_cognito_identity_provider" "google" {
   attribute_mapping = {
     email    = "email"
     username = "sub"
+  }
+
+  # The OAuth secret is supplied only through an untracked deployment input.
+  # Do not erase the live secret when a maintenance plan doesn't include it.
+  lifecycle {
+    ignore_changes = [provider_details["client_secret"]]
   }
 }
 
