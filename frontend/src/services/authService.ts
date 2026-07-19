@@ -77,7 +77,7 @@ export async function beginSignIn(identityProvider?: string): Promise<void> {
   sessionStorage.setItem(OAUTH_STATE_KEY, state);
   const params = new URLSearchParams({
     response_type: 'code', client_id: current.clientId, redirect_uri: current.redirectUri,
-    scope: 'openid email profile', state,
+    scope: 'openid email profile aws.cognito.signin.user.admin', state,
     code_challenge: await sha256Base64Url(verifier), code_challenge_method: 'S256',
   });
   if (identityProvider) params.set('identity_provider', identityProvider);

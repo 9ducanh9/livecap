@@ -43,7 +43,7 @@ Companion docs: `HANDOFF.md` (push/deploy steps for the current branch),
 ## Current state (2026-07-18)
 
 Branch `Update` is the active integration branch. The target ECS service is live on image
-`2e00a0b-amd64` with the DynamoDB
+`90a92c6-amd64` with the DynamoDB
 session store enabled. It is configured for scale-to-zero (`desired/min = 0`,
 `max = 1`) and the 300-second idle shutdown has been verified. CloudWatch alarms
 and their SNS topic are deployed. Codex's on-demand meeting-notes redesign is
@@ -68,7 +68,7 @@ deployed. Ignored local Terraform settings remain untracked.
 | Text analysis / Comprehend (A3) | `enable_text_analysis` / `ENABLE_TEXT_ANALYSIS` | off (English only) |
 | X-Ray tracing (C4) | `enable_xray` / `ENABLE_XRAY` | off (verify vs live daemon before enabling) |
 | Fargate Spot (D2) | `enable_fargate_spot` (+ `fargate_spot_weight`, `fargate_on_demand_base`) | off (on-demand FARGATE) |
-| Cognito accounts + transcript history (C5) | `enable_cognito_auth` provisions; `stable_enable_auth_runtime` / `ENABLE_AUTH` enforces | provisioned and enabled on the custom-domain target backend |
+| Cognito accounts + transcript history (C5) | `enable_cognito_auth` provisions; `stable_enable_auth_runtime` / `ENABLE_AUTH` enforces | provisioned and enabled on the custom-domain target backend; Google history read verified |
 
 **Remaining human actions:** confirm any SNS/budget subscription emails, enable
 Bedrock model access in-region only before enabling that feature, and configure
@@ -78,6 +78,23 @@ Details in `HANDOFF.md`.
 ---
 
 ## Change log (newest first)
+
+### 2026-07-19 - Codex - fix Cognito transcript-history authorization
+- Root cause of the remaining history `401`: the browser requested only `openid email profile`,
+  but backend validation uses Cognito `GetUser`, which requires the built-in
+  `aws.cognito.signin.user.admin` access-token scope.
+- Added that scope to the Terraform Cognito web client and the frontend PKCE request. Added a
+  lifecycle guard so a maintenance plan cannot overwrite the Google IdP secret when it is absent
+  from untracked inputs. Restored the non-sensitive callback/logout URLs, domain prefix, and Google
+  client ID in untracked `terraform.tfvars` to eliminate configuration drift.
+- Reviewed and applied a targeted plan with exactly one in-place Cognito client update; no user pool,
+  IdP, ALB, ECS, S3, or network resource was replaced or deleted. The live client now lists the
+  required scope. Deployed the rebuilt frontend to the existing S3 origin and waited for CloudFront
+  invalidation `I9QYX78IB8BTWTLXRSUAV0CDJO`.
+- Verification: frontend `npm test -- --run` passed (24 tests), `npm run build` passed, and
+  `terraform validate` passed. After a fresh Google sign-in, the live UI shows `No transcripts yet`
+  and the target backend logs `GET /api/transcripts 200`. Target service is healthy on task
+  definition revision 10 and image `90a92c6-amd64`.
 
 ### 2026-07-19 - Codex - diagnose auth runtime and recover scale-to-zero target
 - Investigated the reported `503` and WebSocket `1006`: the target service had intentionally
