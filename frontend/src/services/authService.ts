@@ -68,7 +68,7 @@ async function sha256Base64Url(value: string): Promise<string> {
   return base64Url(new Uint8Array(digest));
 }
 
-export async function beginSignIn(): Promise<void> {
+export async function beginSignIn(identityProvider?: string): Promise<void> {
   const current = config();
   if (!current.enabled) return;
   const verifier = randomBase64Url(64);
@@ -80,6 +80,7 @@ export async function beginSignIn(): Promise<void> {
     scope: 'openid email profile', state,
     code_challenge: await sha256Base64Url(verifier), code_challenge_method: 'S256',
   });
+  if (identityProvider) params.set('identity_provider', identityProvider);
   window.location.assign(`${current.domain}/oauth2/authorize?${params.toString()}`);
 }
 
