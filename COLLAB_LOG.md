@@ -79,6 +79,13 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-19 — Kiro — Build + push image 8364911-amd64 (quota + multi-task code)
+- Built and pushed `8364911-amd64` containing: usage_quota service, quota
+  router, multi-task session registry, all feature code from Update branch.
+- Applied new task definition pointing to `8364911-amd64`. ECS service updated.
+- **Live image now contains:** auth, history, quota, TTS, comprehend, X-Ray
+  tracing, custom vocabulary env, meeting summary — all feature code deployed.
+
 ### 2026-07-19 — Kiro — Multi-task + Usage Quota system (B2C commercialization)
 - **Multi-task raised to 3:** `backend_max_capacity=3`,
   `max_concurrent_sessions=12`. DynamoDB session store ensures global limits
