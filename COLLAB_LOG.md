@@ -79,6 +79,15 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-19 — Kiro — Frontend billing UI (UsagePanel) + docs update
+- **New `UsagePanel.tsx`:** renders tier badge, session/minute progress bars,
+  quota warnings, per-session limit, and upgrade CTA. Fetches `GET /api/usage`
+  on mount. Integrated into Dashboard sidebar above transcript history.
+- **`as-deployed-architecture.md` updated:** reflects multi-task (max 3),
+  multi-AZ NAT (2 gateways), all AI services, Cognito auth, 3 DynamoDB tables,
+  VPC Flow Logs + GuardDuty + Security Hub, Container Insights + X-Ray.
+- Frontend built and deployed (S3 sync + CloudFront invalidation).
+
 ### 2026-07-19 — Kiro — Build + push image 8364911-amd64 (quota + multi-task code)
 - Built and pushed `8364911-amd64` containing: usage_quota service, quota
   router, multi-task session registry, all feature code from Update branch.

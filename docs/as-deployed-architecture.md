@@ -137,14 +137,20 @@ task replacement.
 | VPC | Dedicated `10.20.0.0/16` VPC across `ap-southeast-1a` and `ap-southeast-1b` |
 | ALB placement | Two public subnets; ingress restricted to the CloudFront origin-facing prefix list |
 | Task networking | Two private subnets; `assign_public_ip=false` |
-| ECS capacity | Desired count changes `0 <-> 1`; maximum capacity is 1 |
-| Backend task definition | Terraform-managed target revision; inspect the running ECS service for the current revision |
-| Backend image | Immutable Git-SHA-derived ECR tag; inspect the running task definition for the current tag |
+| NAT Gateways | Two (one per AZ); multi-AZ egress, no single-AZ dependency |
+| ECS capacity | Desired 0–3; autoscaling on CPU/memory; scale-to-zero with wake Lambda |
+| Backend image | `8364911-amd64` (immutable Git-SHA ECR tag) |
+| Authentication | Amazon Cognito User Pool (email + Google OAuth); custom login UI |
+| AI/ML services | Transcribe Streaming (+ custom vocabulary), Translate, Bedrock (Claude meeting notes), Polly (TTS), Comprehend (sentiment/keywords) |
+| Session store | DynamoDB `livecap-sessions-dev` (shared across tasks, TTL) |
+| Transcript history | DynamoDB `livecap-transcript-history-dev` (per-user, TTL 14 days) |
+| Usage quota | DynamoDB `livecap-usage-dev` (per-user monthly sessions/minutes tracking) |
 | Wake endpoint | IAM-protected Lambda Function URL reached through CloudFront OAC |
 | WAF | Separate blocking Web ACLs for CloudFront and the ALB |
 | Transcript storage | Private S3, 14-day retention, no raw audio storage |
-| Observability | CloudWatch logs, metrics, dashboard, and WAF logs; Terraform-managed log groups use 14-day retention, while the direct Watchtower group still needs a policy |
-| Cost guard | AWS Budget with a `$50` monthly threshold; no notification subscriber is currently configured and billing data is not real time |
+| Observability | CloudWatch logs + metrics + dashboard, Container Insights, X-Ray tracing (sidecar), alarms → SNS topic |
+| Security detection | VPC Flow Logs (ALL traffic), Amazon GuardDuty (HIGH → SNS), AWS Security Hub (Foundational Best Practices) |
+| Cost guard | AWS Budget $50/month |
 | CI | Backend, Frontend, Terraform, and Secret scan jobs pass; CI does not deploy |
 
 ## Security Boundaries
