@@ -74,6 +74,14 @@ dependency contract.
   manual deployment workflow.
 - Review remaining legacy EC2, storage, and IAM resources independently before
   deleting them.
+- Stripe subscription billing (commit `7d84056`, off by default): set
+  `enable_stripe_billing`/`stripe_secret_key`/`stripe_webhook_secret`/
+  `stripe_price_id_pro`/`stripe_price_id_business` in a local `.tfvars`,
+  `terraform apply`, register a Stripe webhook endpoint at
+  `/api/billing/webhook`, and build+push a new backend image before
+  enabling. Two live-mode Stripe Products/Prices already exist on the
+  connected account (LiveCap Pro $10/mo, LiveCap Business $30/mo) — details
+  and price IDs in `COLLAB_LOG.md`.
 
 ## Supporting Documents
 

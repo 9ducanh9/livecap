@@ -69,6 +69,7 @@ deployed. Ignored local Terraform settings remain untracked.
 | X-Ray tracing (C4) | `enable_xray` / `ENABLE_XRAY` | off (verify vs live daemon before enabling) |
 | Fargate Spot (D2) | `enable_fargate_spot` (+ `fargate_spot_weight`, `fargate_on_demand_base`) | off (on-demand FARGATE) |
 | Cognito accounts + transcript history (C5) | `enable_cognito_auth` provisions; `stable_enable_auth_runtime` / `ENABLE_AUTH` enforces | provisioned and enabled on the custom-domain target backend; Google history read verified |
+| Stripe subscription billing | `enable_stripe_billing` / `ENABLE_STRIPE_BILLING` (+ `stripe_secret_key`, `stripe_webhook_secret`, `stripe_price_id_pro`, `stripe_price_id_business`) | off — code committed, not applied; 2 live-mode Stripe Prices already exist (see change log) |
 
 **Remaining human actions:** confirm any SNS/budget subscription emails, enable
 Bedrock model access in-region only before enabling that feature, and configure
@@ -78,6 +79,72 @@ Details in `HANDOFF.md`.
 ---
 
 ## Change log (newest first)
+
+### 2026-07-20 — Claude — Stripe subscription billing for Pro/Business (`ENABLE_STRIPE_BILLING`)
+Commit `7d84056`. Real Stripe billing behind the usage-quota system Kiro built
+(previously every user was silently stuck on `free` — `increment_session`,
+the only writer of `tier`, is never called anywhere, and `GET /api/usage`
+had a live bug calling `user.sub` on `AuthenticatedUser`, which only has
+`user_id`/`username` — fixed both while wiring this up).
+
+- **Architecture:** Stripe Checkout (hosted, `mode=subscription`) to
+  subscribe; Stripe Customer Portal (hosted) to upgrade/downgrade/cancel;
+  webhooks keep a new persistent per-user record
+  (`usage_quota`: `pk=USER#id`, `sk=PROFILE` — tier +
+  stripe_customer_id/subscription_id/status) in sync. `get_user_usage` now
+  sources `tier` from this record, not from any monthly counter item.
+  A Stripe Price's `metadata.livecap_tier` ("pro"/"business") is the only
+  place a Price ID maps to a tier — no hardcoded table in app code.
+- **New:** `backend/app/services/stripe_billing.py`,
+  `backend/app/routers/billing.py` (`POST /api/billing/checkout-session`,
+  `/portal-session` — Cognito-auth required; `/webhook` — no Cognito auth,
+  verified via `Stripe-Signature` on the raw body instead), and
+  `infrastructure/terraform/stripe_billing.tf`.
+- **Terraform:** `stripe_secret_key`/`stripe_webhook_secret` are sensitive
+  vars stored in **Secrets Manager** (not plaintext task env like the rest
+  of `ecs.tf`), read via a scoped IAM policy on the ECS **execution** role;
+  wired into `ecs.tf`'s container `secrets` block (empty list, not a missing
+  key, when unconfigured). Price IDs are plain env vars (not secret).
+- **Tests:** 28 new (moto DynamoDB for the profile record; a hand-written
+  fake `stripe` module verified attribute-by-attribute against the real
+  installed `stripe==11.6.0` SDK — `Customer.{create,retrieve}`,
+  `checkout.Session.create`, `billing_portal.Session.create`,
+  `Webhook.construct_event`). Full suite: 275 passed, same pre-existing 13
+  `test_websocket.py` failures as always (Python 3.10 vs 3.11
+  `asyncio.timeout`, unrelated).
+- **Frontend:** `services/billingService.ts` + wired the previously dead
+  "Upgrade" button in `UsagePanel.tsx` to a Pro/Business Checkout choice,
+  plus a "Manage subscription" Customer Portal button for existing
+  subscribers. `npx tsc --noEmit` and `npm run build` both clean.
+
+**AWS-side, human-verify (I have no AWS credentials in this sandbox):**
+1. **Two LIVE-mode Stripe Products/Prices already exist** on the connected
+   account — created via the Stripe MCP `stripe_api_write` tool during a
+   planning session, which defaulted to live mode rather than test mode as
+   asked. No charges occurred (creating a Product/Price isn't a monetary
+   action). User was asked and chose to **keep and use them as the real
+   catalog** rather than archive: `LiveCap Pro` — `price_1TuyF0Ix5D46s7FsdUWBSDEH`
+   ($10/mo), `LiveCap Business` — `price_1TuyF4Ix5D46s7FsCV8OaGaf` ($30/mo).
+2. `terraform apply` is needed to create the Secrets Manager entries + IAM
+   policy + new task-definition revision. Set
+   `enable_stripe_billing`/`stripe_secret_key`/`stripe_webhook_secret`/
+   `stripe_price_id_pro`/`stripe_price_id_business` in a local, gitignored
+   `.tfvars` (see the commented block in `terraform.tfvars.example`) — never
+   commit real values.
+3. In the Stripe Dashboard, add a webhook endpoint pointing at
+   `https://<frontend-domain>/api/billing/webhook` subscribed to at least:
+   `checkout.session.completed`, `customer.subscription.updated`,
+   `customer.subscription.deleted`, `invoice.payment_failed`. Its signing
+   secret is `stripe_webhook_secret` above.
+4. New backend image needed (adds the `stripe` PyPI dependency +
+   `app/routers/billing.py` + `app/services/stripe_billing.py`) before this
+   can go live — same build+push+task-definition-revision flow as the last
+   few backend feature rollouts.
+5. Separately, worth a follow-up: nothing currently calls
+   `usage_quota.increment_session`/`add_minutes`/`check_quota`-as-a-gate from
+   the actual WebSocket session flow — quota enforcement itself (not just
+   the tier source, which this change fixes) is still scaffolding, not wired
+   into `websocket.py`.
 
 ### 2026-07-19 — Kiro — Frontend billing UI (UsagePanel) + docs update
 - **New `UsagePanel.tsx`:** renders tier badge, session/minute progress bars,
