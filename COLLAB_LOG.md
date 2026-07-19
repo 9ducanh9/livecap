@@ -79,6 +79,20 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-19 - Codex - fix Google OAuth PKCE callback
+- The Google button now reuses the shared Authorization Code + PKCE flow in
+  `authService.ts`, while still selecting the Cognito Google identity provider.
+  The previous button created an OAuth URL without `state` and
+  `code_verifier`; Cognito returned a code, but the callback verifier correctly
+  rejected it and left the user at the login screen.
+- Updated the deployed frontend configuration to the active Cognito hostname
+  `livecap.auth.ap-southeast-1.amazoncognito.com`, rebuilt the frontend, synced
+  it to the production S3 origin, and completed a CloudFront invalidation.
+- Verified in Chrome: Google account selection, Cognito callback, PKCE token
+  exchange, and authenticated LiveCap dashboard all succeeded. Frontend tests:
+  24 passed; production build and `terraform validate` passed. Unstaged
+  Terraform isolation work remains intentionally outside this commit.
+
 ### 2026-07-18 — Kiro — Google social login + favicon + full auth deployment
 - **Google OAuth:** Added `aws_cognito_identity_provider.google` to `cognito.tf`
   with variables `google_client_id` / `google_client_secret` (sensitive). App
