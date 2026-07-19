@@ -80,7 +80,7 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
-### 2026-07-20 - Codex - fix local Cognito browser bundle bootstrap (`1f8cab8`)
+### 2026-07-20 - Codex - fix local Cognito browser bundle bootstrap (`8af7929`)
 
 - Changed `frontend/vite.config.ts` only: define `global` as `globalThis` for
   both Vite's dev dependency optimizer and production bundle. This fixes the
