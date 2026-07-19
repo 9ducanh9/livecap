@@ -127,6 +127,10 @@ app.include_router(enrichment_router.router)
 from app.routers import quota as quota_router
 app.include_router(quota_router.router)
 
+# Stripe subscription billing: checkout/portal sessions + webhook
+from app.routers import billing as billing_router
+app.include_router(billing_router.router)
+
 
 # ---------------------------------------------------------------------------
 # Health check endpoint

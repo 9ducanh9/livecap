@@ -77,7 +77,21 @@ resource "aws_ecs_task_definition" "target_backend" {
       { name = "TRANSCRIPT_HISTORY_RETENTION_DAYS", value = tostring(var.transcript_history_retention_days) },
       { name = "USAGE_TABLE_NAME", value = local.usage_table_name },
       { name = "ENABLE_USAGE_QUOTA", value = tostring(var.enable_usage_quota) },
+      { name = "ENABLE_STRIPE_BILLING", value = tostring(var.enable_stripe_billing) },
+      { name = "STRIPE_PRICE_ID_PRO", value = var.stripe_price_id_pro },
+      { name = "STRIPE_PRICE_ID_BUSINESS", value = var.stripe_price_id_business },
+      { name = "FRONTEND_BASE_URL", value = local.frontend_base_url },
     ]
+
+    # Stripe API credentials are real secrets (unlike everything in
+    # `environment` above), so they're injected from Secrets Manager rather
+    # than stored as plaintext task-definition env vars. Empty list (not a
+    # missing key) when not configured, so container startup doesn't depend
+    # on resources that don't exist yet.
+    secrets = local.stripe_secrets_configured ? [
+      { name = "STRIPE_SECRET_KEY", valueFrom = aws_secretsmanager_secret.stripe_secret_key[0].arn },
+      { name = "STRIPE_WEBHOOK_SECRET", valueFrom = aws_secretsmanager_secret.stripe_webhook_secret[0].arn },
+    ] : []
 
     logConfiguration = {
       logDriver = "awslogs"

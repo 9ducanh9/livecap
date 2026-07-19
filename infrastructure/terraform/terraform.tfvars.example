@@ -143,6 +143,14 @@ log_retention_days = 14  # Retain logs for 14 days
 # cognito_domain_prefix = "livecap-example-dev"
 # transcript_history_retention_days = 14
 
+# Stripe subscription billing (Pro/Business tiers). Set the two secret values
+# in a local, gitignored .tfvars file — never here or in any committed file.
+# enable_stripe_billing = true
+# stripe_secret_key         = "sk_live_..."   # from the Stripe Dashboard, keep out of git
+# stripe_webhook_secret     = "whsec_..."     # from the webhook endpoint's signing secret
+# stripe_price_id_pro       = "price_..."
+# stripe_price_id_business  = "price_..."
+
 # CloudFront Configuration
 cloudfront_price_class = "PriceClass_100" # Cost-focused; use 200/All for more Asia edge coverage.
 

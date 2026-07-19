@@ -60,6 +60,13 @@ DEFAULT_ENABLE_AUTH = False
 DEFAULT_COGNITO_USER_POOL_ID = ""
 DEFAULT_TRANSCRIPT_HISTORY_TABLE_NAME = "livecap-transcript-history"
 DEFAULT_TRANSCRIPT_HISTORY_RETENTION_DAYS = 14
+# Stripe subscription billing for the Pro/Business tiers. Off by default; the
+# usage_quota table always defaults new users to the free tier until a Stripe
+# webhook says otherwise (see app.services.stripe_billing).
+DEFAULT_ENABLE_STRIPE_BILLING = False
+DEFAULT_STRIPE_PRICE_ID_PRO = ""
+DEFAULT_STRIPE_PRICE_ID_BUSINESS = ""
+DEFAULT_FRONTEND_BASE_URL = "http://localhost:5173"
 
 
 def _get_int(name: str, default: int) -> int:
@@ -146,6 +153,12 @@ class Settings:
     cognito_user_pool_id: str = DEFAULT_COGNITO_USER_POOL_ID
     transcript_history_table_name: str = DEFAULT_TRANSCRIPT_HISTORY_TABLE_NAME
     transcript_history_retention_days: int = DEFAULT_TRANSCRIPT_HISTORY_RETENTION_DAYS
+    enable_stripe_billing: bool = DEFAULT_ENABLE_STRIPE_BILLING
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_price_id_pro: str = DEFAULT_STRIPE_PRICE_ID_PRO
+    stripe_price_id_business: str = DEFAULT_STRIPE_PRICE_ID_BUSINESS
+    frontend_base_url: str = DEFAULT_FRONTEND_BASE_URL
 
     @property
     def resolved_bedrock_region(self) -> str:
@@ -251,6 +264,20 @@ class Settings:
                     "TRANSCRIPT_HISTORY_RETENTION_DAYS",
                     DEFAULT_TRANSCRIPT_HISTORY_RETENTION_DAYS,
                 ),
+            ),
+            enable_stripe_billing=_get_bool(
+                "ENABLE_STRIPE_BILLING", DEFAULT_ENABLE_STRIPE_BILLING
+            ),
+            stripe_secret_key=_get_str("STRIPE_SECRET_KEY", ""),
+            stripe_webhook_secret=_get_str("STRIPE_WEBHOOK_SECRET", ""),
+            stripe_price_id_pro=_get_str(
+                "STRIPE_PRICE_ID_PRO", DEFAULT_STRIPE_PRICE_ID_PRO
+            ),
+            stripe_price_id_business=_get_str(
+                "STRIPE_PRICE_ID_BUSINESS", DEFAULT_STRIPE_PRICE_ID_BUSINESS
+            ),
+            frontend_base_url=_get_str(
+                "FRONTEND_BASE_URL", DEFAULT_FRONTEND_BASE_URL
             ),
         )
 

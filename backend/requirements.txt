@@ -14,5 +14,8 @@ watchtower==3.2.0
 # Optional AWS X-Ray tracing (enabled via ENABLE_XRAY)
 aws-xray-sdk==2.14.0
 
+# Optional Stripe subscription billing (enabled via ENABLE_STRIPE_BILLING)
+stripe==11.6.0
+
 # Configuration via environment variables
 python-dotenv==1.2.2

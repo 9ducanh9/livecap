@@ -43,9 +43,9 @@ async def get_usage(
             "quota_error": None,
         }
 
-    usage = get_user_usage(user.sub)
+    usage = get_user_usage(user.user_id)
     limits = TIERS.get(usage.tier, TIERS[DEFAULT_TIER])
-    quota_error = check_quota(user.sub)
+    quota_error = check_quota(user.user_id)
 
     return {
         "tier": usage.tier,
