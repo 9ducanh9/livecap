@@ -31,6 +31,7 @@ class AuthenticatedUser:
 
     user_id: str
     username: str
+    email: str = ""
 
 
 def _bearer_token(authorization: str | None) -> str:
@@ -130,7 +131,11 @@ def authenticate_access_token(token: str) -> AuthenticatedUser:
             detail="The sign-in session did not include a user identifier",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return AuthenticatedUser(user_id=user_id, username=username or user_id)
+    return AuthenticatedUser(
+        user_id=user_id,
+        username=username or user_id,
+        email=attributes.get("email", "").strip(),
+    )
 
 
 async def require_authenticated_user(

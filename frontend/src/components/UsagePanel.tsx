@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import { BarChart3, Zap, Crown, LoaderCircle } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { BarChart3, Zap, Crown, LoaderCircle, AlertCircle } from 'lucide-react';
 import { authenticatedFetch } from '../services/authService';
+import { startCheckout, openBillingPortal, BillingError } from '../services/billingService';
 
 interface UsageData {
   tier: string;
@@ -25,6 +26,9 @@ const TIER_LABELS: Record<string, { label: string; color: string; icon: typeof Z
 export default function UsagePanel() {
   const [usage, setUsage] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showTierChoice, setShowTierChoice] = useState(false);
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -35,6 +39,29 @@ export default function UsagePanel() {
       } catch { /* silent */ }
       finally { setLoading(false); }
     })();
+  }, []);
+
+  const handleCheckout = useCallback(async (tier: 'pro' | 'business') => {
+    setBillingError(null);
+    setBillingBusy(true);
+    try {
+      await startCheckout(tier);
+      // Browser is navigating away to Stripe Checkout; no need to reset busy state.
+    } catch (err) {
+      setBillingError(err instanceof BillingError ? err.message : 'Could not start checkout.');
+      setBillingBusy(false);
+    }
+  }, []);
+
+  const handleManageSubscription = useCallback(async () => {
+    setBillingError(null);
+    setBillingBusy(true);
+    try {
+      await openBillingPortal();
+    } catch (err) {
+      setBillingError(err instanceof BillingError ? err.message : 'Could not open the billing portal.');
+      setBillingBusy(false);
+    }
   }, []);
 
   if (loading) {
@@ -67,12 +94,53 @@ export default function UsagePanel() {
         {usage.tier === 'free' && (
           <button
             type="button"
-            className="text-[11px] font-bold text-emerald-pro bg-emerald-pro/10 px-2.5 py-1 rounded-full hover:bg-emerald-pro/20 transition-colors"
+            onClick={() => setShowTierChoice((v) => !v)}
+            disabled={billingBusy}
+            className="text-[11px] font-bold text-emerald-pro bg-emerald-pro/10 px-2.5 py-1 rounded-full hover:bg-emerald-pro/20 transition-colors disabled:opacity-50"
           >
             Upgrade
           </button>
         )}
+        {(usage.tier === 'pro' || usage.tier === 'business') && (
+          <button
+            type="button"
+            onClick={() => void handleManageSubscription()}
+            disabled={billingBusy}
+            className="text-[11px] font-bold text-ink-muted bg-[#eef2f8] px-2.5 py-1 rounded-full hover:bg-[#e3e9f4] transition-colors disabled:opacity-50"
+          >
+            {billingBusy ? 'Opening…' : 'Manage subscription'}
+          </button>
+        )}
       </div>
+
+      {/* Tier choice (free -> Pro/Business checkout) */}
+      {usage.tier === 'free' && showTierChoice && (
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            onClick={() => void handleCheckout('pro')}
+            disabled={billingBusy}
+            className="flex-1 rounded-lg border border-emerald-pro/30 py-2 text-[11px] font-bold text-emerald-pro hover:bg-emerald-pro/5 disabled:opacity-50"
+          >
+            {billingBusy ? 'Redirecting…' : 'Pro — $10/mo'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCheckout('business')}
+            disabled={billingBusy}
+            className="flex-1 rounded-lg border border-amber-400/40 py-2 text-[11px] font-bold text-amber-600 hover:bg-amber-50 disabled:opacity-50"
+          >
+            {billingBusy ? 'Redirecting…' : 'Business — $30/mo'}
+          </button>
+        </div>
+      )}
+
+      {billingError && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-50 p-2.5 text-xs text-crimson">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          {billingError}
+        </div>
+      )}
 
       {/* Usage bars */}
       <div className="mt-4 space-y-3">
