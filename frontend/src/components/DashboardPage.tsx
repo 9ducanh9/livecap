@@ -8,6 +8,7 @@ import ControlPanel from './ControlPanel';
 import SummaryPanel from './SummaryPanel';
 import EnrichmentPanel from './EnrichmentPanel';
 import TranscriptHistoryPanel from './TranscriptHistoryPanel';
+import UsagePanel from './UsagePanel';
 import { isAuthConfigured } from '../services/authService';
 import {
   buildSummaryText,
@@ -285,6 +286,7 @@ export default function DashboardPage() {
             <EnrichmentPanel
               englishText={state.segments.map((s) => s.textEn.trim()).filter(Boolean).join(' ')}
             />
+            {isAuthConfigured() && <UsagePanel />}
             {isAuthConfigured() && <TranscriptHistoryPanel />}
           </div>
         </aside>
