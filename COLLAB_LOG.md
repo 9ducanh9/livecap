@@ -79,6 +79,66 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-18 — Kiro — Google social login + favicon + full auth deployment
+- **Google OAuth:** Added `aws_cognito_identity_provider.google` to `cognito.tf`
+  with variables `google_client_id` / `google_client_secret` (sensitive). App
+  Client now supports `["COGNITO", "Google"]`. Applied to AWS — Hosted UI shows
+  "Continue with Google" button.
+- **New backend image `2e00a0b-amd64`** built from Update branch HEAD and pushed
+  to ECR. Contains auth.py, history.py, tracing.py, enrichment routes — all
+  code committed on the Update branch. Task definition updated to use it.
+- **Favicon:** Replaced old `LiveCap.svg` with new `LiveCap Logo for Live
+  Captions App.png`. Updated `index.html` reference.
+- **Security baseline deployed:** VPC Flow Logs, GuardDuty, Security Hub, SNS
+  EventBridge policy all live on AWS.
+- **Auth enforcement live:** `ENABLE_AUTH=true` in task env, frontend built with
+  `VITE_AUTH_ENABLED=true` + Cognito domain/client vars.
+- **Cognito domain:** `livecap-logantai` (was `livecap-720459752315`).
+- **Preview infra cleaned up:** preview CloudFront distribution, S3 bucket, and
+  associated Lambda permissions destroyed (no longer needed).
+- **Terraform state:** preview bucket removed from state after manual delete.
+- Verified: Google IdP active, App Client lists both providers, ECR image exists.
+
+### 2026-07-18 — Codex — prepared stable/preview runtime isolation (not applied)
+- Added an opt-in preview ECS service, task definition, ALB target group and
+  listener rule. The preview CloudFront origin sends an internal
+  `X-LiveCap-Environment: preview` header; stable remains the ALB default.
+- Added an independent preview wake Lambda with least-privilege access only to
+  `livecap-preview-service-dev`. Stable continues to use its existing wake
+  Lambda and service.
+- Stable task configuration now uses `stable_enable_auth_runtime` (default
+  false); preview has its own `preview_enable_auth_runtime` setting. This
+  prevents an Update auth rollout from changing main's anonymous behavior.
+- Verified `terraform fmt -check` and `terraform validate`. A phase-1 targeted
+  plan is saved locally: 14 add, 2 change, 1 task-definition replacement; no
+  apply was run. Full-plan Cognito drift is intentionally excluded because the
+  live Google identity provider is untracked local configuration owned by the
+  concurrent C5 work.
+
+### 2026-07-18 — Kiro — C5 auth enforcement + security baseline deployed to AWS
+- **Applied to AWS** (2 terraform apply rounds):
+  1. Security baseline + Cognito domain change: VPC Flow Logs, GuardDuty,
+     Security Hub, SNS EventBridge policy, task def revision 5 (new env vars),
+     Cognito domain `livecap-720459752315` → `livecap-logantai`.
+     Result: 12 added, 2 changed, 2 destroyed.
+  2. Auth enforcement: `ENABLE_AUTH=true` in task definition revision 6.
+     Result: 1 added, 1 changed, 1 destroyed.
+- **New backend image built + pushed:** `2e00a0b-amd64` (contains auth.py,
+  history.py, tracing.py, enrichment routes, and all Update-branch code).
+  Task definition revision 7 deployed with image `2e00a0b-amd64`.
+- **Frontend redeployed** with Cognito env vars:
+  `VITE_AUTH_ENABLED=true`, `VITE_COGNITO_DOMAIN`, `VITE_COGNITO_CLIENT_ID`,
+  `VITE_COGNITO_REDIRECT_URI`. S3 sync + CloudFront invalidation completed.
+- **Live state now:**
+  - Backend image `2e00a0b-amd64` with `ENABLE_AUTH=true`
+  - Cognito Hosted UI: `https://livecap-logantai.auth.ap-southeast-1.amazoncognito.com`
+  - User Pool: `ap-southeast-1_uCz3Q7M9B`
+  - Client ID: `614p5pniek2aedu0dh3tnea20s`
+  - VPC Flow Logs active (ALL traffic, 14-day retention)
+  - GuardDuty enabled (HIGH/CRITICAL → SNS)
+  - Security Hub enabled (AWS Foundational Best Practices)
+  - DynamoDB transcript history table: `livecap-transcript-history-dev`
+
 ### 2026-07-18 — Codex — C5 Cognito resources provisioned safely
 - Applied a targeted Terraform plan limited to the Cognito User Pool, public
   PKCE client, Hosted UI domain, transcript-history DynamoDB table, and the

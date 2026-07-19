@@ -176,6 +176,16 @@ waf_rate_limit = 2000
 # preview_custom_domain               = ""
 # detach_custom_domain_from_stable    = false
 
+# Optional isolated Update runtime. When enabled, the preview CloudFront
+# distribution adds an internal origin header and the ALB routes it to a second
+# Fargate service. This keeps the stable main backend anonymous and unaffected.
+# enable_preview_backend              = true
+# preview_enable_auth_runtime         = true
+# preview_backend_desired_count       = 0
+# preview_backend_min_capacity        = 0
+# preview_backend_max_capacity        = 1
+# stable_enable_auth_runtime          = false
+
 # Legacy network discovery remains only for the rollback stack.
 legacy_availability_zones = ["ap-southeast-1a", "ap-southeast-1b"]
 # vpc_id             = "vpc-xxxxx"
