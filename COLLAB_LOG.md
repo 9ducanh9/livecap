@@ -42,8 +42,8 @@ Companion docs: `HANDOFF.md` (push/deploy steps for the current branch),
 
 ## Current state (2026-07-18)
 
-Branch `Update` = `main` + 20 commits. The target ECS service is live on image
-`cf920cd-amd64` with the DynamoDB
+Branch `Update` is the active integration branch. The target ECS service is live on image
+`2e00a0b-amd64` with the DynamoDB
 session store enabled. It is configured for scale-to-zero (`desired/min = 0`,
 `max = 1`) and the 300-second idle shutdown has been verified. CloudWatch alarms
 and their SNS topic are deployed. Codex's on-demand meeting-notes redesign is
@@ -68,7 +68,7 @@ deployed. Ignored local Terraform settings remain untracked.
 | Text analysis / Comprehend (A3) | `enable_text_analysis` / `ENABLE_TEXT_ANALYSIS` | off (English only) |
 | X-Ray tracing (C4) | `enable_xray` / `ENABLE_XRAY` | off (verify vs live daemon before enabling) |
 | Fargate Spot (D2) | `enable_fargate_spot` (+ `fargate_spot_weight`, `fargate_on_demand_base`) | off (on-demand FARGATE) |
-| Cognito accounts + transcript history (C5) | `enable_cognito_auth` provisions; `enable_auth_runtime` / `ENABLE_AUTH` enforces | resources provisioned; runtime enforcement off |
+| Cognito accounts + transcript history (C5) | `enable_cognito_auth` provisions; `stable_enable_auth_runtime` / `ENABLE_AUTH` enforces | provisioned and enabled on the custom-domain target backend |
 
 **Remaining human actions:** confirm any SNS/budget subscription emails, enable
 Bedrock model access in-region only before enabling that feature, and configure
@@ -78,6 +78,25 @@ Details in `HANDOFF.md`.
 ---
 
 ## Change log (newest first)
+
+### 2026-07-19 - Codex - diagnose auth runtime and recover scale-to-zero target
+- Investigated the reported `503` and WebSocket `1006`: the target service had intentionally
+  scaled to `desired=0` after its 300-second idle window, with a clean task exit. `POST /api/wake`
+  returned `202`, the service woke to one healthy task, and `/api/health` returned `200`.
+- Found the separate transcript-history issue: the running task definition had `ENABLE_AUTH=false`,
+  so `/api/transcripts` returned `409`. Applied a reviewed, targeted Terraform plan that only
+  created task-definition revision 9 and updated the target ECS service to set `ENABLE_AUTH=true`.
+  No Cognito, ALB, S3, networking, or legacy resources were changed.
+- Added safe backend diagnostics in `backend/app/services/auth.py` for missing/invalid bearer
+  headers and Cognito `GetUser` failures. It never logs access tokens or credentials. This is
+  required to distinguish an origin-header issue from Cognito token rejection when testing live.
+- Verification: `terraform validate` passed; revision 9 is `RUNNING` and `HEALTHY`; live health
+  is `200`. Backend `compileall` passed. Local pytest result was `259 passed, 1 failed`; the lone
+  X-Ray test cannot import optional `aws_xray_sdk` in the local virtualenv and is unrelated to
+  the auth changes. The next step is to deploy the diagnostics image and retry an authenticated
+  history request.
+- Working agreement reinforcement: every agent change must include its matching `COLLAB_LOG.md`
+  entry in the same scoped commit.
 
 ### 2026-07-19 - Claude - URGENT for Codex: backend appears down in prod (503s), Google sign-in confirmed working end-to-end
 **Good news first:** the user tested Google sign-in live at `https://livecap.logantai.com/app` and it now

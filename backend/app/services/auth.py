@@ -13,12 +13,16 @@ from dataclasses import dataclass
 from functools import lru_cache
 import base64
 import json
+import logging
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import Header, HTTPException, status
 
 from app.config import get_settings
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,7 @@ class AuthenticatedUser:
 
 def _bearer_token(authorization: str | None) -> str:
     if not authorization:
+        logger.warning("Cognito-protected request did not include an Authorization header")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Sign in is required to save or view transcript history",
@@ -38,6 +43,7 @@ def _bearer_token(authorization: str | None) -> str:
         )
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token.strip():
+        logger.warning("Cognito-protected request did not include a usable Bearer token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="A Cognito bearer token is required",
@@ -89,6 +95,7 @@ def authenticate_access_token(token: str) -> AuthenticatedUser:
         region=settings.aws_region,
         user_pool_id=settings.cognito_user_pool_id,
     ):
+        logger.warning("Cognito bearer token failed issuer or token-use validation")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="The sign-in token is not valid for this LiveCap environment",
@@ -96,7 +103,16 @@ def authenticate_access_token(token: str) -> AuthenticatedUser:
         )
     try:
         response = _cognito_client(settings.aws_region).get_user(AccessToken=token)
-    except (BotoCoreError, ClientError) as exc:
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code", "ClientError")
+        logger.warning("Cognito GetUser rejected bearer token: %s", error_code)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your sign-in session is invalid or expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+    except BotoCoreError as exc:
+        logger.warning("Cognito GetUser request failed: %s", type(exc).__name__)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Your sign-in session is invalid or expired",
