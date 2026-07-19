@@ -26,9 +26,6 @@ import { getAccessToken, isAuthConfigured } from '../services/authService';
 const DEBUG = import.meta.env.VITE_AUDIO_DEBUG === 'true';
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const RETRY_DELAYS_MS = [1_000, 2_000, 4_000] as const;
-const PRODUCTION_BACKEND_WS_URL = 'wss://dpeohr327wt9l.cloudfront.net/ws/transcribe';
-const CUSTOM_FRONTEND_HOST = 'livecap.logantai.com';
-
 export type WebSocketConnectionStatus =
   | 'idle'
   | 'connecting'
@@ -73,8 +70,6 @@ function buildWsUrl(
   const baseUrl =
     typeof configuredUrl === 'string' && configuredUrl.trim() !== ''
       ? configuredUrl.trim()
-      : window.location.hostname === CUSTOM_FRONTEND_HOST
-        ? PRODUCTION_BACKEND_WS_URL
       : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${
           window.location.host
         }/ws/transcribe`;

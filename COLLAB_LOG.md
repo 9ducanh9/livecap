@@ -79,6 +79,16 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-19 - Codex - use same-origin API and WebSocket paths for custom domain
+- Removed the custom-domain fallback that sent authenticated API requests from
+  `livecap.logantai.com` to the separate CloudFront hostname. Those cross-origin
+  requests included an Authorization header and failed CORS preflight.
+- Production now uses same-origin `/api/*` and `/ws/*` paths for both
+  CloudFront hostnames; CloudFront retains responsibility for routing them to
+  the backend. Verified after deployment and invalidation: no CORS console
+  error on transcript-history retry. A remaining history API failure is a
+  backend response issue, not a browser CORS failure.
+
 ### 2026-07-19 - Codex - fix Google OAuth PKCE callback
 - The Google button now reuses the shared Authorization Code + PKCE flow in
   `authService.ts`, while still selecting the Cognito Google identity provider.

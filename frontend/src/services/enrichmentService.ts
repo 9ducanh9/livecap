@@ -12,13 +12,9 @@
 
 import { authenticatedFetch } from './authService';
 
-const PRODUCTION_BACKEND_ORIGIN = 'https://dpeohr327wt9l.cloudfront.net';
-const CUSTOM_FRONTEND_HOST = 'livecap.logantai.com';
-
 function apiBaseUrl(): string {
   const configured = import.meta.env.VITE_API_BASE_URL ?? '';
   if (configured.trim() !== '') return configured.replace(/\/$/, '');
-  if (window.location.hostname === CUSTOM_FRONTEND_HOST) return PRODUCTION_BACKEND_ORIGIN;
   return '';
 }
 

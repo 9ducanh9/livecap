@@ -10,9 +10,6 @@
 import type { Segment, SessionSummary } from '../types';
 import { authenticatedFetch } from './authService';
 
-const PRODUCTION_BACKEND_ORIGIN = 'https://dpeohr327wt9l.cloudfront.net';
-const CUSTOM_FRONTEND_HOST = 'livecap.logantai.com';
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -70,9 +67,6 @@ function resolveApiBaseUrl(baseUrl?: string): string {
   const configuredUrl = baseUrl ?? import.meta.env.VITE_API_BASE_URL ?? '';
   if (configuredUrl.trim() !== '') {
     return configuredUrl.replace(/\/$/, '');
-  }
-  if (window.location.hostname === CUSTOM_FRONTEND_HOST) {
-    return PRODUCTION_BACKEND_ORIGIN;
   }
   return '';
 }
