@@ -79,6 +79,24 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-19 — Kiro — Enable all remaining feature flags (full adoption)
+- **Applied to AWS:** single `terraform apply` enabling all pending features.
+  Infrastructure fully converged (all resources already provisioned, just
+  needed consistent tfvars).
+- **Now live on AWS:**
+  - `ENABLE_MEETING_SUMMARY=true` + `BEDROCK_REGION=us-east-1` (Bedrock IAM active)
+  - `ENABLE_XRAY=true` (X-Ray daemon sidecar + xray:Put* policy)
+  - `ENABLE_TTS=true` (Polly access, English only)
+  - `ENABLE_TEXT_ANALYSIS=true` (Comprehend access, English only)
+  - `enable_multi_az_nat=true` — 2 NAT Gateways (removes single-AZ dependency)
+  - `enable_container_insights=true` — cluster-level deep metrics
+  - `enable_transcribe_custom_vocabulary=true` — livecap-en/vi-dev READY
+  - Cognito domain re-imported as `livecap` (state drift fixed)
+- **Still needs human action:** Bedrock model access enable in Console (us-east-1),
+  arm64 image build for Graviton, load test before multi-task, CI/CD repo secrets.
+- Verified: `terraform plan` = "No changes". All IAM policies present.
+  2 NAT gateways available. Container Insights enabled. Vocabularies READY.
+
 ### 2026-07-19 - Codex - retire obsolete migration documentation
 - Removed the completed pre-cutover import checklist and the post-v1.5 migration
   design document. Both still instructed readers to preserve a legacy rollback
