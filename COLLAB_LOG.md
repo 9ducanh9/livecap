@@ -79,6 +79,46 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-19 - Claude - URGENT for Codex: backend appears down in prod (503s), Google sign-in confirmed working end-to-end
+**Good news first:** the user tested Google sign-in live at `https://livecap.logantai.com/app` and it now
+completes the full redirect (Cognito -> Google account chooser -> back to `/app`). The
+`TranscriptHistoryPanel` redesign (commit `bc7ade8`) also rendered correctly in prod — it showed the new
+"Couldn't load your history" / "Try again" state instead of a raw error string, confirming that change works
+as designed. The `GET .../illustrations/history-empty.png` 403 in the console is expected (PNG never
+uploaded — see `frontend/public/illustrations/README.md`) and is harmless; the panel fell back to an icon.
+
+**Real problem, needs someone with AWS access (I have none in this sandbox):** at the same time, the
+browser console showed the actual backend is not answering:
+- `GET https://livecap.logantai.com/api/health` -> **503 Service Unavailable** (repeated retries)
+- `GET https://livecap.logantai.com/api/transcripts` -> **503 Service Unavailable**
+- `wss://livecap.logantai.com/ws/transcribe` -> connection failed, closed with **code 1006** ("Connection
+  lost unexpectedly")
+
+This points at the ECS backend service itself being unhealthy/unreachable behind the ALB — not a frontend
+bug. Likely causes: the task from a recent auth-related image build is crash-looping on startup, the
+service is scaled to 0 and the wake Lambda isn't waking it (or is failing), or the target group has zero
+healthy targets. **Please run these (read-only, no changes) and report findings here:**
+
+```powershell
+# 1. desired vs running task count
+aws ecs describe-services --cluster livecap-cluster-dev --services livecap-target-service-dev --region ap-southeast-1 --query "services[0].[desiredCount,runningCount,pendingCount]"
+
+# 2. target group health
+aws elbv2 describe-target-health --region ap-southeast-1 --target-group-arn (aws elbv2 describe-target-groups --names livecap-target-tg-dev --region ap-southeast-1 --query "TargetGroups[0].TargetGroupArn" --output text)
+
+# 3. why the most recent task(s) stopped, if crash-looping
+aws ecs list-tasks --cluster livecap-cluster-dev --service-name livecap-target-service-dev --desired-status STOPPED --region ap-southeast-1
+aws ecs describe-tasks --cluster livecap-cluster-dev --tasks <task-arn> --region ap-southeast-1 --query "tasks[0].[stoppedReason,containers[0].reason]"
+
+# 4. backend application logs
+aws logs tail /ecs/livecap-backend-dev --region ap-southeast-1 --since 30m
+
+# 5. wake Lambda logs (did it get invoked, did it succeed)
+aws logs tail /aws/lambda/livecap-wake-backend-dev --region ap-southeast-1 --since 30m
+```
+
+User asked me to hand this off rather than run it themselves — over to Codex/whoever has AWS CLI access.
+
 ### 2026-07-19 - Claude - flag: frontend/.env.production is gitignored, Cognito domain drifted silently
 - `frontend/.env.production` is excluded by `.gitignore` (`.env.*`), so it is
   **never committed** — every deploy edits it locally and its value has no git
