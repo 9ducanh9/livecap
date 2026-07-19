@@ -384,6 +384,62 @@ variable "custom_domain" {
   default     = ""
 }
 
+variable "stable_enable_auth_runtime" {
+  description = "Require Cognito only on the stable/main backend. Keep false while the public demo remains anonymous."
+  type        = bool
+  default     = false
+}
+
+variable "enable_preview_backend" {
+  description = "Create an isolated ECS service, target group, and wake Lambda for the Update preview frontend."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.enable_preview_backend || var.enable_preview_frontend
+    error_message = "enable_preview_backend requires enable_preview_frontend=true."
+  }
+}
+
+variable "preview_enable_auth_runtime" {
+  description = "Require Cognito tokens on the isolated preview backend only."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.preview_enable_auth_runtime || var.enable_cognito_auth
+    error_message = "preview_enable_auth_runtime requires enable_cognito_auth=true."
+  }
+}
+
+variable "preview_backend_desired_count" {
+  description = "Initial desired task count for the isolated preview backend. Use 0 for wake-on-demand."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = contains([0, 1], var.preview_backend_desired_count)
+    error_message = "preview_backend_desired_count must be 0 or 1."
+  }
+}
+
+variable "preview_backend_min_capacity" {
+  description = "Minimum task count for the isolated preview backend."
+  type        = number
+  default     = 0
+}
+
+variable "preview_backend_max_capacity" {
+  description = "Maximum task count for the isolated preview backend. Keep 1 until multi-task has passed load tests."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = contains([1], var.preview_backend_max_capacity)
+    error_message = "preview_backend_max_capacity must stay 1 until preview multi-task support is explicitly enabled."
+  }
+}
+
 variable "enable_preview_frontend" {
   description = "Create a separate S3 and CloudFront frontend preview environment. It never replaces the stable distribution."
   type        = bool

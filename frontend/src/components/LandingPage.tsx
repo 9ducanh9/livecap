@@ -1,4 +1,4 @@
-import { ArrowRight, AudioLines, Check, Clock3, Cloud, FileText, Globe2, LockKeyhole, Mic2, Radio, Sparkles } from 'lucide-react';
+import { ArrowRight, AudioLines, Check, Clock3, Cloud, FileText, Globe2, LockKeyhole, Mic2, Sparkles } from 'lucide-react';
 
 const capabilities = [
   { icon: AudioLines, label: 'Live captions', copy: 'Turn speech into readable, continuously updating captions.' },
@@ -23,7 +23,7 @@ export default function LandingPage() {
 
       <header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8 lg:px-10">
         <a href="/" className="flex items-center gap-2.5 font-instrument text-xl font-bold tracking-[-0.08em] text-[#102247]" aria-label="LiveCap home">
-          <span className="grid h-8 w-8 place-items-center rounded-xl bg-[#102247] text-[#7ee5d0]"><Radio className="h-4 w-4" /></span>
+          <img src="/LiveCap.svg" alt="" className="h-10 w-10 rounded-xl" />
           LIVECAP
         </a>
         <nav className="hidden items-center gap-7 text-sm font-medium text-[#52647f] md:flex" aria-label="Main navigation">

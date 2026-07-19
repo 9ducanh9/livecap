@@ -19,7 +19,6 @@ import {
   wakeBackendIfConfigured,
 } from '../services/wakeService';
 import {
-  Radio,
   Clock,
   Layers,
   AlertTriangle,
@@ -230,7 +229,7 @@ export default function DashboardPage() {
               <span className="text-sm font-semibold text-ink/55 group-hover:text-ink transition-colors">Home</span>
             </a>
             <div className="flex items-center gap-3 pl-5 py-2">
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-ink text-[#7ee5d0]"><Radio className="h-4 w-4" /></span>
+              <img src="/LiveCap.svg" alt="" className="h-10 w-10 rounded-xl" />
               <span className="font-instrument text-xl font-bold tracking-[-0.08em] text-ink">LIVECAP</span>
               <StatusDot status={statusCopy.tone} label={statusCopy.label} />
             </div>

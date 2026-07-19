@@ -69,7 +69,9 @@ resource "aws_ecs_task_definition" "target_backend" {
       { name = "ENABLE_TEXT_ANALYSIS", value = tostring(var.enable_text_analysis) },
       { name = "ENABLE_XRAY", value = tostring(var.enable_xray) },
       { name = "AWS_XRAY_DAEMON_ADDRESS", value = "127.0.0.1:2000" },
-      { name = "ENABLE_AUTH", value = tostring(var.enable_auth_runtime) },
+      # Stable/main stays anonymous. Auth is isolated to the preview service so
+      # a preview rollout cannot change the public demo's behaviour.
+      { name = "ENABLE_AUTH", value = tostring(var.stable_enable_auth_runtime) },
       { name = "COGNITO_USER_POOL_ID", value = try(aws_cognito_user_pool.livecap[0].id, "") },
       { name = "TRANSCRIPT_HISTORY_TABLE_NAME", value = local.transcript_history_table_name },
       { name = "TRANSCRIPT_HISTORY_RETENTION_DAYS", value = tostring(var.transcript_history_retention_days) },
