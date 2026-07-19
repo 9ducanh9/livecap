@@ -1,226 +1,86 @@
-# Handoff — branch `Update` (Phase 0 + Phase 1)
+# LiveCap Operational Handoff
 
-This branch contains reviewed, tested changes prepared for you to push and open
-a PR. **Do not `git add -A`** — there is pre-existing CRLF working-tree noise on
-unrelated files (`docs/as-deployed-architecture.md`, `docs/demo-guide.md`) that
-is NOT part of this work. The commit on this branch already stages only the
-intended files.
+This is the concise operating handoff for the `Update` integration branch.
+Read `COLLAB_LOG.md` first for the newest change, feature-flag state, and any
+uncommitted work. It is the shared change log; do not duplicate its history
+here.
 
-## To push
+## Guardrails
 
-```bash
-git push -u origin Update
-# then open a PR against main on GitHub (9ducanh9/livecap)
+- Work on `Update` and stage only files you changed. Do not use `git add -A`.
+- Never apply, destroy, or migrate Terraform state from CI or an agent session.
+- Keep feature flags off until their rollout gate is approved.
+- Use the reviewed remote state, untracked `backend.hcl`, and untracked
+  `terraform.tfvars`. Never commit secrets, OAuth client secrets, or origin
+  verification values.
+- Run a full reviewed Terraform plan before any AWS change.
+
+## Current Runtime
+
+- The deployed target path is CloudFront -> public ALB -> private ECS Fargate
+  in the custom two-AZ VPC.
+- ECS runs between zero and one task. The wake endpoint scales the service to
+  one, and the idle scaler returns it to zero after 300 seconds with no active
+  sessions.
+- CloudFront and ALB WAF Web ACLs use blocking managed and rate-based rules.
+- DynamoDB-backed session storage is enabled on the target task; do not raise
+  `backend_max_capacity` above one until the multi-task load-test gate passes.
+- Cognito sign-in and user transcript history are enabled on the custom-domain
+  target environment. Google OAuth callback and logout URLs must match the
+  active frontend hostname exactly.
+- Meeting notes, custom vocabulary, Polly, Comprehend, X-Ray, Graviton,
+  Fargate Spot, and multi-AZ NAT remain opt-in features. Check `COLLAB_LOG.md`
+  before changing any flag.
+
+## Verification Before A Runtime Change
+
+```powershell
+python -m compileall backend/app
+python -m pytest backend/tests
+npm --prefix frontend test -- --run
+npm --prefix frontend run build
+terraform -chdir=infrastructure/terraform fmt -check
+terraform -chdir=infrastructure/terraform init -backend=false
+terraform -chdir=infrastructure/terraform validate
+gitleaks detect --source . --redact
 ```
 
-## What changed
+Use the project Python 3.11 environment for backend tests. If an optional
+observability package is absent locally, record the exact failure in
+`COLLAB_LOG.md`; do not treat it as a product regression without confirming the
+dependency contract.
 
-**Phase 0 — ops hardening (safe, no behavior change):**
-- `.gitattributes` — normalize line endings to LF, stop CRLF churn.
-- `infrastructure/terraform/cost_guard.tf` + `variables.tf` — add a FORECASTED
-  80% budget alert alongside the ACTUAL 100% alert (needs an email set).
-- `infrastructure/terraform/cloudwatch.tf` + `variables.tf` — manage the
-  watchtower `livecap` log group with an explicit retention policy.
-- `terraform.tfvars.example` — documents the new inputs.
+## Deployment Gate
 
-**Phase 1 — Amazon Bedrock meeting notes (opt-in, default OFF):**
-- `backend/app/services/summarization.py` — bilingual summary + key points,
-  decisions, action items, topics, keywords, insights, glossary and follow-up
-  questions via Bedrock (Claude).
-- `backend/app/routers/summary.py` — `POST /api/sessions/{session_id}/summary`;
-  it accepts finalized captions only after the participant explicitly chooses
-  **Create meeting notes**. Stop only ends the audio/WebSocket session.
-- `backend/app/models.py` — `SessionSummary`, `SummaryRequest`, optional
-  `summary_text` on `ExportRequest`.
-- `backend/app/services/storage.py` + `routers/export.py` — prepend the summary
-  to exported TXT (backward compatible).
-- `backend/app/config.py` + `backend/.env.example` — feature flags.
-- `infrastructure/terraform/iam.tf` — `bedrock:InvokeModel` policy (only when
-  `enable_meeting_summary = true`).
-- `infrastructure/terraform/ecs.tf` + `variables.tf` — pass the flag + model ID
-  to the task definitions.
-- `backend/tests/test_summarization.py` (new) — 16 tests, all passing.
+1. Confirm the target branch, intended frontend environment, backend image tag,
+   and AWS profile/region.
+2. Build and push a backend image with an immutable Git-SHA-derived tag only
+   when backend code changed.
+3. Update untracked Terraform inputs and review `terraform plan` in full.
+4. Stop when the plan replaces or destroys an active runtime resource unless a
+   separately approved migration explicitly expects it.
+5. After a human-approved apply, smoke-test health, wake, WebSocket,
+   Transcribe/Translate, export, and the authenticated history path when auth
+   is enabled.
+6. Record the result, image tag, and any pending human action in
+   `COLLAB_LOG.md`.
 
-## Verification done
+## Required Human Actions
 
-- Backend modules touched: 101/101 tests pass (Python 3.10 sandbox).
-- `test_websocket.py` failures in the sandbox are only Python 3.10 missing
-  `asyncio.timeout`; verified 22/23 pass once polyfilled. Run the full suite on
-  **Python 3.11** (the project's target) for a clean pass.
-- `compileall app` passes.
-- Terraform NOT validated here (no terraform in sandbox) — run
-  `terraform fmt` + `validate` before applying.
+- Confirm any SNS and AWS Budget subscription emails.
+- Enable Bedrock model access in the intended region before enabling meeting
+  notes.
+- Configure GitHub Actions repository variables and secrets before using the
+  manual deployment workflow.
+- Review remaining legacy EC2, storage, and IAM resources independently before
+  deleting them.
 
-## Remaining MANUAL steps (do NOT let an agent auto-apply to AWS)
+## Supporting Documents
 
-1. Set `budget_notification_email` in `terraform.tfvars`; optionally
-   `enable_meeting_summary = true` and `bedrock_model_id`.
-2. Import the existing watchtower log group before the first apply:
-   `terraform -chdir=infrastructure/terraform import aws_cloudwatch_log_group.watchtower livecap`
-3. If enabling Bedrock: **build & push a new backend image** (this is new code),
-   and enable Bedrock model access for the Claude model in the target region.
-   Verify the model is available in `ap-southeast-1`; otherwise set
-   `BEDROCK_REGION` or use an inference-profile ID as `bedrock_model_id`.
-4. `terraform plan` → review → `apply`. Confirm the budget SNS subscription email.
-
-## Frontend (batch 2 — included in this branch)
-
-- `types/index.ts` — `SessionSummary` type.
-- `services/exportService.ts` — sends only finalized captions to the on-demand
-  notes endpoint when the participant clicks the button.
-- `components/SummaryPanel.tsx` (new) — renders the bilingual summary, key
-  points, decisions, action items, and topics after the session ends.
-- `components/DashboardPage.tsx` — shows **Create meeting notes** after a
-  completed session and renders the returned panel; it never invokes Bedrock on
-  Stop.
-- `components/ExportPanel.tsx` + `services/exportService.ts` — prepend the
-  summary text to the exported transcript (`summary_text`).
-- Verified: `tsc --noEmit` clean, `vite build` passes, useWebSocket +
-  DashboardPage tests pass.
-
-## Terraform (batch 2)
-
-- `BEDROCK_REGION` wired through `variables.tf` + both ECS task definitions.
-  Set `bedrock_region` in tfvars if the model is not available in `aws_region`.
-
-## Phase 2 — Observability: alarms -> SNS (batch 3)
-
-- `infrastructure/terraform/monitoring.tf` (new) — SNS alerts topic + optional
-  email subscription, and CloudWatch alarms:
-  - ALB target 5XX, ALB (ELB) 5XX, ALB target latency, unhealthy hosts
-  - ECS service CPU and memory utilization
-  - All use `treat_missing_data = "notBreaching"` so scale-to-zero idle does
-    not trigger false alerts; all publish to the SNS topic.
-- `variables.tf` — `enable_alarms`, `alert_notification_email`, and thresholds.
-- `outputs.tf` — `alerts_sns_topic_arn`.
-- To enable: set `alert_notification_email` in tfvars, `apply`, then confirm the
-  SNS subscription email AWS sends. Verified: all .tf files parse (python-hcl2);
-  run `terraform fmt` + `validate` before apply.
-
-### Phase 2 remaining — X-Ray (NOT done, needs a decision)
-
-X-Ray tracing (C4) was intentionally deferred: it requires instrumenting the
-FastAPI app (`aws-xray-sdk`) plus an X-Ray daemon sidecar container and IAM.
-That touches the live WebSocket request path, so it is a larger, riskier change
-than the Terraform-only alarms. Decide separately before implementing.
-
-## Phase 3 slice 1 — DynamoDB session registry (batch 4)
-
-Shared active-session limits so the backend can run more than one task. Opt-in;
-**default is unchanged** (in-memory), so nothing changes until enabled.
-
-- `backend/app/services/dynamo_session_registry.py` (new) — DynamoDB-backed
-  registry (pk = session_id, TTL self-heals crashed rows, counts via consistent
-  scan; idempotent conditional put).
-- `backend/app/services/session_registry.py` — `get_session_registry(settings)`
-  provider picks memory vs dynamodb by `session_store_backend`.
-- `backend/app/routers/websocket.py` — resolves the registry via the provider.
-- `backend/app/config.py` — `session_store_backend`, `session_table_name`,
-  `session_ttl_seconds` flags (default memory).
-- `infrastructure/terraform/dynamodb.tf` (new) — session table + task-role IAM
-  policy + the two variables, all gated by `enable_dynamodb_session_store`.
-- `backend/tests/test_dynamo_session_registry.py` (new) — 8 tests via moto.
-- Verified: 8 + config tests pass; full backend suite = baseline (only the
-  Python-3.10 `asyncio.timeout` websocket failures remain; 22/23 pass polyfilled).
-
-### IMPORTANT — external Terraform refactor in the working tree
-
-Between sessions, someone (you or Codex) refactored the Terraform in the working
-tree (uncommitted): `ecs.tf` was consolidated to a single `target_backend` stack
-(legacy `backend` removed), and `alb.tf`, `vpc.tf`, `cloudfront.tf`, `iam.tf`,
-`waf.tf` were edited. Those changes are **NOT** in the `Update` branch — this
-batch commits only my files. When you commit that refactor:
-
-- `ecs.tf` already carries my 3 `SESSION_*` env entries on the single task def
-  (needed for the DynamoDB store); they ride along with the refactor commit.
-- The `enable_dynamodb_session_store` / `session_ttl_seconds` variables live in
-  `dynamodb.tf` (committed here), so `ecs.tf` and `dynamodb.tf` resolve together.
-
-### Phase 3 slice 2 — multi-task enablement + load test (batch 5)
-
-- `infrastructure/terraform/checks.tf` (new) — advisory `check` block that warns
-  on plan/apply if `backend_max_capacity > 1` while the DynamoDB store is off.
-- `tools/ws_load_test.py` (new) — standalone WebSocket load tester (opens N
-  concurrent sessions of valid silent PCM) to validate the shared global limit
-  and watch scale-out. `pip install websockets` to run.
-- `docs/multi-task-runbook.md` (new) — enable, apply, load-test, watch, rollback.
-- Raising tasks is a tfvars change: `enable_dynamodb_session_store = true` +
-  `backend_max_capacity = N`, then build/push image and apply. The actual
-  load test must be run against the deployed endpoint (cannot be done offline).
-- Not changed: `backend_max_capacity` default stays 1 (safe).
-
-## Phase 4 — Graviton + CI/CD plan gate (batch 6)
-
-- `ecs.tf` + `variables.tf`: `task_cpu_architecture` (default X86_64) drives the
-  task `runtime_platform`. Switch to ARM64 (Graviton, ~20% cheaper) only
-  alongside an arm64 image push.
-- `.github/workflows/deploy.yml` (new): manual-dispatch pipeline that builds/
-  pushes an arch-specific image and produces a `terraform plan` artifact.
-  **No apply from CI** — a human applies the reviewed plan. Needs repo
-  vars/secrets (AWS_REGION, AWS_DEPLOY_ROLE_ARN, ECR_REPOSITORY, TF_BACKEND_HCL,
-  TF_VARS). See `docs/graviton-and-cicd.md`.
-
-## A1+ knowledge extraction (batch 7)
-
-- Extended the Bedrock summary with keywords, insights, glossary
-  (`term`/`definition`), and follow-up questions. Same `enable_meeting_summary`
-  flag; new fields are optional and render in `SummaryPanel` + the exported TXT.
-- Files: backend `models.py`, `services/summarization.py`, `tests/`; frontend
-  `types/index.ts`, `hooks/useWebSocket.ts`, `components/SummaryPanel.tsx`,
-  `services/exportService.ts`.
-- No infra change. To see it live, enable the summary feature and redeploy the
-  backend image (new code).
-
-## A5 Transcribe custom vocabulary (batch, commit 3ac2909)
-
-- `transcribe.tf` creates vi + en custom vocabularies (editable phrase lists);
-  `transcription.py` passes `vocabulary_name` per stream from env. Off by default.
-- To enable: set `enable_transcribe_custom_vocabulary = true` (+ edit the phrase
-  lists) in tfvars, then `terraform apply` (creation waits for the vocabularies
-  to reach READY) and redeploy the backend image if not already on this code.
-  No task-role IAM change needed. VI phrases must follow the Transcribe VI
-  charset (tones as numbers).
-
-## B3 multi-AZ NAT (commit 61d8acc)
-
-- Set `enable_multi_az_nat = true` to add a second NAT in the other AZ (+1 NAT/
-  EIP cost). Default off keeps the single NAT and shows no plan diff.
-
-## A2 Polly TTS + A3 Comprehend analysis (backend, new `enrichment.py`)
-
-- Endpoints `POST /api/tts` (Polly) and `POST /api/analyze` (Comprehend),
-  env-gated (`ENABLE_TTS`, `ENABLE_TEXT_ANALYSIS`), best-effort. `iam.tf` adds
-  count-gated Polly/Comprehend policies; enable via `enable_tts` /
-  `enable_text_analysis` in tfvars.
-- **English only — both AWS services lack Vietnamese support.** Call with the
-  English translation text. Verify Polly + Comprehend availability and the
-  Polly voice id in the deployed region before enabling.
-- **Router not registered yet** (main.py was being edited concurrently): add
-  `from app.routers import enrichment as enrichment_router` +
-  `app.include_router(enrichment_router.router)` to `backend/app/main.py`.
-- Frontend Play button / sentiment display still to wire.
-
-## C4 AWS X-Ray tracing (new `tracing.py` + `xray.tf`)
-
-- Opt-in via `enable_xray` (tfvars) / `ENABLE_XRAY`. Adds an X-Ray daemon
-  sidecar, task-role `xray:Put*` permission, and app instrumentation (HTTP +
-  AWS SDK calls; WebSocket not traced). Default off → no change.
-- **Verify before enabling:** not tested against a live daemon. Enable in a
-  non-critical environment and confirm traces appear in the X-Ray console.
-  Consider pinning the daemon image (`aws-xray-daemon:latest`) by digest.
-
-## D2 Fargate Spot (`fargate_spot.tf`)
-
-- Opt-in `enable_fargate_spot` — runs the target service on FARGATE_SPOT
-  (~70% cheaper, interruptible). Default off. Review the plan: it associates
-  FARGATE + FARGATE_SPOT with the cluster and switches the service to a
-  capacity-provider strategy. Set `fargate_on_demand_base > 0` to keep a baseline.
-- D3 (S3 tiering) needs nothing — 14-day lifecycle already covers it. D5 uses the
-  existing Budget/dashboard/cost-allocation tags. See `docs/cost-optimization.md`.
-
-## Follow-up (not in this branch)
-
-- B5 (session-id continuity on reconnect) is DONE — reconnects reuse the same
-  session id via a `session_id` query param.
-- Optional cleanup: `git add --renormalize . && git commit -m "Normalize line
-  endings to LF"` to clear the unrelated CRLF noise repo-wide.
+- `docs/as-deployed-architecture.md`: current public request path and security
+  boundaries.
+- `docs/upgrade-roadmap.md`: completed capabilities and remaining work.
+- `docs/multi-task-runbook.md`: explicit gate for scaling beyond one task.
+- `docs/cognito-history-rollout.md`: account/history rollout and rollback
+  guidance.
+- `infrastructure/terraform/README.md`: Terraform inputs and safe validation.

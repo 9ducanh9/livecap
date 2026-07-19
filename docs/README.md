@@ -1,17 +1,25 @@
 # LiveCap Documentation
 
-Use this directory for reviewer-facing product and architecture evidence.
+Use this directory for reviewer-facing product, architecture, and operational
+evidence. Current deployment facts belong in the as-deployed document and
+`COLLAB_LOG.md`; runbooks describe feature-specific operation.
 
 | File | Purpose |
 |---|---|
 | [`demo-guide.md`](demo-guide.md) | Three-minute production demonstration and recovery steps |
 | [`as-deployed-architecture.md`](as-deployed-architecture.md) | Verified live AWS topology, security boundaries, and runtime request paths |
-| [`post-v1.5-requirements-design-flow.md`](post-v1.5-requirements-design-flow.md) | Requirements, implementation design, migration history, and verification baseline |
+| [`upgrade-roadmap.md`](upgrade-roadmap.md) | Implemented capability status and next production-oriented work |
+| [`cognito-history-rollout.md`](cognito-history-rollout.md) | Cognito account and transcript-history rollout and rollback notes |
+| [`multi-task-runbook.md`](multi-task-runbook.md) | Preconditions and gate for scaling beyond one backend task |
+| [`cold-start.md`](cold-start.md) | Scale-to-zero cold-start behavior and mitigations |
+| [`cost-optimization.md`](cost-optimization.md) | Cost controls and optional efficiency improvements |
+| [`graviton-and-cicd.md`](graviton-and-cicd.md) | Arm64 option and validation-only CI/CD plan gate |
+| [`run-local.md`](run-local.md) | Local backend, frontend, and opt-in meeting-notes testing |
+| [`frontend-environments.md`](frontend-environments.md) | Superseded static frontend cutover notes; do not use for new runtime deployments |
 | [`livecap-target-architecture.png`](livecap-target-architecture.png) | Custom-VPC architecture diagram used for the deployed blue/green cutover |
 | [`livecap-landing.png`](livecap-landing.png) | Production landing-page evidence |
 | [`livecap-dashboard.png`](livecap-dashboard.png) | Current production caption-workspace UI |
 
 The as-deployed document is authoritative for the current public request path.
-The post-v1.5 document preserves design decisions and migration history; where
-historical target wording differs from the deployed state, use the as-deployed
-document and current Terraform as the source of truth.
+Use current Terraform and `COLLAB_LOG.md` when a feature flag or runtime image
+may have changed since the architecture document was last verified.

@@ -1,4 +1,4 @@
-# Run LiveCap locally (with the A1+ meeting summary)
+# Run LiveCap locally (including optional meeting notes)
 
 Two terminals (PowerShell on Windows). The captions, translation and summary all
 call real AWS services, so you need AWS credentials with **Amazon Transcribe,

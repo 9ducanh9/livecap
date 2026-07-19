@@ -1,18 +1,12 @@
 # LiveCap Infrastructure
 
-This directory contains the AWS infrastructure definitions and migration notes
-for LiveCap. It intentionally distinguishes the environment that is live today
-from the private-subnet target architecture that is ready for a reviewed
-blue/green migration.
+This directory contains the AWS infrastructure definitions and operating notes
+for LiveCap's deployed custom-VPC target environment.
 
 ## Source Of Truth
 
 - [`terraform/README.md`](terraform/README.md): current Terraform design,
   variables, cost tradeoffs, and verification workflow.
-- [`terraform/IMPORT_PLAN.md`](terraform/IMPORT_PLAN.md): existing-resource
-  imports and state-recovery gate.
-- [`../docs/post-v1.5-requirements-design-flow.md`](../docs/post-v1.5-requirements-design-flow.md): requirements, runtime flows,
-  security controls, and migration decisions.
 - [`../docs/livecap-target-architecture.png`](../docs/livecap-target-architecture.png): target architecture diagram.
 - [`../docs/as-deployed-architecture.md`](../docs/as-deployed-architecture.md):
   verified live resource placement and runtime request paths.
@@ -23,7 +17,7 @@ Git history; they must not be used for the current AWS environment.
 
 ## Live Environment
 
-The submission deployment currently uses:
+The deployed environment uses:
 
 1. CloudFront serves the React/Vite frontend from a private S3 bucket through
    Origin Access Control.
@@ -34,28 +28,7 @@ The submission deployment currently uses:
    separate private S3 bucket.
 5. ECS and application logs are written to CloudWatch.
 
-The live backend was verified on 2026-07-04 with ECS task definition revision
-`livecap-backend-dev:5` and immutable, architecture-specific image tag
-`1ef4250-amd64`. Health, WebSocket heartbeat, real Transcribe/Translate output,
-clean session shutdown, S3 export, and presigned download all passed production
-smoke tests.
-
-The current live environment still uses the pre-migration network path:
-
-- default VPC subnets;
-- Fargate task public IP enabled;
-- ECS desired count fixed at one;
-- immutable ECR Git SHA tags with scan-on-push enabled;
-- no deployed wake Lambda;
-- no deployed target WAF, dashboard, LiveCap `$50` Budget, NAT Gateway, or
-  private-subnet stack.
-
-These facts are documented explicitly so the target architecture is not
-misrepresented as already deployed.
-
-## Target Architecture
-
-Terraform defines a parallel target stack in `ap-southeast-1`:
+The target architecture is deployed in `ap-southeast-1`:
 
 - dedicated VPC with two public and two private subnets across two AZs;
 - one NAT Gateway as the accepted cost-sensitive single-AZ tradeoff;
@@ -70,15 +43,15 @@ Terraform defines a parallel target stack in `ap-southeast-1`:
 - immutable ECR Git SHA tags through `backend_image_tag`;
 - no raw audio storage.
 
-The migration strategy is **Parallel Stack Migration with Blue/Green-style
-Cutover**. The existing ALB/service remains available for rollback until the
-target path has passed smoke tests and ownership of legacy resources is
-confirmed.
+The migration used **Parallel Stack Migration with Blue/Green-style Cutover**.
+The legacy ALB/ECS rollback stack was retired after validation. Remaining
+legacy resources, if any, require their own inventory and approval before
+decommissioning.
 
 ## State And Apply Safety
 
-Do not run a main-stack apply from empty or incomplete state. The existing AWS
-resources must first be represented in the reviewed S3 remote state.
+Do not run a main-stack apply from empty or incomplete state. Use the reviewed
+S3 remote state and inspect a full plan before approving changes.
 
 Safe validation commands:
 
@@ -93,11 +66,10 @@ Before any real apply:
 
 1. Confirm the AWS profile and `ap-southeast-1` region.
 2. Confirm the remote-state bootstrap bucket and lockfile configuration.
-3. Complete and review the imports in `IMPORT_PLAN.md`.
-4. Push the backend image under an immutable Git SHA.
-5. Set the same SHA in `backend_image_tag`.
-6. Review the full Terraform plan, including replacements and destroys.
-7. Apply only after explicit human approval.
+3. Push the backend image under an immutable Git SHA.
+4. Set the same SHA in `backend_image_tag`.
+5. Review the full Terraform plan, including replacements and destroys.
+6. Apply only after explicit human approval.
 
 Never run `terraform destroy`, state migration, or an unreviewed apply as part
 of CI. The current GitHub Actions workflow validates Terraform with

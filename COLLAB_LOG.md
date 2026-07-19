@@ -79,6 +79,21 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-19 - Codex - retire obsolete migration documentation
+- Removed the completed pre-cutover import checklist and the post-v1.5 migration
+  design document. Both still instructed readers to preserve a legacy rollback
+  ALB/ECS stack that has since been retired.
+- Rewrote the handoff and upgrade roadmap as current operational documents, and
+  updated the root README, documentation index, architecture note, local guide,
+  and infrastructure guides to remove stale links and deployment claims.
+- Kept `docs/frontend-environments.md` as an explicit superseded pointer because
+  its replacement (`docs/frontend-runtime-environments.md`) is currently
+  untracked work owned by another contributor. It must be committed before the
+  older file can be safely deleted.
+- Verification: searched the repository for references to the removed files and
+  stale legacy-stack claims; no remaining references were found. Documentation
+  changes only; no AWS, application, or Terraform resources were changed.
+
 ### 2026-07-19 - Codex - fix Cognito transcript-history authorization
 - Root cause of the remaining history `401`: the browser requested only `openid email profile`,
   but backend validation uses Cognito `GetUser`, which requires the built-in

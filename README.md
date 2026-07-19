@@ -25,35 +25,23 @@ The latest tagged release is `v1.5.2`. The live environment also includes
 post-release frontend and AWS hardening tracked in
 [PR #4](https://github.com/9ducanh9/livecap/pull/4).
 
-## Update Branch Tracking
+## Development and Feature Status
 
-The active development branch is [`Update`](https://github.com/9ducanh9/livecap/tree/Update).
-It contains the next reviewed batches, tracked in [`COLLAB_LOG.md`](COLLAB_LOG.md).
-The following is **not deployed to the live demo yet**:
+[`Update`](https://github.com/9ducanh9/livecap/tree/Update) is the integration
+branch. Its exact deployment status, feature flags, and human actions are
+maintained in [`COLLAB_LOG.md`](COLLAB_LOG.md).
 
-- **AI meeting notes:** after a session ends, the participant can choose
-  **Create meeting notes**. Only that explicit action sends finalized captions
-  to Amazon Bedrock for a bilingual summary, decisions, action items, keywords,
-  insights, glossary, and follow-up questions. Pressing Stop never calls
-  Bedrock or creates a Bedrock charge.
-- The API is `POST /api/sessions/{session_id}/summary`. It is disabled by
-  default through `ENABLE_MEETING_SUMMARY=false`; requests need at least three
-  finalized captions and are not persisted by that endpoint.
-- The current `Update` code has passed 242 backend tests and 18 frontend tests,
-  including the explicit-button flow. It still needs a reviewed backend-image
-  deployment plus the existing Terraform/IAM feature flag before it can be
-  enabled in AWS.
-- The branch also contains optional reliability and transcription-accuracy
-  improvements. They remain disabled until their deployment plan is reviewed.
-- **Accounts and transcript history:** the next product feature is implemented
-  behind `enable_cognito_auth=false`. When reviewed and enabled, Cognito Hosted
-  UI signs users in, each export is associated with that user in DynamoDB, and
-  the private TXT object stays in S3. History metadata and TXT objects follow
-  the existing 14-day retention; raw audio is never stored. This is not
-  deployed to the live demo yet.
+- **Meeting notes** are generated only when a participant explicitly selects
+  **Create meeting notes** after a session. The Bedrock-backed endpoint remains
+  disabled by default through `ENABLE_MEETING_SUMMARY=false`.
+- **Accounts and transcript history** are enabled on the custom-domain target
+  environment. Cognito Hosted UI authenticates the user, DynamoDB stores the
+  user-owned metadata, and private TXT exports remain in S3 for 14 days.
+- Optional reliability, cost, and transcription improvements remain
+  feature-gated until their individual rollout gates are approved.
 
-For local Bedrock testing, see [`docs/run-local.md`](docs/run-local.md). For the
-handoff and human-reviewed deployment gate, see [`HANDOFF.md`](HANDOFF.md).
+For local feature testing, see [`docs/run-local.md`](docs/run-local.md). For
+the current operational handoff, see [`HANDOFF.md`](HANDOFF.md).
 
 ## Product Preview
 
@@ -157,8 +145,8 @@ behavior, and remaining production boundaries.
 
 ```text
 livecap/
-|-- backend/                  # FastAPI application and 242 tests on Update
-|-- frontend/                 # React application and 18 tests on Update
+  |-- backend/                  # FastAPI application and tests
+  |-- frontend/                 # React application and tests
 |-- infrastructure/
 |   |-- bootstrap/            # Remote-state S3 bootstrap
 |   `-- terraform/            # As-deployed AWS infrastructure
@@ -251,8 +239,9 @@ These commands do not apply infrastructure or migrate state.
 ## Deployment Safety
 
 The custom-VPC target stack was introduced through a parallel blue/green-style
-cutover. Legacy resources are intentionally retained until ownership and
-rollback requirements are reviewed separately.
+cutover. The legacy ALB/ECS rollback stack has since been retired. Any remaining
+legacy EC2, storage, or IAM resource must be inventoried and reviewed separately
+before deletion.
 
 Before any infrastructure change:
 
@@ -264,8 +253,6 @@ Before any infrastructure change:
 
 The authoritative infrastructure workflow is
 [`infrastructure/terraform/README.md`](infrastructure/terraform/README.md).
-The legacy inventory and reconciliation notes remain in
-[`infrastructure/terraform/IMPORT_PLAN.md`](infrastructure/terraform/IMPORT_PLAN.md).
 
 ## Security, Availability, and Cost Boundaries
 
@@ -300,12 +287,12 @@ The legacy inventory and reconciliation notes remain in
 - [Documentation index](docs/README.md)
 - [Demo guide](docs/demo-guide.md)
 - [As-deployed architecture](docs/as-deployed-architecture.md)
-- [Requirements, design, and runtime flows](docs/post-v1.5-requirements-design-flow.md)
+- [Upgrade roadmap](docs/upgrade-roadmap.md)
+- [Cognito and transcript-history rollout](docs/cognito-history-rollout.md)
 - [Infrastructure overview](infrastructure/README.md)
 - [Terraform source of truth](infrastructure/terraform/README.md)
-- [Terraform import and legacy inventory](infrastructure/terraform/IMPORT_PLAN.md)
 - [Update branch collaboration log](COLLAB_LOG.md)
-- [Local Bedrock notes test guide](docs/run-local.md)
+- [Local feature test guide](docs/run-local.md)
 
 ## License
 
