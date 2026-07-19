@@ -75,6 +75,8 @@ resource "aws_ecs_task_definition" "target_backend" {
       { name = "COGNITO_USER_POOL_ID", value = try(aws_cognito_user_pool.livecap[0].id, "") },
       { name = "TRANSCRIPT_HISTORY_TABLE_NAME", value = local.transcript_history_table_name },
       { name = "TRANSCRIPT_HISTORY_RETENTION_DAYS", value = tostring(var.transcript_history_retention_days) },
+      { name = "USAGE_TABLE_NAME", value = local.usage_table_name },
+      { name = "ENABLE_USAGE_QUOTA", value = tostring(var.enable_usage_quota) },
     ]
 
     logConfiguration = {

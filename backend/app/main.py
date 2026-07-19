@@ -123,6 +123,10 @@ app.include_router(summary_router.router)
 # Optional English-only enrichment: POST /api/tts and POST /api/analyze
 app.include_router(enrichment_router.router)
 
+# Usage quota: GET /api/usage
+from app.routers import quota as quota_router
+app.include_router(quota_router.router)
+
 
 # ---------------------------------------------------------------------------
 # Health check endpoint
