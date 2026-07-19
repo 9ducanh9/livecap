@@ -138,8 +138,8 @@ task replacement.
 | ALB placement | Two public subnets; ingress restricted to the CloudFront origin-facing prefix list |
 | Task networking | Two private subnets; `assign_public_ip=false` |
 | ECS capacity | Desired count changes `0 <-> 1`; maximum capacity is 1 |
-| Backend task definition | `livecap-target-backend-dev:3` |
-| Backend image | Immutable `84c95f5-amd64` ECR tag |
+| Backend task definition | Terraform-managed target revision; inspect the running ECS service for the current revision |
+| Backend image | Immutable Git-SHA-derived ECR tag; inspect the running task definition for the current tag |
 | Wake endpoint | IAM-protected Lambda Function URL reached through CloudFront OAC |
 | WAF | Separate blocking Web ACLs for CloudFront and the ALB |
 | Transcript storage | Private S3, 14-day retention, no raw audio storage |
@@ -172,7 +172,8 @@ task replacement.
 - The direct Watchtower `livecap` log group needs an explicit retention policy,
   and the budget needs a notification subscriber before either can be treated
   as a complete production guardrail.
-- Legacy default-VPC ALB/ECS/EC2 and storage resources remain outside this
-  request path until ownership and deletion are reviewed separately.
+- The legacy ALB/ECS rollback stack was retired after the migration validation.
+  Any remaining legacy EC2, storage, or IAM resource is outside the request path
+  and must be separately inventoried before deletion.
 - ECR operating-system package findings must be reviewed during every base-image
   rebuild before commercial production release.

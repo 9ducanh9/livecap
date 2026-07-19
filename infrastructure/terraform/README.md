@@ -48,8 +48,8 @@ The remote-state S3 bucket and the main backend are configured in
 `ap-southeast-1`. The separate `us-east-1` provider alias remains required only
 for CloudFront-scoped AWS resources such as WAF and ACM.
 
-Existing legacy resources must be reconstructed in state using
-[`IMPORT_PLAN.md`](IMPORT_PLAN.md) before any main-stack apply.
+Terraform state must accurately represent resources it manages. Review the
+remote backend configuration and a complete plan before any main-stack apply.
 
 Remote state is managed by a separate bootstrap stack:
 
@@ -118,7 +118,8 @@ monthly_budget_limit_usd = 50
 max_concurrent_sessions = 4
 max_sessions_per_ip     = 1
 
-# Keep the legacy rollback origin on HTTP during migration.
+# Deprecated migration compatibility inputs. Leave unset unless a separately
+# reviewed migration plan requires them.
 # alb_ssl_certificate_arn = ""
 # backend_domain_name      = ""
 
@@ -153,10 +154,9 @@ terraform plan
 
 ### 4. Human Review Gate
 
-Do not apply directly from this guide. Confirm that the remote state contains
-all 34 legacy resources listed in `IMPORT_PLAN.md`, then review the complete
-plan. Any deletion or replacement of the legacy ALB, ECS service, CloudFront
-distribution, or S3 buckets is a stop condition.
+Do not apply directly from this guide. Confirm the remote state is selected and
+review the complete plan. Any deletion or replacement of an active ALB, ECS
+service, CloudFront distribution, or S3 bucket is a stop condition.
 
 ### 5. Note the Outputs
 
@@ -177,10 +177,9 @@ Do not overwrite or deploy `latest` for the target environment.
 
 ### Current Parallel-stack Migration
 
-1. Bootstrap the reviewed S3 state bucket in `ap-southeast-1`.
-2. Run the imports in `IMPORT_PLAN.md` against that remote state.
-3. Build and push the target backend image using an immutable Git SHA.
-4. Set `backend_image_tag` to that SHA and keep
+1. Bootstrap or select the reviewed S3 state bucket in `ap-southeast-1`.
+2. Build and push the target backend image using an immutable Git SHA.
+3. Set `backend_image_tag` to that SHA and keep
    `route_backend_to_target=false`.
 5. Run and review the full plan. Applying it requires separate human approval.
 
@@ -222,7 +221,7 @@ aws cloudfront create-invalidation \
 
 ---
 
-### Step 2 (Legacy - DO NOT USE for first deployment): Deploy ECS Service
+### Step 2: Deploy ECS Service
 
 The ECS service is automatically created by Terraform. After pushing the Docker image, ECS will pull and run it.
 
@@ -320,8 +319,8 @@ echo "Backend API: $(terraform output -raw alb_backend_base_url)"
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `cloudfront_price_class` | Price class (All/200/100) | `PriceClass_100` |
-| `alb_ssl_certificate_arn` | Optional certificate for the legacy rollback ALB; empty preserves its current HTTP origin during migration | `""` |
-| `backend_domain_name` | Legacy ALB domain, required only when legacy TLS is enabled | `""` |
+| `alb_ssl_certificate_arn` | Deprecated migration compatibility input; leave empty unless a reviewed migration requires it | `""` |
+| `backend_domain_name` | Deprecated migration compatibility input; leave empty unless a reviewed migration requires it | `""` |
 | `target_alb_ssl_certificate_arn` | Required for target production HTTPS; certificate must be in `ap-southeast-1` | `""` |
 | `target_backend_domain_name` | Target ALB domain covered by the target certificate | `""` |
 | `cloudfront_ssl_certificate_arn` | ACM certificate ARN for a CloudFront custom domain. Must be in `us-east-1`. | `""` |
@@ -535,8 +534,7 @@ and the frontend polls `/api/health` before opening the WebSocket.
 5. Set `route_backend_to_target=true` and review the CloudFront origin change.
 6. Smoke-test frontend, API, WebSocket, translation, and transcript export.
 7. Enable and test wake `0 -> 1`, then idle scale-down `1 -> 0`.
-8. Keep the legacy stack for at least 24 hours. Its deletion requires a
-   separate reviewed plan.
+8. Record the validation result in `COLLAB_LOG.md` and retain plan evidence.
 
 Do not delete the stopped legacy EC2 instance, EBS volume, old security group,
 or `livecaptranscripts` bucket as part of this migration.
