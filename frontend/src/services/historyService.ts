@@ -1,12 +1,8 @@
 import { authenticatedFetch } from './authService';
 
-const PRODUCTION_BACKEND_ORIGIN = 'https://dpeohr327wt9l.cloudfront.net';
-const CUSTOM_FRONTEND_HOST = 'livecap.logantai.com';
-
 function apiBaseUrl(): string {
   const configured = String(import.meta.env.VITE_API_BASE_URL ?? '').trim();
-  if (configured) return configured.replace(/\/$/, '');
-  return window.location.hostname === CUSTOM_FRONTEND_HOST ? PRODUCTION_BACKEND_ORIGIN : '';
+  return configured ? configured.replace(/\/$/, '') : '';
 }
 
 export interface TranscriptHistoryItem { history_id: string; session_id: string; created_at: string; segment_count: number; }
