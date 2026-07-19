@@ -80,6 +80,16 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-20 - Codex - fix local Cognito browser bundle bootstrap (`1f8cab8`)
+
+- Changed `frontend/vite.config.ts` only: define `global` as `globalThis` for
+  both Vite's dev dependency optimizer and production bundle. This fixes the
+  local blank page caused by `amazon-cognito-identity-js` loading `buffer` and
+  throwing `ReferenceError: global is not defined`.
+- Verified: `npm.cmd run build` passed; `npm.cmd test -- --run` passed (24
+  tests); reloaded `http://127.0.0.1:5173/app` and confirmed the dashboard
+  rendered with no browser console errors.
+
 ### 2026-07-20 — Claude — Stripe subscription billing for Pro/Business (`ENABLE_STRIPE_BILLING`)
 Commit `7d84056`. Real Stripe billing behind the usage-quota system Kiro built
 (previously every user was silently stuck on `free` — `increment_session`,
