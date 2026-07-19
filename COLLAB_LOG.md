@@ -79,6 +79,26 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-19 - Claude - flag: frontend/.env.production is gitignored, Cognito domain drifted silently
+- `frontend/.env.production` is excluded by `.gitignore` (`.env.*`), so it is
+  **never committed** — every deploy edits it locally and its value has no git
+  history to diff against. This is why the Cognito Hosted UI domain has quietly
+  changed several times this session (`livecap` -> `livecap-720459752315` ->
+  `livecap-logantai` -> back to `livecap`) without any commit reflecting it,
+  and why the NXDOMAIN error reported earlier (for `livecap-logantai...`) is
+  gone now: the value currently in this checkout's `.env.production` is
+  `VITE_COGNITO_DOMAIN=https://livecap.auth.ap-southeast-1.amazoncognito.com`,
+  and a live screenshot from the user confirms Google's account-chooser now
+  loads against that exact domain (no DNS error).
+- **Action for whoever touches Cognito next:** before changing
+  `cognito_domain_prefix` in Terraform, check what's actually live
+  (`aws cognito-idp describe-user-pool-domain`) and cross-check against
+  whatever `frontend/.env.production` your deploy pipeline actually used —
+  don't trust this log's past domain-rename entries as current truth, since
+  none of them are git-verifiable. Consider moving this value into a
+  Terraform output consumed at build time (or at least noting the live value
+  here every time it changes) so it stops drifting silently.
+
 ### 2026-07-19 - Codex - use same-origin API and WebSocket paths for custom domain
 - Removed the custom-domain fallback that sent authenticated API requests from
   `livecap.logantai.com` to the separate CloudFront hostname. Those cross-origin
