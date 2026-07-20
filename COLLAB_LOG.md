@@ -80,6 +80,16 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-20 - Codex - repair local Cognito Hosted UI domain
+
+- Updated ignored `frontend/.env.local` only: replaced the retired
+  `livecap-logantai` Cognito hosted-UI hostname with the active `livecap`
+  domain for the existing `livecap-users-dev` user pool. No credentials or
+  client secrets were changed or committed.
+- Verified the local callback is registered, Google is an enabled provider,
+  the active Cognito hostname resolves, and Vite restarted successfully on
+  `http://localhost:5173`.
+
 ### 2026-07-20 - Codex - fix local Cognito browser bundle bootstrap (`8af7929`)
 
 - Changed `frontend/vite.config.ts` only: define `global` as `globalThis` for
