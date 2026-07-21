@@ -80,6 +80,21 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-21 - Codex - restore main CloudFront API availability
+
+- Incident: ECS task definition 14 (`8364911-amd64`, X-Ray enabled) crashed
+  during Uvicorn startup with uvloop's `task_factory()` rejecting the
+  `context` argument. The ALB consequently had no healthy backend target and
+  the main CloudFront `/api/health` path returned 503/504.
+- Recovery: registered task definition 15 from the last stable main
+  configuration (image `90a92c6-amd64`, X-Ray disabled) and updated
+  `livecap-target-service-dev` to it. No CloudFront, ALB, frontend, or data
+  resources were changed.
+- Verified in AWS: one ECS task running, ALB target healthy, and
+  `https://dpeohr327wt9l.cloudfront.net/api/health` returns HTTP 200. Do not
+  deploy the X-Ray-enabled image until the uvloop compatibility failure is
+  fixed and tested.
+
 ### 2026-07-20 - Codex - repair local Cognito Hosted UI domain
 
 - Updated ignored `frontend/.env.local` only: replaced the retired
