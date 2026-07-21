@@ -80,6 +80,25 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-21 - Codex - unblock isolated preview Terraform validation
+
+- Fixed a duplicate `local.frontend_base_url` declaration shared by
+  `outputs.tf` and `stripe_billing.tf`. The canonical value now uses the
+  custom domain when configured, otherwise the stable CloudFront domain.
+- Verified with `terraform fmt -check`, `terraform init -backend=false`, and
+  `terraform validate`. No AWS resources, traffic routes, or feature flags
+  were changed.
+
+### 2026-07-21 - Working tree - isolated stable/preview runtime prepared
+
+- Uncommitted Terraform files prepare a separate Update CloudFront/S3 frontend,
+  ECS service, target group, and Wake Lambda. The preview CloudFront origin
+  adds `X-LiveCap-Environment: preview`; the ALB listener routes that header
+  to the preview target group while the default action remains stable.
+- Intended split: `dpeohr327wt9l.cloudfront.net` remains the anonymous main
+  MVP; `livecap.logantai.com` moves only after preview validation and DNS
+  cutover. This work still requires human-reviewed Terraform plan/apply.
+
 ### 2026-07-21 - Codex - restore main CloudFront API availability
 
 - Incident: ECS task definition 14 (`8364911-amd64`, X-Ray enabled) crashed
