@@ -7,7 +7,7 @@ locals {
 
   backend_base_url  = var.target_alb_ssl_certificate_arn != "" ? "https://${local.backend_host}" : "http://${local.backend_host}"
   backend_ws_url    = var.target_alb_ssl_certificate_arn != "" ? "wss://${local.backend_host}/ws/transcribe" : "ws://${local.backend_host}/ws/transcribe"
-  frontend_base_url = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+  frontend_base_url = var.custom_domain != "" ? "https://${var.custom_domain}" : "https://${aws_cloudfront_distribution.frontend.domain_name}"
   frontend_ws_url   = "wss://${aws_cloudfront_distribution.frontend.domain_name}/ws/transcribe"
 }
 

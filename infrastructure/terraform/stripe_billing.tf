@@ -46,8 +46,6 @@ variable "stripe_price_id_business" {
 }
 
 locals {
-  frontend_base_url = var.custom_domain != "" ? "https://${var.custom_domain}" : "https://${aws_cloudfront_distribution.frontend.domain_name}"
-
   stripe_secrets_configured = var.enable_stripe_billing && trimspace(var.stripe_secret_key) != "" && trimspace(var.stripe_webhook_secret) != ""
 }
 
