@@ -80,6 +80,19 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-21 - Codex - restore anonymous stable MVP sessions
+
+- Registered `livecap-target-backend-dev:16` from stable revision 15 with the
+  only runtime change `ENABLE_AUTH=false`, then deployed it to
+  `livecap-target-service-dev` at desired count 1. This restores the public
+  CloudFront MVP while the stable and preview backends still share one service.
+- Verified: ECS reached one healthy running task, CloudFront `/api/health`
+  returned HTTP 200, and an anonymous `wss://dpeohr327wt9l.cloudfront.net/ws/transcribe`
+  handshake returned `session_start` followed by `pong`.
+- Follow-up: this also disables runtime auth for `livecap.logantai.com` until
+  the isolated preview backend is applied; do not present the custom domain as
+  auth-enforced in the meantime.
+
 ### 2026-07-21 - Codex - unblock isolated preview Terraform validation
 
 - Fixed a duplicate `local.frontend_base_url` declaration shared by
