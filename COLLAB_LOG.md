@@ -38,13 +38,13 @@
 - `ENABLE_AUTH=true` — Codex restored anonymous mode; re-enable needs new image
 - X-Ray tracing — image `8364911-amd64` crashed (uvloop incompatibility); needs fix before deploying
 - Usage quota enforcement in WebSocket flow — scaffolded but not wired into `websocket.py`
-- Stripe billing endpoints — deployed in TF, code in image `8364911-amd64` (crashed), need new stable image
+- Stripe billing endpoints — **live and verified** (image `041a699-amd64`, auth enabled). Backend side works end-to-end; frontend checkout UI still needs a rebuild+redeploy (see below).
 
 ### Feature flags (current tfvars state):
 | Flag | Value |
 |---|---|
 | `enable_cognito_auth` | true |
-| `enable_auth_runtime` | true (but image overrides with ENABLE_AUTH=false) |
+| `enable_auth_runtime` | true (image `041a699-amd64` has `ENABLE_AUTH=true` — verified live) |
 | `enable_multi_az_nat` | true |
 | `enable_meeting_summary` | true |
 | `enable_xray` | true (in TF, but broken in last image) |
@@ -54,8 +54,9 @@
 | `backend_max_capacity` | 3 |
 
 ### Known issues / pending actions:
-1. **uvloop crash** — image `8364911-amd64` fails at startup (uvloop `task_factory()` incompatibility with X-Ray). Fix before next image build.
-2. **ENABLE_AUTH=false** on running service — billing and quota endpoints need auth. Re-enable after fixing uvloop.
+1. ~~**uvloop crash**~~ — fixed, `041a699-amd64` deployed and healthy (see change log).
+2. ~~**ENABLE_AUTH=false**~~ — re-enabled, verified live (see change log).
+2a. **Frontend Stripe checkout UI not deployed** — the live frontend bundle (`index-c_BBj6Q8.js`) predates the `UsagePanel.tsx` tier-chooser code (commit `7d84056`). Confirmed via runtime DOM check: only a static "Upgrade" button exists, no "Pro/Business" buttons, no `/api/billing/*` calls fire on click. Needs `npm run build` + `aws s3 sync` + CloudFront invalidation from current `Update` HEAD. Commands given to the user; not yet run as of this entry.
 3. **Bedrock model access** — must be enabled in AWS Console (us-east-1) before meeting notes work in production.
 4. **Quota not enforced** in WebSocket — `increment_session`/`check_quota` not wired into `websocket.py`.
 5. **`frontend/.env.production` is gitignored** — not in git history. Current Cognito domain: `https://livecap.auth.ap-southeast-1.amazoncognito.com`.
@@ -63,6 +64,56 @@
 ---
 
 ## Change log (newest first)
+
+### 2026-07-23 — Claude (Cowork) — E2E test of login → session → usage → billing on production
+
+Full manual test against `https://livecap.logantai.com` after auth was re-enabled and
+`041a699-amd64` deployed (see entries below). Drove a real browser via Claude-in-Chrome;
+the user performed sign-in themselves (Claude does not handle credentials).
+
+**Passed:**
+- Cognito sign-in (Hosted UI) completes and lands on `/app`.
+- `GET /api/usage` correctly requires auth now (`401 Sign in is required...` with no
+  token, vs the old anonymous `200 {tier: unlimited}` response) — confirms
+  `ENABLE_AUTH=true` took effect.
+- `UsagePanel` renders real data: `Free` tier, `Sessions 0/3`, `Minutes 0/45`, `Max 15
+  min per session`.
+- `TranscriptHistoryPanel` loads cleanly (`No transcripts yet`) — no more `503`s.
+- Live session: `Start session` → `WAKING` → `ACTIVE`/`LIVE`, WebSocket connects, real
+  Vietnamese/English captions stream in (`Đang lắng nghe...` / `Waiting for speech...`).
+  `Stop session` ends cleanly.
+
+**Failed — needs a frontend redeploy:**
+- Clicking `Upgrade` does nothing observable. Root cause confirmed via
+  `document.querySelectorAll('button')` in the live page: only a static `Upgrade`
+  button exists in the DOM. No `Pro — $10/mo` / `Business — $30/mo` / `Manage
+  subscription` buttons, and no `/api/billing/*` network call ever fires. The deployed
+  bundle (`index-c_BBj6Q8.js`) predates the `UsagePanel.tsx` tier-chooser code from
+  commit `7d84056` — same class of bug as the earlier `.env.production` domain drift:
+  a manual frontend deploy step was missed after the code merged to `Update`.
+- Gave the user the fix (not yet run as of this entry):
+  ```powershell
+  cd infrastructure/terraform
+  $bucket = terraform output -raw frontend_bucket_name
+  $distId = terraform output -raw cloudfront_distribution_id
+  cd ../../frontend
+  npm run build
+  aws s3 sync dist/ "s3://$bucket/" --delete
+  aws cloudfront create-invalidation --distribution-id $distId --paths "/*"
+  ```
+- Stripe Checkout itself (page render, test-card flow, webhook → tier update) is
+  **still unverified** — blocked on the frontend redeploy above. Next session should
+  pick up from there: rebuild, then Upgrade → Pro → complete Checkout with Stripe test
+  card `4242 4242 4242 4242` (safe, Stripe is in test mode per Kiro's entry below), then
+  confirm `UsagePanel` flips to `Pro` after the webhook fires.
+
+**Aside:** added `run-backend.bat` / `run-frontend.bat` launcher scripts at the repo
+root (untracked, no secrets) to make local dev testing repeatable by double-click
+instead of typing into a terminal. An earlier local-only test run hit a transient
+backend crash (`503` on `/api/usage` and `/api/transcripts`, cause not isolated — team
+member's own AWS credentials/DynamoDB reachability is the top suspect); abandoned in
+favor of testing directly against the deployed dev environment instead, which is why
+this entry's results are against production, not localhost.
 
 ### 2026-07-23 — Kiro — Fix uvloop crash + deploy full-feature image 041a699-amd64
 - **Root cause:** `AsyncContext()` in `tracing.py` called `loop.set_task_factory()` which uvloop rejects.
