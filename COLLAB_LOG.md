@@ -64,6 +64,13 @@
 
 ## Change log (newest first)
 
+### 2026-07-23 — Kiro — Re-enable ENABLE_AUTH=true on stable image
+- Applied Terraform with `backend_image_tag=90a92c6-amd64` (stable, X-Ray disabled) + `enable_auth_runtime=true` + `enable_xray=false`.
+- Result: 1 added, 1 changed, 2 destroyed. New task definition deployed.
+- Verified: service stable, wake → healthy, `https://livecap.logantai.com/api/health` returns 200.
+- **Auth is now enforced** on production. Billing + quota endpoints active.
+- Note: image `90a92c6-amd64` does NOT contain usage_quota.py, quota router, billing router (those are in `8364911-amd64` which crashed). New stable image needed to get those features.
+
 ### 2026-07-23 — Kiro — Stripe billing applied to AWS (test mode)
 - `terraform apply` with `enable_stripe_billing=true` and Stripe test credentials.
 - Created: 2 Secrets Manager secrets (sk + whsec), IAM policy (execution role → GetSecretValue), new task def revision.
