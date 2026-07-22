@@ -52,6 +52,7 @@
 | `enable_usage_quota` | true |
 | `enable_stripe_billing` | true |
 | `backend_max_capacity` | 3 |
+| Admin dashboard (`admin.tf`) | gated on `enable_cognito_auth`; no one is in the Cognito `admin` group yet — see change log |
 
 ### Known issues / pending actions:
 1. ~~**uvloop crash**~~ — fixed, `041a699-amd64` deployed and healthy (see change log).
@@ -64,6 +65,61 @@
 ---
 
 ## Change log (newest first)
+
+### 2026-07-23 — Claude (Cowork) — Admin dashboard (GET /api/admin/overview + /admin page)
+
+New, not yet deployed. Off by default in the sense that it needs a human to add
+themselves to a Cognito group before it does anything — no new feature flag.
+
+- **Access control:** a Cognito user group named `admin` (`infrastructure/terraform/admin.tf`,
+  gated on `enable_cognito_auth`, same as the rest of C5). Membership, not a
+  flag, is the gate: `backend/app/services/auth.py::require_admin_user` calls
+  the existing `require_authenticated_user` for token validation, then an
+  `AdminListGroupsForUser` check (task-role credentials) for group membership.
+  Fails closed — any AWS error while checking is treated as "not an admin".
+  **Human action required:** no user is in the group yet; add one with
+  `aws cognito-idp admin-add-user-to-group --user-pool-id <id> --username <email> --group-name admin`.
+- **Backend:** `backend/app/services/admin_service.py` builds the dashboard
+  payload from three AWS calls, each failing soft (empty/zero, not a 500) so
+  one degraded dependency doesn't take the whole dashboard down: Cognito
+  `ListUsers` (paginated, for the user list + emails), a `Scan` of the
+  `usage_quota` table (bucketed by user into `PROFILE` + current-month items),
+  and ECS `DescribeServices` (coarse "is the backend actually running"
+  signal). The user list is the *union* of Cognito accounts and anyone with a
+  usage record, so a registered user who never started a session still shows
+  up (as `free`, 0 usage). New `GET /api/admin/overview`
+  (`backend/app/routers/admin.py`), registered in `main.py`. The "estimated
+  MRR" figure is a flat display-only `{pro: $10, business: $30}` count — not
+  a live Stripe query, and intentionally not the source of truth for what a
+  Price actually charges (that's still each Price's `metadata.livecap_tier`,
+  see `stripe_billing.py`).
+- **Frontend:** `frontend/src/services/adminService.ts` +
+  `frontend/src/components/AdminDashboardPage.tsx` (stat cards for
+  users-by-tier/estimated MRR/sessions+minutes this month/backend health, plus
+  a sortable-by-email user table). Wired at `/admin` in `App.tsx` behind the
+  existing `AuthGate` (any signed-in user reaches the page; a non-admin sees a
+  friendly "Your account does not have admin access" state from the 403
+  response, not a blank page or leaked data).
+- **New IAM** (`admin.tf`, on the existing `ecs_task` role, gated on
+  `enable_cognito_auth`): `cognito-idp:AdminListGroupsForUser` +
+  `cognito-idp:ListUsers` scoped to the user pool ARN; `ecs:DescribeServices`
+  scoped to the target (+ preview, if enabled) service ARNs; `dynamodb:Scan`
+  on the usage table, additionally gated on `enable_usage_quota`.
+- **Tests:** 17 new (`test_admin_auth.py` — group-membership gate incl.
+  fail-closed-on-AWS-error; `test_admin_service.py` — moto DynamoDB scan
+  aggregation + patched Cognito/ECS clients; `test_admin_router.py` — 401 and
+  the 200 payload shape). Full backend suite: same pre-existing failures as
+  always (13 `test_websocket.py` on Python 3.10 vs 3.11 `asyncio.timeout`, 9
+  `test_export_router.py` — pre-existing on `HEAD`, confirmed via `git stash`,
+  unrelated to this change). Frontend: `tsc --noEmit` clean, `npm run build`
+  clean. The full `npm test` suite was too slow to complete inside this
+  session's tool timeout to run end-to-end; the one file that did finish
+  (`DashboardPage.test.tsx`) has a pre-existing, environment-only failure
+  (fetch-spy assertion tripped by this checkout's local `frontend/.env.local`
+  having `VITE_AUTH_ENABLED=true` from an earlier local test session) — not
+  caused by this change and not present in a clean checkout.
+- **Not yet done:** `terraform fmt`/`validate`/`plan` — no Terraform CLI in
+  this sandbox. Please run the standard gate from `HANDOFF.md` before `apply`.
 
 ### 2026-07-23 — Kiro — Quota enforcement wired + frontend redeploy (96e06aa-amd64)
 - **Quota enforcement wired** into `websocket.py`:

@@ -82,6 +82,11 @@ dependency contract.
   enabling. Two live-mode Stripe Products/Prices already exist on the
   connected account (LiveCap Pro $10/mo, LiveCap Business $30/mo) — details
   and price IDs in `COLLAB_LOG.md`.
+- Admin dashboard (`infrastructure/terraform/admin.tf`, gated on the existing
+  `enable_cognito_auth`): after `terraform apply`, add at least one admin with
+  `aws cognito-idp admin-add-user-to-group --user-pool-id <id> --username
+  <email> --group-name admin`, then sign in and visit `/admin`. No one is a
+  member yet, so the dashboard is unreachable (403) until this is done.
 
 ## Supporting Documents
 

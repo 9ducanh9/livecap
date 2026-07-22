@@ -164,3 +164,44 @@ async def optional_authenticated_user(
     if not get_settings().enable_auth:
         return None
     return await require_authenticated_user(authorization)
+
+
+def _is_admin_group_member(username: str, *, region: str, user_pool_id: str) -> bool:
+    """Check Cognito group membership for the caller's own account.
+
+    Uses ``AdminListGroupsForUser`` (task-role credentials, not the caller's
+    token) because access tokens don't carry group claims by default. Fails
+    closed: any AWS error is treated as "not an admin" rather than granting
+    access, since this gate protects every other user's data.
+    """
+
+    try:
+        response = _cognito_client(region).admin_list_groups_for_user(
+            Username=username, UserPoolId=user_pool_id
+        )
+    except (ClientError, BotoCoreError):
+        logger.warning("AdminListGroupsForUser failed while checking admin access")
+        return False
+    return any(group.get("GroupName") == "admin" for group in response.get("Groups", []))
+
+
+async def require_admin_user(
+    authorization: str | None = Header(default=None),
+) -> AuthenticatedUser:
+    """Resolve the caller and additionally require Cognito "admin" group membership.
+
+    Reuses ``require_authenticated_user`` for token validation, so accounts
+    must already be enabled and the bearer token must be valid before the
+    group check runs.
+    """
+
+    user = await require_authenticated_user(authorization)
+    settings = get_settings()
+    if not _is_admin_group_member(
+        user.username, region=settings.aws_region, user_pool_id=settings.cognito_user_pool_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return user

@@ -131,6 +131,10 @@ app.include_router(quota_router.router)
 from app.routers import billing as billing_router
 app.include_router(billing_router.router)
 
+# Admin dashboard: GET /api/admin/overview (requires Cognito "admin" group)
+from app.routers import admin as admin_router
+app.include_router(admin_router.router)
+
 
 # ---------------------------------------------------------------------------
 # Health check endpoint
