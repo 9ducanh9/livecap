@@ -65,6 +65,17 @@
 
 ## Change log (newest first)
 
+### 2026-07-23 — Kiro — Quota enforcement wired + frontend redeploy (96e06aa-amd64)
+- **Quota enforcement wired** into `websocket.py`:
+  - Pre-session: `check_quota()` — rejects with `QUOTA_EXCEEDED` if monthly limit exceeded
+  - Post-accept: `increment_session()` — records new session
+  - Post-teardown: `add_minutes()` — records elapsed minutes (fail open)
+- `QUOTA_EXCEEDED` added to ErrorCode enum. 23 websocket tests pass.
+- Built & pushed `96e06aa-amd64`, deployed via Terraform. Service healthy.
+- **Frontend redeployed** (npm build → S3 sync → CloudFront invalidation) — fixes
+  Claude's finding that the Upgrade button had no tier-chooser/billing integration.
+- Still cosmetic-only: `illustrations/` PNGs missing (panel falls back to icon).
+
 ### 2026-07-23 — Claude (Cowork) — E2E test of login → session → usage → billing on production
 
 Full manual test against `https://livecap.logantai.com` after auth was re-enabled and
