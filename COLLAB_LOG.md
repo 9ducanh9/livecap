@@ -64,6 +64,13 @@
 
 ## Change log (newest first)
 
+### 2026-07-23 — Kiro — Fix uvloop crash + deploy full-feature image 041a699-amd64
+- **Root cause:** `AsyncContext()` in `tracing.py` called `loop.set_task_factory()` which uvloop rejects.
+- **Fix:** removed `AsyncContext` import and usage. Use default threading.local context instead — correct for HTTP tracing with uvicorn+uvloop.
+- Built and pushed `041a699-amd64`. Applied via Terraform with `enable_xray=true`.
+- Verified: service healthy at `https://livecap.logantai.com/api/health` (status: healthy, version: 1.0.0).
+- **This image contains:** usage quota, billing router, Stripe, auth, history, TTS, Comprehend, meeting notes, custom vocabulary, X-Ray (fixed).
+
 ### 2026-07-23 — Kiro — Re-enable ENABLE_AUTH=true on stable image
 - Applied Terraform with `backend_image_tag=90a92c6-amd64` (stable, X-Ray disabled) + `enable_auth_runtime=true` + `enable_xray=false`.
 - Result: 1 added, 1 changed, 2 destroyed. New task definition deployed.
