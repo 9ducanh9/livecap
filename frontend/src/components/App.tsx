@@ -1,5 +1,6 @@
 import LandingPage from './LandingPage';
 import DashboardPage from './DashboardPage';
+import AdminDashboardPage from './AdminDashboardPage';
 import AuthGate from './AuthGate';
 
 export default function App() {
@@ -7,6 +8,10 @@ export default function App() {
 
   if (path === '/app') {
     return <AuthGate><DashboardPage /></AuthGate>;
+  }
+
+  if (path === '/admin') {
+    return <AuthGate><AdminDashboardPage /></AuthGate>;
   }
 
   return <LandingPage />;
