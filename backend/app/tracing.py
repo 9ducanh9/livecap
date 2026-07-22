@@ -75,7 +75,6 @@ def configure_tracing(app) -> bool:
 
     try:
         from aws_xray_sdk.core import patch_all, xray_recorder  # noqa: PLC0415
-        from aws_xray_sdk.core.async_context import AsyncContext  # noqa: PLC0415
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "xray_unavailable",
@@ -85,20 +84,16 @@ def configure_tracing(app) -> bool:
 
     service_name = os.getenv("XRAY_SERVICE_NAME", "livecap-backend")
     try:
-        # AsyncContext needs a current event loop; configure_tracing runs at
-        # import time, so fall back to the default context if none is available.
-        try:
-            async_context = AsyncContext()
-        except Exception:  # noqa: BLE001
-            async_context = None
         configure_kwargs: dict[str, Any] = {
             "service": service_name,
             "context_missing": "IGNORE",
             "daemon_address": os.getenv("AWS_XRAY_DAEMON_ADDRESS", "127.0.0.1:2000"),
             "sampling": True,
         }
-        if async_context is not None:
-            configure_kwargs["context"] = async_context
+        # Do NOT pass AsyncContext — it calls loop.set_task_factory() which
+        # uvloop rejects (does not accept the `context` argument). The default
+        # threading.local context works correctly with uvicorn+uvloop for HTTP
+        # tracing; WebSocket routes are intentionally excluded anyway.
         xray_recorder.configure(**configure_kwargs)
         patch_all()
         app.add_middleware(_build_http_middleware(xray_recorder, service_name))
