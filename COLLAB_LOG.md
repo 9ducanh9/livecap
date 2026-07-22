@@ -80,6 +80,24 @@ Details in `HANDOFF.md`.
 
 ## Change log (newest first)
 
+### 2026-07-23 — Kiro — Stripe billing enabled on AWS (test mode)
+- Applied `enable_stripe_billing=true` with Stripe test credentials via
+  Terraform. Resources created: 2 Secrets Manager secrets (sk + whsec),
+  2 secret versions, 1 IAM policy (execution role → GetSecretValue),
+  1 new task definition revision with secrets injection.
+- **Stripe config:**
+  - Pro Price: `price_1TvzYjIbuCi99Y2WtYIbF2p5`
+  - Business Price: `price_1TvzXSIbuCi99Y2W6Pcz05EF`
+  - Webhook endpoint: `https://livecap.logantai.com/api/billing/webhook`
+  - Mode: **test** (sandbox, no real charges)
+- **Endpoints now available (when auth enabled):**
+  - `POST /api/billing/checkout-session` — creates Stripe Checkout URL
+  - `POST /api/billing/portal-session` — creates customer portal URL
+  - `POST /api/billing/webhook` — Stripe event handler
+- Note: currently `ENABLE_AUTH=false` on the running service (per Codex's
+  anonymous restore). Billing endpoints require auth to function. They will
+  activate when auth is re-enabled with a new deployment.
+
 ### 2026-07-21 - Codex - restore anonymous stable MVP sessions
 
 - Registered `livecap-target-backend-dev:16` from stable revision 15 with the
