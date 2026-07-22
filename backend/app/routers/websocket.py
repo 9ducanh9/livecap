@@ -698,10 +698,11 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     auth_protocol = _authenticated_subprotocol(websocket, settings.enable_auth)
     await websocket.accept(subprotocol=auth_protocol)
 
+    auth_user = None
     if settings.enable_auth:
         token = _access_token_from_subprotocol(websocket)
         try:
-            authenticate_access_token(token or "")
+            auth_user = authenticate_access_token(token or "")
         except HTTPException:
             await _send_error(
                 websocket,
@@ -753,6 +754,28 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         return
     session_registered = True
     get_idle_scale_down_scheduler(session_registry).cancel_pending()
+
+    # --- Usage quota check (B2C tier enforcement) ---
+    # Only enforced when auth is on and quota tracking is enabled.
+    if auth_user is not None and settings.enable_auth:
+        try:
+            from app.services.usage_quota import check_quota, increment_session, get_user_subscription  # noqa: PLC0415
+            quota_error = check_quota(auth_user.user_id)
+            if quota_error:
+                _logger.warning(
+                    "Session rejected by quota limit",
+                    extra={"event": "quota_exceeded", "session_id": session_id, "user_id": auth_user.user_id},
+                )
+                session_registry.unregister(session_id)
+                session_registered = False
+                await _send_error(websocket, message=quota_error, code=ErrorCode.QUOTA_EXCEEDED)
+                await websocket.close(code=1008)
+                return
+            # Record the new session against this month's quota.
+            sub = get_user_subscription(auth_user.user_id)
+            increment_session(auth_user.user_id, tier=sub.tier)
+        except Exception:  # noqa: BLE001 — fail open, never block on quota errors
+            pass
 
     log_websocket_connect(session_id)
 
@@ -894,6 +917,8 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     reader_task = asyncio.ensure_future(_read_frames())
 
     session_end_sent = False
+    _session_start_ts = time.monotonic()
+
     async def _teardown(send_session_end: bool = True) -> None:
         """Send ``session_end`` once, cancel the reader, and log cleanup."""
         nonlocal session_end_sent
@@ -912,6 +937,15 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
             try:
                 await reader_task
             except (asyncio.CancelledError, Exception):
+                pass
+
+        # Record minutes used against the user's monthly quota.
+        if auth_user is not None and settings.enable_auth:
+            try:
+                from app.services.usage_quota import add_minutes  # noqa: PLC0415
+                elapsed_minutes = max(1, int((time.monotonic() - _session_start_ts) / 60))
+                add_minutes(auth_user.user_id, elapsed_minutes)
+            except Exception:  # noqa: BLE001
                 pass
 
         log_websocket_disconnect(session_id)
