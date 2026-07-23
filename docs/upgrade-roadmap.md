@@ -1,8 +1,8 @@
 # LiveCap Upgrade Roadmap
 
 This is a living status and prioritization document for LiveCap. Current
-deployment facts are in `as-deployed-architecture.md`; current change history
-and feature flags are in `../COLLAB_LOG.md`.
+deployment facts are in `as-deployed-architecture.md`; the Capability Status
+table below reflects current feature-flag state.
 
 ## Current Baseline
 
@@ -63,5 +63,5 @@ cost versus availability tradeoff.
 - Do not auto-apply Terraform or destroy AWS resources from CI.
 - Treat a full Terraform plan as a review gate, especially for active runtime
   resources.
-- Prefer immutable ECR image tags and record rollout evidence in
-  `COLLAB_LOG.md`.
+- Prefer immutable ECR image tags and record rollout evidence in commit
+  messages and the release history.

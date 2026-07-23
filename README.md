@@ -28,8 +28,8 @@ post-release frontend and AWS hardening tracked in
 ## Development and Feature Status
 
 [`Update`](https://github.com/9ducanh9/livecap/tree/Update) is the integration
-branch. Its exact deployment status, feature flags, and human actions are
-maintained in [`COLLAB_LOG.md`](COLLAB_LOG.md).
+branch. Its exact deployment status and feature flags are captured in the
+tables below and in [`docs/upgrade-roadmap.md`](docs/upgrade-roadmap.md).
 
 - **Meeting notes** are generated only when a participant explicitly selects
   **Create meeting notes** after a session. The Bedrock-backed endpoint remains
@@ -45,8 +45,7 @@ maintained in [`COLLAB_LOG.md`](COLLAB_LOG.md).
 - Optional reliability, cost, and transcription improvements remain
   feature-gated until their individual rollout gates are approved.
 
-For local feature testing, see [`docs/run-local.md`](docs/run-local.md). For
-the current operational handoff, see [`HANDOFF.md`](HANDOFF.md).
+For local feature testing, see [`docs/run-local.md`](docs/run-local.md).
 
 ## Product Preview
 
@@ -87,8 +86,7 @@ Facts below were checked directly against live AWS on 2026-07-24 (not just
 inferred from Terraform config — `aws ecs describe-services`,
 `describe-task-definition`, `ec2 describe-nat-gateways`, etc.). This is a
 point-in-time snapshot, not a formal release verification; for the
-authoritative current state at any given moment, re-check AWS directly or see
-`COLLAB_LOG.md` (local, gitignored working log).
+authoritative current state at any given moment, re-check AWS directly.
 
 | Area | State |
 |---|---|
@@ -304,10 +302,8 @@ The authoritative infrastructure workflow is
 - [Upgrade roadmap](docs/upgrade-roadmap.md)
 - [Cognito and transcript-history rollout](docs/cognito-history-rollout.md)
 - [Stable/preview runtime environments](docs/frontend-runtime-environments.md)
-- [Architecture summary — 6 pillars](docs/architecture-summary-6pillars.md)
 - [Infrastructure overview](infrastructure/README.md)
 - [Terraform source of truth](infrastructure/terraform/README.md)
-- [Update branch collaboration log](COLLAB_LOG.md)
 - [Local feature test guide](docs/run-local.md)
 
 ## License
