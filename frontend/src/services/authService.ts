@@ -114,6 +114,24 @@ export async function completeSignInFromRedirect(): Promise<boolean> {
   return true;
 }
 
+/** Check if the current authenticated user belongs to the Cognito "admin" group. */
+export function isAdminUser(): boolean {
+  const session = getAuthSession();
+  if (!session?.idToken) return false;
+  try {
+    const payloadB64 = session.idToken.split('.')[1];
+    if (!payloadB64) return false;
+    const payload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/'))) as Record<string, unknown>;
+    const groups = payload['cognito:groups'];
+    if (Array.isArray(groups)) {
+      return groups.includes('admin');
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export function signOut(): void {
   const current = config(); clearAuthSession();
   if (!current.enabled) return;
