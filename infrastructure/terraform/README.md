@@ -534,7 +534,8 @@ and the frontend polls `/api/health` before opening the WebSocket.
 5. Set `route_backend_to_target=true` and review the CloudFront origin change.
 6. Smoke-test frontend, API, WebSocket, translation, and transcript export.
 7. Enable and test wake `0 -> 1`, then idle scale-down `1 -> 0`.
-8. Record the validation result in `COLLAB_LOG.md` and retain plan evidence.
+8. Record the validation result in the deployment record and retain plan
+   evidence.
 
 Do not delete the stopped legacy EC2 instance, EBS volume, old security group,
 or `livecaptranscripts` bucket as part of this migration.

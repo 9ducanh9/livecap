@@ -161,6 +161,59 @@ task replacement.
 | Cost guard | AWS Budget $50/month |
 | CI | Backend, Frontend, Terraform, and Secret scan jobs pass; CI does not deploy |
 
+## AWS Well-Architected Framework Alignment
+
+**Operational Excellence** — The entire environment is defined in Terraform;
+every change goes through a reviewed `plan` before `apply`, and no component is
+deployed by hand. Backend images use immutable Git-SHA tags in ECR, so a
+rollback is a pointer change rather than a rebuild. CloudWatch Logs, a
+dashboard, Container Insights, and X-Ray tracing back day-to-day operation, and
+six CloudWatch alarms notify an SNS topic. New capabilities ship behind
+Terraform-controlled feature flags that default to off.
+
+**Security** — Two independent WAF layers (CloudFront and the regional ALB)
+enforce managed block rules and rate limiting, backed by GuardDuty, Security
+Hub, and VPC Flow Logs. The Fargate task runs in a private subnet with no
+public IP; the ALB only accepts HTTPS from the CloudFront origin-facing prefix
+list, and the task only accepts traffic from the ALB. Both S3 buckets (frontend
+and transcripts) block public access and are reached only through CloudFront
+Origin Access Control; the wake Lambda Function URL requires `AWS_IAM`.
+Authentication is Amazon Cognito (email and Google OAuth, PKCE, no client
+secret in the browser); the admin dashboard is gated on Cognito group
+membership and fails closed on any authorization error. Stripe keys live in
+Secrets Manager and are injected through the task execution role, never in the
+image or a plaintext environment variable. Raw microphone audio is never
+stored.
+
+**Reliability** — The VPC spans two Availability Zones with independent public
+and private subnets and two NAT Gateways, so outbound access does not depend on
+a single AZ. ECS replaces a failed task automatically and the ALB routes only
+to healthy targets. A shared DynamoDB session registry (rather than in-process
+state) is already live as the precondition for running more than one backend
+task. The service is currently capped at one task by design; this is
+self-healing rather than active-active availability, and an in-flight
+WebSocket session is lost during task replacement until that cap is raised.
+
+**Performance Efficiency** — Transcription, translation, text-to-speech, and
+sentiment analysis all run on managed, auto-scaling AWS services rather than
+self-hosted infrastructure. CloudFront caches static assets at the edge. ECS
+Application Auto Scaling tracks CPU and memory, and the service scales to zero
+when idle. Graviton (arm64) is available as a lower-cost, better performance-
+per-watt compute option once adopted.
+
+**Cost Optimization** — The backend scales to zero after five minutes of
+inactivity and wakes on demand, which removes the largest source of idle cost.
+DynamoDB uses on-demand billing with TTL cleanup on session, history, and usage
+data. An AWS Budget with a $50 monthly threshold provides a cost guard, and
+Cost Explorer backs the admin dashboard's cost visibility. The ALB, NAT
+Gateways, and WAF are the deliberate fixed-cost floor that remains even while
+compute is at zero.
+
+**Sustainability** — Scaling compute to zero when idle and running managed,
+multi-tenant AWS services instead of dedicated infrastructure both reduce
+energy use relative to always-on, self-hosted alternatives. Graviton, when
+adopted, offers better performance per watt than the current x86 baseline.
+
 ## Security Boundaries
 
 - The frontend and transcript S3 buckets block public access.
