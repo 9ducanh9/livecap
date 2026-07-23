@@ -229,3 +229,8 @@ output "deployment_instructions" {
     
   EOT
 }
+
+output "github_actions_plan_role_arn" {
+  description = "Least-privilege GitHub Actions role for ECR builds and Terraform plans."
+  value       = aws_iam_role.github_actions_plan.arn
+}
