@@ -19,7 +19,7 @@ interface UsageData {
 const TIER_LABELS: Record<string, { label: string; color: string; icon: typeof Zap }> = {
   free: { label: 'Free', color: 'text-ink-muted', icon: BarChart3 },
   pro: { label: 'Pro', color: 'text-emerald-pro', icon: Zap },
-  business: { label: 'Business', color: 'text-amber-500', icon: Crown },
+  business: { label: 'Plus', color: 'text-amber-500', icon: Crown },
   unlimited: { label: 'Unlimited', color: 'text-emerald-pro', icon: Zap },
 };
 
@@ -122,7 +122,7 @@ export default function UsagePanel() {
             disabled={billingBusy}
             className="flex-1 rounded-lg border border-emerald-pro/30 py-2 text-[11px] font-bold text-emerald-pro hover:bg-emerald-pro/5 disabled:opacity-50"
           >
-            {billingBusy ? 'Redirecting…' : 'Pro — $10/mo'}
+            {billingBusy ? 'Redirecting…' : 'Pro'}
           </button>
           <button
             type="button"
@@ -130,7 +130,7 @@ export default function UsagePanel() {
             disabled={billingBusy}
             className="flex-1 rounded-lg border border-amber-400/40 py-2 text-[11px] font-bold text-amber-600 hover:bg-amber-50 disabled:opacity-50"
           >
-            {billingBusy ? 'Redirecting…' : 'Business — $30/mo'}
+            {billingBusy ? 'Redirecting…' : 'Plus'}
           </button>
         </div>
       )}
