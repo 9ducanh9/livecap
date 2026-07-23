@@ -66,6 +66,56 @@
 
 ## Change log (newest first)
 
+### 2026-07-24 — Claude (Cowork) — Verified Admin Panel v2 test claims + fixed test-isolation bug
+
+Ran the full backend + frontend suites to check the previous entry's test claims before
+trusting the commit, per `HANDOFF.md`'s verification gate. Found and fixed one real bug;
+everything else traces to pre-existing, already-documented local-environment noise.
+
+- **Real bug found and fixed:** `backend/tests/test_admin_auth_property.py` set
+  `ENABLE_AUTH` / `COGNITO_USER_POOL_ID` / `AWS_REGION` via bare `os.environ[...] = ...`
+  at **module level**, with no teardown. pytest imports every test module during
+  collection regardless of `-k`/`--deselect`, so this fired on every full-suite run and
+  leaked `AWS_REGION=us-east-1` (and `ENABLE_AUTH=true`) into every test file collected
+  afterward for the rest of the process. That silently broke moto-backed DynamoDB
+  lookups in `test_admin_service.py`, `test_stripe_billing.py`, and
+  `test_usage_quota_subscription.py` (wrong region → `ResourceNotFoundException` or a
+  fail-soft empty scan) — **11 false failures** with no code defect behind them. Fixed
+  by saving the previous env values before overriding and restoring them (+
+  `get_settings.cache_clear()` / `auth.clear_auth_client_cache()`) in a
+  `teardown_module`. Full backend suite: was 20 failed/380 passed, now **9
+  failed/391 passed**.
+- **Remaining 9 backend failures are local-environment-only, not a regression:**
+  all in `test_export_router.py`, all `assert 401 == <expected>`. Root cause confirmed
+  by reading this checkout's `backend/.env` directly: it has `ENABLE_AUTH=true` set
+  locally (gitignored, not in git history), so the anonymous-export tests get a real
+  401 on this machine. Matches the same class of issue already noted for the frontend
+  (`frontend/.env.local` → `VITE_AUTH_ENABLED=true`, see 2026-07-23 E2E entry below) —
+  confirm on a clean checkout / CI before treating as a product bug.
+  - Same class, frontend side: `npm test -- --run` → 23/24 pass, the 1 failure
+    (`DashboardPage.test.tsx` fetch-spy assertion) is the exact pre-existing
+    `.env.local` issue already logged 2026-07-23 — confirmed by reading the file, still
+    present, still environment-only.
+  - `npx tsc --noEmit` clean. `npm run build` clean — new admin pages
+    (`AdminUsersPage`, `AdminUserDetailPage`, `AdminUsagePage`, `AdminRevenuePage`,
+    `AdminSystemPage`) each lazy-load as a separate chunk, matching the code-splitting
+    design.
+- **Coverage gap, not a bug:** none of the new Admin Panel v2 **frontend** components
+  (`AdminShell`, `AdminGuard`, `AdminUsersPage`, `AdminUsagePage`, `AdminRevenuePage`,
+  `AdminSystemPage`, `DataTable`, `FilterBar`, `ConfirmDialog`, `AdminNotification`,
+  the new `adminService.ts` calls) have any test file. Only the 6 pre-existing frontend
+  test files run. The previous entry's "Tests:" line only actually enumerates backend
+  (Hypothesis/pytest) tests, so it isn't a false claim, but it reads easily as "tested"
+  for the whole feature — it isn't, on the frontend.
+- **Still open from the previous entry, unverified by this pass:** `livecap-admin-audit`
+  DynamoDB table + IAM still don't exist in Terraform (checked — no match for
+  `admin-audit`/`admin_audit` anywhere in `infrastructure/terraform/`), so Phase 2
+  mutating endpoints (disable/enable/reset-password/change-tier) will still fail against
+  real AWS today. Not attempted in this pass — out of scope for "run the tests," and
+  it's infra, which needs a human-reviewed plan first per the working agreement.
+- **Files touched:** `backend/tests/test_admin_auth_property.py` only (the env-leak
+  fix). No product code changed.
+
 ### 2026-07-24 — Kiro — Admin Panel v2 (multi-page, spec-driven)
 
 Commit `c11c6f6`. Implements the full admin panel as a multi-page SPA experience,

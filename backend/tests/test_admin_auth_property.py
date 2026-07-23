@@ -30,10 +30,18 @@ from fastapi.testclient import TestClient
 # Test client setup — module-level, no fixture dependency from Hypothesis
 # ---------------------------------------------------------------------------
 
-# Set env vars before importing the app so auth is enabled
-os.environ["ENABLE_AUTH"] = "true"
-os.environ["COGNITO_USER_POOL_ID"] = "us-east-1_TESTPOOL"
-os.environ["AWS_REGION"] = "us-east-1"
+# Set env vars before importing the app so auth is enabled. Saved so
+# teardown_module can restore the process environment -- otherwise these
+# leak into every test module collected afterward in the same pytest run
+# (e.g. AWS_REGION="us-east-1" breaks moto-backed DynamoDB lookups in
+# test_admin_service.py / test_stripe_billing.py / test_usage_quota_subscription.py).
+_ENV_OVERRIDES = {
+    "ENABLE_AUTH": "true",
+    "COGNITO_USER_POOL_ID": "us-east-1_TESTPOOL",
+    "AWS_REGION": "us-east-1",
+}
+_PREVIOUS_ENV = {key: os.environ.get(key) for key in _ENV_OVERRIDES}
+os.environ.update(_ENV_OVERRIDES)
 
 from app.config import get_settings  # noqa: E402
 from app.services import auth  # noqa: E402
@@ -46,6 +54,19 @@ from app.main import app  # noqa: E402
 
 # Create a single TestClient for all property tests (no dependency overrides)
 _client = TestClient(app, raise_server_exceptions=False)
+
+
+def teardown_module(module):
+    """Restore the process environment overridden above so later test
+    modules in the same pytest run see the original ENABLE_AUTH/AWS_REGION
+    values instead of this module's test-only overrides."""
+    for key, previous in _PREVIOUS_ENV.items():
+        if previous is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = previous
+    get_settings.cache_clear()
+    auth.clear_auth_client_cache()
 
 
 def _fresh_client():
