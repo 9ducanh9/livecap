@@ -14,11 +14,9 @@
 
 ## Current state (2026-07-24)
 
-**Live image:** `945f2cf-amd64` (Admin Panel v2 + the test-isolation fix below; `ENABLE_AUTH=true`,
-`ENABLE_STRIPE_BILLING=false`, `ENABLE_USAGE_QUOTA=false`, X-Ray off) — task definition
-`livecap-target-backend-dev:24`, deployed **outside Terraform** (manually registered), so
-local `terraform.tfvars` (`backend_image_tag=90a92c6-amd64`) is stale — see 2026-07-24 entry
-below before running `terraform apply` for anything, or it will roll the service back.
+**Live image:** `945f2cf-amd64` (Admin Panel v2 + audit table + Stripe billing; `ENABLE_AUTH=true`,
+`ENABLE_STRIPE_BILLING=true`, `ENABLE_USAGE_QUOTA=true`) — task definition
+`livecap-target-backend-dev:25`, deployed via Terraform. tfvars synced.
 **Live domain:** `https://livecap.logantai.com` (anonymous public access restored by Codex 2026-07-21)
 **Branch:** `Update` — diverged significantly from main. Many features committed, partially deployed.
 
@@ -69,6 +67,28 @@ below before running `terraform apply` for anything, or it will roll the service
 ---
 
 ## Change log (newest first)
+
+### 2026-07-24 — Kiro — Full admin panel production deploy + infra fixes
+
+Commit `2c0d40f`. Applied all pending infrastructure changes to make the admin panel
+fully functional on `https://livecap.logantai.com/admin`.
+
+- **terraform.tfvars fixed:** `backend_image_tag` updated from `90a92c6-amd64` to
+  `945f2cf-amd64` to match live state — eliminates the drift that would have rolled
+  back the service on any future apply.
+- **IAM policy applied:** `cloudwatch:DescribeAlarms` + `ce:GetCostAndUsage` + 
+  `dynamodb:PutItem/Query` on the audit table. System Health tab no longer shows
+  permission-denied warnings.
+- **DynamoDB `livecap-admin-audit-dev` table created** via Terraform. Phase 2 mutations
+  (disable/enable/reset-password/change-tier) now have their audit table and will work.
+- **Stripe billing enabled in ECS:** task definition rev `:25` has `ENABLE_STRIPE_BILLING=true`
+  + Stripe secrets injected from Secrets Manager. Revenue tab should now show live MRR.
+- **`ADMIN_AUDIT_TABLE_NAME` env var** injected into ECS container config.
+- **ECS service redeployed:** rev `:25` running (1/1), healthy.
+- **Frontend redeployed** (earlier in session): S3 sync + CloudFront invalidation
+  complete. Admin pages code-split and loading.
+- **Cognito:** `livecap@gmail.com` added to `admin` group — can access `/admin`.
+- **Preview env Terraform scaffolding** committed (not applied — no preview infra created).
 
 ### 2026-07-24 — Claude (Cowork) — Admin IAM fix for CloudWatch/Cost Explorer + found Terraform/AWS drift
 
