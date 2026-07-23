@@ -204,7 +204,7 @@ resource "aws_lambda_permission" "wake_backend_function" {
 }
 
 resource "aws_lambda_permission" "wake_backend_preview_function_url" {
-  count         = var.enable_wake_endpoint && var.enable_preview_frontend ? 1 : 0
+  count         = var.enable_wake_endpoint && var.enable_preview_frontend && !var.enable_preview_backend ? 1 : 0
   statement_id  = "AllowPreviewCloudFrontFunctionUrlInvoke"
   action        = "lambda:InvokeFunctionUrl"
   function_name = aws_lambda_function.wake_backend[0].function_name
@@ -213,7 +213,7 @@ resource "aws_lambda_permission" "wake_backend_preview_function_url" {
 }
 
 resource "aws_lambda_permission" "wake_backend_preview_function" {
-  count         = var.enable_wake_endpoint && var.enable_preview_frontend ? 1 : 0
+  count         = var.enable_wake_endpoint && var.enable_preview_frontend && !var.enable_preview_backend ? 1 : 0
   statement_id  = "AllowPreviewCloudFrontFunctionInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.wake_backend[0].function_name

@@ -4,6 +4,7 @@
 locals {
   preview_frontend_bucket_name = "${var.project_name}-frontend-preview-${var.environment}-${data.aws_caller_identity.current.account_id}"
   preview_frontend_origin_id   = "S3-${local.preview_frontend_bucket_name}"
+  preview_backend_origin_id    = "ALB-${aws_lb.target.name}-preview"
 }
 
 resource "aws_s3_bucket" "frontend_preview" {
@@ -74,7 +75,7 @@ resource "aws_cloudfront_distribution" "preview" {
 
   origin {
     domain_name = var.target_alb_ssl_certificate_arn != "" ? var.target_backend_domain_name : aws_lb.target.dns_name
-    origin_id   = local.target_backend_origin_id
+    origin_id   = local.preview_backend_origin_id
 
     dynamic "custom_header" {
       for_each = var.enable_waf ? [1] : []
@@ -83,6 +84,11 @@ resource "aws_cloudfront_distribution" "preview" {
         name  = "X-LiveCap-Origin-Verify"
         value = var.origin_verify_secret
       }
+    }
+
+    custom_header {
+      name  = "X-LiveCap-Environment"
+      value = "preview"
     }
 
     custom_origin_config {
@@ -94,12 +100,12 @@ resource "aws_cloudfront_distribution" "preview" {
   }
 
   dynamic "origin" {
-    for_each = var.enable_wake_endpoint ? [1] : []
+    for_each = var.enable_preview_backend && var.enable_wake_endpoint ? [1] : []
 
     content {
-      domain_name              = trimsuffix(trimprefix(aws_lambda_function_url.wake_backend[0].function_url, "https://"), "/")
-      origin_id                = "WakeLambdaFunctionUrl"
-      origin_access_control_id = aws_cloudfront_origin_access_control.wake_backend[0].id
+      domain_name              = trimsuffix(trimprefix(aws_lambda_function_url.preview_wake_backend[0].function_url, "https://"), "/")
+      origin_id                = "PreviewWakeLambdaFunctionUrl"
+      origin_access_control_id = aws_cloudfront_origin_access_control.preview_wake_backend[0].id
 
       custom_origin_config {
         http_port              = 80
@@ -137,13 +143,13 @@ resource "aws_cloudfront_distribution" "preview" {
   }
 
   dynamic "ordered_cache_behavior" {
-    for_each = var.enable_wake_endpoint ? [1] : []
+    for_each = var.enable_preview_backend && var.enable_wake_endpoint ? [1] : []
 
     content {
       path_pattern             = "/api/wake"
       allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
       cached_methods           = ["GET", "HEAD"]
-      target_origin_id         = "WakeLambdaFunctionUrl"
+      target_origin_id         = "PreviewWakeLambdaFunctionUrl"
       cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
       origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
       viewer_protocol_policy   = "redirect-to-https"
@@ -155,7 +161,7 @@ resource "aws_cloudfront_distribution" "preview" {
     path_pattern     = "/api/*"
     allowed_methods  = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
     cached_methods   = ["GET", "HEAD"]
-    target_origin_id = local.target_backend_origin_id
+    target_origin_id = local.preview_backend_origin_id
 
     forwarded_values {
       query_string = true
@@ -177,7 +183,7 @@ resource "aws_cloudfront_distribution" "preview" {
     path_pattern     = "/ws/*"
     allowed_methods  = ["GET", "HEAD", "OPTIONS"]
     cached_methods   = ["GET", "HEAD"]
-    target_origin_id = local.target_backend_origin_id
+    target_origin_id = local.preview_backend_origin_id
 
     forwarded_values {
       query_string = true

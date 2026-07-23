@@ -16,7 +16,7 @@
 variable "enable_stripe_billing" {
   description = "Enable Stripe subscription billing endpoints (checkout, portal, webhook)."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "stripe_secret_key" {

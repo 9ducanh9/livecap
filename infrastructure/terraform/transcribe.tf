@@ -16,7 +16,7 @@
 variable "enable_transcribe_custom_vocabulary" {
   description = "Create Amazon Transcribe custom vocabularies (vi + en) and pass their names to the backend task."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "transcribe_vocabulary_phrases_en" {

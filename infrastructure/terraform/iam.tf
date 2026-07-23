@@ -203,7 +203,10 @@ resource "aws_iam_role_policy" "ecs_idle_scale_down_access" {
         Action = [
           "ecs:UpdateService"
         ]
-        Resource = [aws_ecs_service.target_backend.id]
+        Resource = concat(
+          [aws_ecs_service.target_backend.id],
+          var.enable_preview_backend ? [aws_ecs_service.preview_backend[0].id] : [],
+        )
       }
     ]
   })
