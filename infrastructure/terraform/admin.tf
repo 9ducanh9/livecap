@@ -38,6 +38,20 @@ resource "aws_iam_role_policy" "admin_dashboard_access" {
             [aws_ecs_service.target_backend.id],
             var.enable_preview_backend ? [aws_ecs_service.preview_backend[0].id] : [],
           )
+        },
+        {
+          # DescribeAlarms is a list operation with no per-alarm request
+          # target, so it does not support resource-level scoping.
+          Effect   = "Allow"
+          Action   = ["cloudwatch:DescribeAlarms"]
+          Resource = "*"
+        },
+        {
+          # Cost Explorer does not support resource-level IAM permissions;
+          # AWS requires calls in us-east-1 regardless of deployment region.
+          Effect   = "Allow"
+          Action   = ["ce:GetCostAndUsage"]
+          Resource = "*"
         }
       ],
       var.enable_usage_quota ? [

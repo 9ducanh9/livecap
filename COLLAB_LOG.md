@@ -12,9 +12,13 @@
 
 ---
 
-## Current state (2026-07-23)
+## Current state (2026-07-24)
 
-**Live image:** `90a92c6-amd64` (stable, `ENABLE_AUTH=false`, X-Ray disabled)
+**Live image:** `945f2cf-amd64` (Admin Panel v2 + the test-isolation fix below; `ENABLE_AUTH=true`,
+`ENABLE_STRIPE_BILLING=false`, `ENABLE_USAGE_QUOTA=false`, X-Ray off) — task definition
+`livecap-target-backend-dev:24`, deployed **outside Terraform** (manually registered), so
+local `terraform.tfvars` (`backend_image_tag=90a92c6-amd64`) is stale — see 2026-07-24 entry
+below before running `terraform apply` for anything, or it will roll the service back.
 **Live domain:** `https://livecap.logantai.com` (anonymous public access restored by Codex 2026-07-21)
 **Branch:** `Update` — diverged significantly from main. Many features committed, partially deployed.
 
@@ -65,6 +69,43 @@
 ---
 
 ## Change log (newest first)
+
+### 2026-07-24 — Claude (Cowork) — Admin IAM fix for CloudWatch/Cost Explorer + found Terraform/AWS drift
+
+Prompted by the user hitting real `/admin/system` and `/admin/revenue` warnings on the
+live, freshly-deployed `945f2cf-amd64` image.
+
+- **Fixed:** `infrastructure/terraform/admin.tf` — `aws_iam_role_policy.admin_dashboard_access`
+  was missing `cloudwatch:DescribeAlarms` and `ce:GetCostAndUsage` (the exact gap Kiro's
+  Admin Panel v2 entry already flagged as a human action item). Confirmed the live
+  denial via the task role's actual attached policy (`aws iam get-role-policy
+  --role-name livecap-ecs-task-dev --policy-name livecap-admin-dashboard-dev`) before
+  fixing — only had Cognito + `ecs:DescribeServices` + `dynamodb:Scan`. Both new actions
+  use `Resource = "*"`: DescribeAlarms is a list call with no per-request target, and
+  Cost Explorer does not support resource-level IAM at all. `terraform fmt`/`validate`
+  clean; `terraform plan` shows only this policy changing (0 to add, 2 to change — see
+  the drift note below for the second change) — safe to apply.
+- **Not fixed — needs a human decision, not a Terraform change:** the Revenue tab's
+  "STRIPE_SECRET_KEY is not configured" warning. Confirmed via
+  `aws ecs describe-task-definition` that the live task def has
+  `ENABLE_STRIPE_BILLING=false` and an empty `secrets` array — the Secrets Manager
+  entries exist (per earlier entries) but the currently-deployed revision simply wasn't
+  built with `enable_stripe_billing=true`. Set it in your local `terraform.tfvars` and
+  re-apply if you want Revenue live; not something to fix in code.
+- **Found real Terraform/AWS drift — read before your next `apply`:** local
+  `terraform.tfvars` has `backend_image_tag = "90a92c6-amd64"`, but
+  `livecap-target-service-dev` is actually running task definition revision `:24`
+  (image `945f2cf-amd64` — Admin Panel v2), registered **outside Terraform** (manual
+  `aws ecs register-task-definition` + `update-service`, not `terraform apply`).
+  `terraform plan` (full, untargeted — confirmed this isn't a `-target` artifact)
+  shows exactly 2 changes: the IAM fix above, plus `aws_ecs_service.target_backend`
+  rolling `task_definition` from `:24` back to `:23`. Applying as-is would silently
+  revert the live service to the older image. **Update `backend_image_tag` to
+  `945f2cf-amd64` in `terraform.tfvars` first**, re-plan to confirm only the IAM change
+  remains, then apply.
+- Read-only throughout: `aws sts get-caller-identity`, `ecs list-clusters/list-services/
+  describe-services/describe-task-definition`, `iam list-role-policies/get-role-policy`,
+  `terraform plan` (no `-out`, no apply). No secrets printed this time.
 
 ### 2026-07-24 — Claude (Cowork) — Verified Admin Panel v2 test claims + fixed test-isolation bug
 
