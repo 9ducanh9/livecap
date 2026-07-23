@@ -61,6 +61,15 @@ TIERS: dict[str, TierLimits] = {
         max_minutes_per_month=999_999,  # unlimited
         meeting_notes_enabled=True,
     ),
+    "unlimited": TierLimits(
+        # Manually-assigned tier for internal/admin accounts — not sold, no
+        # Stripe price. Every cap set to the same "no real limit" sentinel
+        # the frontend already treats as infinite (> 999_000).
+        max_sessions_per_month=999_999,
+        max_minutes_per_session=999_999,
+        max_minutes_per_month=999_999,
+        meeting_notes_enabled=True,
+    ),
 }
 
 DEFAULT_TIER = "free"

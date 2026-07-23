@@ -174,7 +174,7 @@ export default function UsagePanel() {
 
       {/* Per-session limit */}
       <p className="mt-3 text-[11px] text-ink-muted">
-        Max {usage.limits.max_minutes_per_session} min per session
+        Max {usage.limits.max_minutes_per_session > 999_000 ? '∞' : usage.limits.max_minutes_per_session} min per session
         {!usage.limits.meeting_notes_enabled && ' • AI notes: Pro only'}
       </p>
     </div>
