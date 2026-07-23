@@ -70,7 +70,7 @@ flowchart TB
     Task -->|private-subnet egress| NATB
     NATA --> Transcribe
     NATB --> Translate
-    ECR -.->|pull immutable 84c95f5-amd64 image| Task
+    ECR -.->|pull immutable 945f2cf-amd64 image| Task
     Task -->|exported TXT only| Transcript
     Task -.->|structured application logs| CW
     ALB -.->|traffic and health metrics| CW
@@ -145,7 +145,7 @@ task replacement.
 | Task networking | Two private subnets; `assign_public_ip=false` |
 | NAT Gateways | Two (one per AZ); multi-AZ egress, no single-AZ dependency |
 | ECS capacity | Desired 0–1 (`backend_max_capacity=1`); a shared DynamoDB session registry is already live as the precondition for raising this, see `docs/multi-task-runbook.md` |
-| Backend image | `945f2cf-amd64` (immutable Git-SHA ECR tag), task definition `livecap-target-backend-dev:26` |
+| Backend image | `945f2cf-amd64` (immutable Git-SHA ECR tag), task definition `livecap-target-backend-dev:27` |
 | Authentication | Amazon Cognito User Pool (email + Google OAuth); custom login UI; **enforced by default** (`ENABLE_AUTH=true`) |
 | AI/ML services | Transcribe Streaming (+ custom vocabulary), Translate, Bedrock (Claude meeting notes), Polly (TTS), Comprehend (sentiment/keywords) |
 | Session store | DynamoDB `livecap-sessions-dev` (shared across tasks, TTL) |
@@ -160,16 +160,20 @@ task replacement.
 | Security detection | VPC Flow Logs (ALL traffic), Amazon GuardDuty (HIGH → SNS), AWS Security Hub (Foundational Best Practices) |
 | Cost guard | AWS Budget $50/month |
 | CI | Backend, Frontend, Terraform, and Secret scan jobs pass; CI does not deploy |
+| CD | Full deploy pipeline on push to main: CI gate → build image → Terraform plan+apply → ECS wait stable → health check (auto-rollback on failure) → frontend S3 sync → CloudFront invalidation |
 
 ## AWS Well-Architected Framework Alignment
 
 **Operational Excellence** — The entire environment is defined in Terraform;
 every change goes through a reviewed `plan` before `apply`, and no component is
 deployed by hand. Backend images use immutable Git-SHA tags in ECR, so a
-rollback is a pointer change rather than a rebuild. CloudWatch Logs, a
-dashboard, Container Insights, and X-Ray tracing back day-to-day operation, and
-six CloudWatch alarms notify an SNS topic. New capabilities ship behind
-Terraform-controlled feature flags that default to off.
+rollback is a pointer change rather than a rebuild. A full CD pipeline on push
+to main runs CI tests, builds and pushes the image, applies Terraform, waits
+for ECS stability, health-checks the deployment, and auto-rolls back on
+failure. CloudWatch Logs, a dashboard, Container Insights, and X-Ray tracing
+back day-to-day operation, and ten CloudWatch alarms notify an SNS topic. New
+capabilities ship behind Terraform-controlled feature flags that default to
+off.
 
 **Security** — Two independent WAF layers (CloudFront and the regional ALB)
 enforce managed block rules and rate limiting, backed by GuardDuty, Security
