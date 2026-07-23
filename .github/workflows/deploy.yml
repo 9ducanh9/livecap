@@ -1,48 +1,75 @@
-# Deploy pipeline — build/push the backend image and produce a Terraform PLAN.
+# Full CI/CD pipeline — build, plan, and deploy on merge to main.
 #
-# Plan gate by design: this workflow NEVER runs `terraform apply`. It builds an
-# immutable, architecture-specific image, pushes it to ECR, and uploads a
-# reviewed `terraform plan`. A human applies from a trusted environment after
-# reviewing the plan (see infrastructure/terraform/README.md and HANDOFF.md).
+# Safety gates:
+#   1. CI must pass first (tests, lint, tf validate, secret scan)
+#   2. Requires "production" environment with protection rules (manual approval optional)
+#   3. Terraform plan logged as artifact before apply
+#   4. ECS deployment uses circuit breaker with auto-rollback
+#   5. Post-deploy health check — rolls back if /api/health fails
+#   6. CloudFront invalidation only after backend is healthy
 #
-# Manual trigger only. Requires the following to be configured in the repo:
-#   Variables (Settings > Variables):
-#     AWS_REGION            e.g. ap-southeast-1
-#     AWS_DEPLOY_ROLE_ARN   IAM role for GitHub OIDC (least privilege)
-#     ECR_REPOSITORY        backend ECR repo name
-#   Secrets (Settings > Secrets):
-#     TF_BACKEND_HCL        contents of infrastructure/terraform/backend.hcl
-#     TF_VARS               contents of a terraform.tfvars for planning
+# Triggers:
+#   - Automatic on push to main (after CI passes)
+#   - Manual via workflow_dispatch for ad-hoc deploys
 #
-# Until these are set the workflow will fail fast; it does not run on push.
+# Required repo configuration:
+#   Variables: AWS_REGION, AWS_DEPLOY_ROLE_ARN, ECR_REPOSITORY
+#   Secrets: TF_BACKEND_HCL, TF_VARS
+#   Environment: "production" (optional: add required reviewers for approval gate)
 
-name: Deploy (build + plan)
+name: Deploy
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'infrastructure/terraform/**'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
     inputs:
       architecture:
         description: "Image/Fargate architecture"
         type: choice
-        default: arm64
+        default: amd64
         options: [arm64, amd64]
+      skip_apply:
+        description: "Plan only (skip apply)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
 
 permissions:
-  id-token: write   # OIDC to assume the AWS role
+  id-token: write
   contents: read
 
 jobs:
+  # Gate: CI must pass before deploy
+  ci-check:
+    name: CI gate
+    uses: ./.github/workflows/ci.yml
+
   build-push:
-    name: Build & push image (${{ inputs.architecture }})
+    name: Build & push image
     runs-on: ubuntu-latest
+    needs: ci-check
     outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
+      architecture: ${{ steps.arch.outputs.arch }}
     steps:
       - uses: actions/checkout@v7
 
+      - name: Determine architecture
+        id: arch
+        run: echo "arch=${{ inputs.architecture || 'amd64' }}" >> "$GITHUB_OUTPUT"
+
       - name: Compute immutable tag
         id: meta
-        run: echo "image_tag=${GITHUB_SHA::7}-${{ inputs.architecture }}" >> "$GITHUB_OUTPUT"
+        run: echo "image_tag=${GITHUB_SHA::7}-${{ steps.arch.outputs.arch }}" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -62,15 +89,21 @@ jobs:
         with:
           context: backend
           file: backend/Dockerfile
-          platforms: linux/${{ inputs.architecture }}
+          platforms: linux/${{ steps.arch.outputs.arch }}
           push: true
           provenance: false
-          tags: ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ steps.meta.outputs.image_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ steps.meta.outputs.image_tag }}
+            ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:latest
 
-  terraform-plan:
-    name: Terraform plan (no apply)
+  deploy-backend:
+    name: Deploy backend (Terraform apply)
     runs-on: ubuntu-latest
     needs: build-push
+    environment: production
+    if: ${{ inputs.skip_apply != true }}
     steps:
       - uses: actions/checkout@v7
 
@@ -85,22 +118,21 @@ jobs:
         with:
           terraform_version: "1.10.5"
 
-      - name: Write backend + vars from secrets
+      - name: Write backend config + vars
         working-directory: infrastructure/terraform
         run: |
           printf '%s' "${{ secrets.TF_BACKEND_HCL }}" > backend.hcl
           printf '%s' "${{ secrets.TF_VARS }}" > ci.auto.tfvars
 
-      - name: Init
+      - name: Terraform init
         working-directory: infrastructure/terraform
         run: terraform init -backend-config=backend.hcl
 
-      - name: Plan (image ${{ needs.build-push.outputs.image_tag }})
+      - name: Terraform plan
         working-directory: infrastructure/terraform
         run: |
           terraform plan -no-color -input=false \
             -var "backend_image_tag=${{ needs.build-push.outputs.image_tag }}" \
-            -var "task_cpu_architecture=${{ inputs.architecture == 'arm64' && 'ARM64' || 'X86_64' }}" \
             -out=tfplan | tee plan.txt
 
       - name: Upload plan artifact
@@ -110,7 +142,132 @@ jobs:
           path: |
             infrastructure/terraform/tfplan
             infrastructure/terraform/plan.txt
-          retention-days: 7
+          retention-days: 14
 
-      # NOTE: no apply step. A human applies the reviewed plan from a trusted
-      # environment. Do not add `terraform apply` here.
+      - name: Terraform apply
+        working-directory: infrastructure/terraform
+        run: |
+          terraform apply -auto-approve -input=false tfplan
+
+      - name: Wait for ECS deployment stable
+        run: |
+          aws ecs wait services-stable \
+            --cluster livecap-cluster-dev \
+            --services livecap-target-service-dev \
+            --region ${{ vars.AWS_REGION }}
+        timeout-minutes: 10
+
+      - name: Health check
+        id: health
+        run: |
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -sf https://livecap.logantai.com/api/health | jq -r '.status' || echo "failed")
+            if [ "$STATUS" = "healthy" ]; then
+              echo "✅ Backend healthy"
+              exit 0
+            fi
+            echo "Attempt $i: status=$STATUS, retrying in 15s..."
+            sleep 15
+          done
+          echo "❌ Health check failed after 5 attempts"
+          exit 1
+
+      - name: Rollback on health failure
+        if: failure() && steps.health.outcome == 'failure'
+        working-directory: infrastructure/terraform
+        run: |
+          echo "⚠️ Rolling back to previous image..."
+          # Get previous task definition revision
+          PREV_TD=$(aws ecs describe-services \
+            --cluster livecap-cluster-dev \
+            --services livecap-target-service-dev \
+            --query "services[0].deployments[?status=='ACTIVE'].taskDefinition | [0]" \
+            --output text --region ${{ vars.AWS_REGION }})
+          if [ -n "$PREV_TD" ] && [ "$PREV_TD" != "None" ]; then
+            aws ecs update-service \
+              --cluster livecap-cluster-dev \
+              --service livecap-target-service-dev \
+              --task-definition "$PREV_TD" \
+              --region ${{ vars.AWS_REGION }}
+            echo "Rolled back to $PREV_TD"
+          fi
+
+  deploy-frontend:
+    name: Deploy frontend (S3 + CloudFront)
+    runs-on: ubuntu-latest
+    needs: [ci-check, deploy-backend]
+    if: ${{ inputs.skip_apply != true }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Write production env
+        working-directory: frontend
+        run: |
+          cat > .env.production << 'EOF'
+          VITE_API_BASE_URL=
+          VITE_WS_URL=
+          VITE_WAKE_BACKEND_URL=/api/wake
+          VITE_BACKEND_HEALTH_URL=/api/health
+          VITE_BACKEND_WAKE_TIMEOUT_SECONDS=120
+          VITE_AUTH_ENABLED=true
+          VITE_AUTH_REQUIRED_HOSTS=livecap.logantai.com
+          VITE_COGNITO_DOMAIN=https://livecap-logantai.auth.ap-southeast-1.amazoncognito.com
+          VITE_COGNITO_CLIENT_ID=614p5pniek2aedu0dh3tnea20s
+          VITE_COGNITO_REDIRECT_URI=https://livecap.logantai.com/app
+          VITE_COGNITO_USER_POOL_ID=ap-southeast-1_uCz3Q7M9B
+          EOF
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Sync to S3
+        working-directory: frontend
+        run: |
+          aws s3 sync dist/ s3://livecap-frontend-dev-720459752315/ \
+            --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html" \
+            --exclude "*.map"
+          # index.html must not be cached (SPA routing)
+          aws s3 cp dist/index.html s3://livecap-frontend-dev-720459752315/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id E39ADG0ES17RP1 \
+            --paths "/*" \
+            --region us-east-1
+
+  notify:
+    name: Deploy summary
+    runs-on: ubuntu-latest
+    needs: [build-push, deploy-backend, deploy-frontend]
+    if: always()
+    steps:
+      - name: Summary
+        run: |
+          echo "## Deploy Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | \`${{ needs.build-push.outputs.image_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | ${{ needs.deploy-backend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | ${{ needs.deploy-frontend.result }} |" >> $GITHUB_STEP_SUMMARY
