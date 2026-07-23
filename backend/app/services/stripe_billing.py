@@ -92,6 +92,7 @@ def create_checkout_session(user_id: str, email: Optional[str], tier: str) -> st
         success_url=f"{base_url}/app?billing=success",
         cancel_url=f"{base_url}/app?billing=cancelled",
         metadata={"cognito_user_id": user_id, "livecap_tier": tier},
+        allow_promotion_codes=True,
     )
     return session["url"]
 
