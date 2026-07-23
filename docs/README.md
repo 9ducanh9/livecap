@@ -15,7 +15,8 @@ evidence. Current deployment facts belong in the as-deployed document and
 | [`cost-optimization.md`](cost-optimization.md) | Cost controls and optional efficiency improvements |
 | [`graviton-and-cicd.md`](graviton-and-cicd.md) | Arm64 option and validation-only CI/CD plan gate |
 | [`run-local.md`](run-local.md) | Local backend, frontend, and opt-in meeting-notes testing |
-| [`frontend-environments.md`](frontend-environments.md) | Superseded static frontend cutover notes; do not use for new runtime deployments |
+| [`frontend-runtime-environments.md`](frontend-runtime-environments.md) | Isolated Stable (`main`) / Preview (`Update`) frontend and backend runtime split |
+| [`architecture-summary-6pillars.md`](architecture-summary-6pillars.md) | Full resource inventory mapped to the AWS Well-Architected 6 pillars (Vietnamese) |
 | [`livecap-target-architecture.png`](livecap-target-architecture.png) | Custom-VPC architecture diagram used for the deployed blue/green cutover |
 | [`livecap-landing.png`](livecap-landing.png) | Production landing-page evidence |
 | [`livecap-dashboard.png`](livecap-dashboard.png) | Current production caption-workspace UI |

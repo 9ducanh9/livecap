@@ -20,20 +20,27 @@ complete; that is expected during scale-to-zero.
 
 1. **Landing page:** Explain that LiveCap provides real-time bilingual meeting
    captions and that the page introduces the product and runtime flow.
-2. **Open workspace:** Enter `/app` and confirm the header reports `READY`.
-3. **Start session:** Select **Start session**. The UI reports `WAKING` while the
+2. **Sign in:** Cognito authentication is enforced by default now
+   (`ENABLE_AUTH=true`). Select **Sign in**, use email/password or Google, and
+   land back on `/app`. `UsagePanel` shows the account's tier (Free/Pro/
+   Business) and remaining sessions/minutes for the month.
+3. **Open workspace:** Enter `/app` and confirm the header reports `READY`.
+4. **Start session:** Select **Start session**. The UI reports `WAKING` while the
    Lambda sets the ECS service desired count to one and the frontend polls
    `/api/health`. Allow microphone access when prompted.
-4. **Speak:** Use a sentence such as:
+5. **Speak:** Use a sentence such as:
    `Live captions are working correctly for the final project demonstration.`
-5. **Verify captions:** Wait for a finalized row. The original English text and
+6. **Verify captions:** Wait for a finalized row. The original English text and
    Vietnamese translation should appear side by side. Partial text is shown in
    the live area but is not appended to the final transcript.
-6. **Stop:** Select **Stop session** and confirm the session returns to an idle
+7. **Stop:** Select **Stop session** and confirm the session returns to an idle
    state.
-7. **Download:** Select **Download text**. LiveCap stores only the finalized
+8. **Download:** Select **Download text**. LiveCap stores only the finalized
    transcript in the private transcript bucket and downloads the time-limited
    TXT export.
+9. **(Optional) Admin dashboard:** For an account in the Cognito `admin`
+   group, open `/admin` to show user management, usage analytics, revenue,
+   and system health.
 
 ## Architecture Talking Points
 
@@ -86,3 +93,10 @@ On 2026-07-14, the production path passed wake `0 -> 1`, health polling, real
 session end, S3 export, presigned TXT download, idle `1 -> 0`, and ECS task
 replacement. GitHub CI also passed its Backend, Frontend, Terraform, and Secret
 scan jobs.
+
+The wake/idle/health-polling behavior above was spot-checked again live on
+2026-07-24 and still holds. The sign-in step, usage quotas, billing, and admin
+dashboard added since 2026-07-14 have **not** had this same full walkthrough
+re-verified end to end on production — the closest to it is the 2026-07-23
+Cognito sign-in → session → usage → billing manual test in `COLLAB_LOG.md`
+(local, gitignored), which found the billing UI needed a redeploy at the time.

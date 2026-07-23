@@ -34,9 +34,14 @@ maintained in [`COLLAB_LOG.md`](COLLAB_LOG.md).
 - **Meeting notes** are generated only when a participant explicitly selects
   **Create meeting notes** after a session. The Bedrock-backed endpoint remains
   disabled by default through `ENABLE_MEETING_SUMMARY=false`.
-- **Accounts and transcript history** are enabled on the custom-domain target
-  environment. Cognito Hosted UI authenticates the user, DynamoDB stores the
+- **Accounts and transcript history** are live on the custom-domain target
+  environment and enforced by default (`ENABLE_AUTH=true`). Cognito Hosted UI
+  (email + Google OAuth) authenticates the user, DynamoDB stores the
   user-owned metadata, and private TXT exports remain in S3 for 14 days.
+- **Per-user usage quotas, Stripe subscription billing (Pro/Business, test
+  mode), and an admin dashboard** (`/admin`, gated on Cognito group
+  membership) are live. See [`docs/upgrade-roadmap.md`](docs/upgrade-roadmap.md)
+  for current capability status.
 - Optional reliability, cost, and transcription improvements remain
   feature-gated until their individual rollout gates are approved.
 
@@ -69,26 +74,32 @@ state before microphone capture begins.
 - TXT transcript export to private S3 through a time-limited presigned URL.
 - Wake-on-demand ECS startup and five-minute idle scale-down.
 - No raw audio storage.
-- Optional Cognito sign-in and owner-scoped transcript history (disabled by
-  default until its reviewed infrastructure rollout).
+- Cognito sign-in and owner-scoped transcript history (enabled by default on
+  the target environment).
+- Per-user usage quotas (Free/Pro/Business tiers) and Stripe subscription
+  billing (test mode).
+- Admin dashboard (`/admin`) for user management, usage analytics, revenue,
+  and system health — gated on Cognito group membership.
 
-## Verified Deployment Baseline
+## Current Deployment Snapshot
 
-The current branch and live AWS path were verified on 2026-07-14:
+Facts below were checked directly against live AWS on 2026-07-24 (not just
+inferred from Terraform config — `aws ecs describe-services`,
+`describe-task-definition`, `ec2 describe-nat-gateways`, etc.). This is a
+point-in-time snapshot, not a formal release verification; for the
+authoritative current state at any given moment, re-check AWS directly or see
+`COLLAB_LOG.md` (local, gitignored working log).
 
-| Area | Evidence |
+| Area | State |
 |---|---|
-| Backend | 208 tests pass on Python 3.11 |
-| Frontend | 14 tests pass; TypeScript and Vite production build pass |
-| Terraform | Formatting, `init -backend=false`, and validation pass |
-| Secret hygiene | Gitleaks passes; no tracked tfstate, tfvars, backend config, or real `.env` files |
-| GitHub CI | Backend, Frontend, Terraform, and Secret scan jobs pass in [run 29290866973](https://github.com/9ducanh9/livecap/actions/runs/29290866973) |
-| Backend compute | ECS service `livecap-target-service-dev`, task definition `livecap-target-backend-dev:3` |
-| Container | Immutable ECR image `84c95f5-amd64` |
-| Network | Custom VPC, two public and two private subnets across `ap-southeast-1a` and `ap-southeast-1b`; Fargate has no public IP |
+| Backend | 391/400 tests pass on this checkout (Python 3.14 `.venv`, project targets 3.11); the 9 failures are a local-`.env`-only artifact (`ENABLE_AUTH=true` locally), not a product bug |
+| Frontend | `tsc --noEmit` and `npm run build` clean; 23/24 `npm test` pass (1 local-`.env.local`-only artifact); no test coverage yet for the admin panel UI |
+| Terraform | `fmt`, `init -backend=false`, and `validate` pass |
+| Backend compute | ECS service `livecap-target-service-dev`, task definition `livecap-target-backend-dev:26` |
+| Container | ECR image `945f2cf-amd64` (immutable Git-SHA tag) — note: 2 unreleased commits (`99bf090`, `131d391`) are not in this image yet |
+| Network | Custom VPC, two public and two private subnets across `ap-southeast-1a` and `ap-southeast-1b`; Fargate has no public IP; **two** NAT Gateways (multi-AZ egress) |
 | Edge security | CloudFront WAF and ALB WAF use blocking managed and rate-based rules |
-| Scale behavior | Wake `0 -> 1`, idle `1 -> 0`, and ECS task replacement were verified |
-| Production flow | Health polling, WSS, transcription, translation, heartbeat, stop, export, and download pass |
+| Scale behavior | Verified live this session: wake `0 -> 1` (~60-70s) and the documented `/api/health` 503-during-cold-start both confirmed by direct testing |
 | Retention | Transcript objects and Terraform-managed ECS/Lambda/WAF logs: 14 days; the direct Watchtower log group still needs a retention policy |
 
 ## Architecture
@@ -105,7 +116,7 @@ flowchart LR
     ALB -->|Target group port 8000| Task["Fargate task in private subnet"]
     ECS --> Task
     ECR["ECR immutable image"] -.-> Task
-    Task -->|private egress| NAT["NAT Gateway"]
+    Task -->|private egress| NAT["NAT Gateways x2 (multi-AZ)"]
     NAT --> Transcribe["Amazon Transcribe"]
     NAT --> Translate["Amazon Translate"]
     Task -->|finalized TXT only| Transcript["Private S3 transcript bucket"]
@@ -118,9 +129,11 @@ origin, and routes `/api/wake` to an IAM-protected Lambda Function URL signed by
 CloudFront Origin Access Control.
 
 The ALB spans two public subnets. The ECS Fargate task can be placed in either
-of two private subnets with `assign_public_ip=false`; outbound AWS service calls
-use one NAT Gateway in `ap-southeast-1a`. The service scales between zero and
-one task because its active-session registry remains process-local.
+of two private subnets with `assign_public_ip=false`; outbound AWS service
+calls use one of two NAT Gateways (one per AZ, `enable_multi_az_nat=true`).
+The service is currently capped at one task (`backend_max_capacity=1`); a
+shared DynamoDB session registry is already live as the precondition for
+raising that cap (see `docs/multi-task-runbook.md`).
 
 See [As-Deployed Architecture](docs/as-deployed-architecture.md) for resource
 placement, request and response paths, wake and idle flows, availability
@@ -270,10 +283,11 @@ The authoritative infrastructure workflow is
   usage.
 - Scale-to-zero reduces idle Fargate compute, but ALB, NAT Gateway, and WAF
   retain fixed or baseline cost while provisioned.
-- Maximum task count remains one. ECS self-heals a failed task, but this is not
-  active-active high availability and an in-flight WebSocket session is lost.
-- One NAT Gateway is a cost-sensitive single-AZ tradeoff for private task
-  egress.
+- Maximum task count remains one (`backend_max_capacity=1`). ECS self-heals a
+  failed task, but this is not active-active high availability and an
+  in-flight WebSocket session is lost.
+- Two NAT Gateways (one per AZ) provide multi-AZ egress for private tasks —
+  a deliberate cost tradeoff over a single shared NAT Gateway.
 - ECR scanning remains a release gate; inherited operating-system findings must
   be reviewed whenever the pinned base image is rebuilt.
 - The `$50` AWS Budget exists, but a notification subscriber is not currently
@@ -289,6 +303,8 @@ The authoritative infrastructure workflow is
 - [As-deployed architecture](docs/as-deployed-architecture.md)
 - [Upgrade roadmap](docs/upgrade-roadmap.md)
 - [Cognito and transcript-history rollout](docs/cognito-history-rollout.md)
+- [Stable/preview runtime environments](docs/frontend-runtime-environments.md)
+- [Architecture summary — 6 pillars](docs/architecture-summary-6pillars.md)
 - [Infrastructure overview](infrastructure/README.md)
 - [Terraform source of truth](infrastructure/terraform/README.md)
 - [Update branch collaboration log](COLLAB_LOG.md)
