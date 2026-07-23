@@ -40,7 +40,7 @@ DEFAULT_IDLE_SCALE_DOWN_GRACE_SECONDS = 300
 # Meeting summary (Amazon Bedrock). Disabled by default so the feature is
 # strictly opt-in and never adds Bedrock cost unless explicitly enabled.
 DEFAULT_ENABLE_MEETING_SUMMARY = False
-DEFAULT_BEDROCK_MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0"
+DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 # Minimum finalized segments before a summary is worth generating.
 DEFAULT_SUMMARY_MIN_SEGMENTS = 3
 # Upper bound on transcript characters sent to Bedrock (cost/latency guard).

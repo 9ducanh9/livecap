@@ -600,7 +600,7 @@ variable "enable_meeting_summary" {
 variable "bedrock_model_id" {
   description = "Amazon Bedrock model ID used for meeting summaries (Anthropic Claude messages API)."
   type        = string
-  default     = "anthropic.claude-3-haiku-20240307-v1:0"
+  default     = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 }
 
 variable "bedrock_region" {
