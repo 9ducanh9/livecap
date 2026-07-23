@@ -9,7 +9,7 @@ import SummaryPanel from './SummaryPanel';
 import EnrichmentPanel from './EnrichmentPanel';
 import TranscriptHistoryPanel from './TranscriptHistoryPanel';
 import UsagePanel from './UsagePanel';
-import { isAuthConfigured } from '../services/authService';
+import { isAuthConfigured, isAdminUser } from '../services/authService';
 import {
   buildSummaryText,
   generateMeetingSummary,
@@ -28,6 +28,7 @@ import {
   LoaderCircle,
   RefreshCw,
   Sparkles,
+  Shield,
 } from 'lucide-react';
 
 const DEFAULT_MAX_SESSION_SECONDS = 1_800;
@@ -234,6 +235,15 @@ export default function DashboardPage() {
               <span className="font-instrument text-xl font-bold tracking-[-0.08em] text-ink">LIVECAP</span>
               <StatusDot status={statusCopy.tone} label={statusCopy.label} />
             </div>
+            {isAdminUser() && (
+              <a
+                href="/admin"
+                className="flex items-center gap-2 pl-5 py-2 group transition-colors"
+              >
+                <Shield className="w-4 h-4 text-ink/45 group-hover:text-emerald-pro transition-colors" />
+                <span className="text-sm font-semibold text-ink/55 group-hover:text-ink transition-colors">Admin</span>
+              </a>
+            )}
           </div>
 
           {/* Right: metrics */}
