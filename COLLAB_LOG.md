@@ -66,6 +66,39 @@
 
 ## Change log (newest first)
 
+### 2026-07-24 — Kiro — Admin Panel v2 (multi-page, spec-driven)
+
+Commit `c11c6f6`. Implements the full admin panel as a multi-page SPA experience,
+spec-driven via `.kiro/specs/admin-panel/` (requirements, design, tasks — all 46 tasks completed).
+
+- **Phase 1 — User Management:** Paginated user listing with search/filter
+  (`GET /api/admin/users`), user detail view (`GET /api/admin/users/{id}`).
+  Frontend: AdminUsersPage with StatsCards, DataTable, FilterBar, AdminUserDetailPage.
+- **Phase 2 — Mutations + Audit:** disable/enable/reset-password/change-tier
+  endpoints with audit-first semantics (audit log write before returning success,
+  rollback on audit failure). DynamoDB table `livecap-admin-audit` required
+  (⚠ NOT yet created in Terraform — human action needed).
+- **Phase 3 — Usage Analytics:** Monthly aggregation, top-10 users, tier
+  distribution (`GET /api/admin/usage`, `GET /api/admin/usage/top-users`).
+  Frontend: AdminUsagePage with CSS bar charts, date range filter (90-day limit).
+- **Phase 4 — Revenue + System Health:** Stripe MRR from live Subscriptions API
+  (`GET /api/admin/revenue`), ECS/CloudWatch/Cost Explorer health snapshot
+  (`GET /api/admin/system`). Frontend: AdminRevenuePage, AdminSystemPage.
+- **Frontend architecture:** React Router for `/admin/*`, lazy-loaded sub-pages
+  (code splitting), AdminShell sidebar layout, AdminGuard (JWT `cognito:groups`
+  check). Shared components: StatsCard, DataTable, FilterBar, ConfirmDialog,
+  AdminNotification.
+- **Tests:** 13 property-based (Hypothesis, 100 examples each) covering pagination,
+  filtering, tier validation, Stripe warnings, audit completeness, audit rollback,
+  analytics aggregation, date range filtering, top-user ranking, tier distribution
+  consistency, graceful degradation, admin auth gate. Plus ~50 unit/integration tests.
+- **Human actions needed:**
+  1. Create DynamoDB table `livecap-admin-audit` (pk: `TARGET#{username}`, sk: `TS#{timestamp}#{uuid}`, TTL attribute) before Phase 2 mutations can work in production.
+  2. Add IAM permissions for Cost Explorer (`ce:GetCostAndUsage` in us-east-1), CloudWatch (`cloudwatch:DescribeAlarms`), and the audit DynamoDB table.
+  3. Deploy new image + frontend build.
+
+---
+
 ### 2026-07-23 — Claude (Cowork) — Admin dashboard (GET /api/admin/overview + /admin page)
 
 New, not yet deployed. Off by default in the sense that it needs a human to add
