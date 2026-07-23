@@ -1,5 +1,10 @@
 # Cognito and Transcript History Rollout
 
+**Current status: live and enforced by default** (`enable_cognito_auth=true`,
+`ENABLE_AUTH=true`) on the target environment. This runbook remains the
+reference for the *procedure* — rollout steps, verification checklist, and
+rollback — not a "not yet done" status page.
+
 This runbook enables the optional product-account feature introduced in C5. It
 does not store raw audio. Cognito identifies the browser user, DynamoDB stores
 only owner-scoped export metadata, and the transcript body remains a private

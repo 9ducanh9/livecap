@@ -3,8 +3,12 @@
 This document describes the AWS environment serving the public LiveCap site at
 [livecap.logantai.com](https://livecap.logantai.com/).
 
-Verified on 2026-07-14 in `ap-southeast-1`. CloudFront and its WAF are global;
-the CloudFront WAF is managed through the required `us-east-1` provider scope.
+Originally verified 2026-07-14 in `ap-southeast-1`; the "Verified Current
+State" table below was refreshed 2026-07-24 against live AWS (not just
+Terraform config) after several rounds of feature work (Cognito auth-by-
+default, usage quotas, Stripe billing, admin panel). CloudFront and its WAF
+are global; the CloudFront WAF is managed through the required `us-east-1`
+provider scope.
 
 ## Resource Topology
 
@@ -33,12 +37,13 @@ flowchart TB
             subgraph AZA["ap-southeast-1a"]
                 PublicA["Public subnet 10.20.0.0/24"]
                 PrivateA["Private subnet 10.20.10.0/24"]
-                NAT["NAT Gateway"]
+                NATA["NAT Gateway A"]
             end
 
             subgraph AZB["ap-southeast-1b"]
                 PublicB["Public subnet 10.20.1.0/24"]
                 PrivateB["Private subnet 10.20.11.0/24"]
+                NATB["NAT Gateway B"]
             end
 
             Task["One possible Fargate task placement - no public IP"]
@@ -61,9 +66,10 @@ flowchart TB
     ECS -->|maintains at most one task| Task
     PrivateA -.->|possible placement| Task
     PrivateB -.->|possible placement| Task
-    Task -->|private-subnet egress| NAT
-    NAT --> Transcribe
-    NAT --> Translate
+    Task -->|private-subnet egress| NATA
+    Task -->|private-subnet egress| NATB
+    NATA --> Transcribe
+    NATB --> Translate
     ECR -.->|pull immutable 84c95f5-amd64 image| Task
     Task -->|exported TXT only| Transcript
     Task -.->|structured application logs| CW
@@ -138,13 +144,15 @@ task replacement.
 | ALB placement | Two public subnets; ingress restricted to the CloudFront origin-facing prefix list |
 | Task networking | Two private subnets; `assign_public_ip=false` |
 | NAT Gateways | Two (one per AZ); multi-AZ egress, no single-AZ dependency |
-| ECS capacity | Desired 0–3; autoscaling on CPU/memory; scale-to-zero with wake Lambda |
-| Backend image | `8364911-amd64` (immutable Git-SHA ECR tag) |
-| Authentication | Amazon Cognito User Pool (email + Google OAuth); custom login UI |
+| ECS capacity | Desired 0–1 (`backend_max_capacity=1`); a shared DynamoDB session registry is already live as the precondition for raising this, see `docs/multi-task-runbook.md` |
+| Backend image | `945f2cf-amd64` (immutable Git-SHA ECR tag), task definition `livecap-target-backend-dev:26` |
+| Authentication | Amazon Cognito User Pool (email + Google OAuth); custom login UI; **enforced by default** (`ENABLE_AUTH=true`) |
 | AI/ML services | Transcribe Streaming (+ custom vocabulary), Translate, Bedrock (Claude meeting notes), Polly (TTS), Comprehend (sentiment/keywords) |
 | Session store | DynamoDB `livecap-sessions-dev` (shared across tasks, TTL) |
 | Transcript history | DynamoDB `livecap-transcript-history-dev` (per-user, TTL 14 days) |
-| Usage quota | DynamoDB `livecap-usage-dev` (per-user monthly sessions/minutes tracking) |
+| Usage quota | DynamoDB `livecap-usage-dev` (per-user monthly sessions/minutes; tiers: free, pro, business, unlimited) |
+| Billing | Stripe subscription checkout + customer portal (test mode); Pro/Business Price IDs live; promo codes enabled on Checkout |
+| Admin dashboard | `/admin` — user management, usage analytics, revenue, system health; gated on Cognito group `admin`; audit log (`livecap-admin-audit-dev`) for mutating actions |
 | Wake endpoint | IAM-protected Lambda Function URL reached through CloudFront OAC |
 | WAF | Separate blocking Web ACLs for CloudFront and the ALB |
 | Transcript storage | Private S3, 14-day retention, no raw audio storage |
@@ -168,10 +176,9 @@ task replacement.
 
 ## Known Boundaries
 
-- One NAT Gateway in `ap-southeast-1a` is a cost-sensitive single-AZ dependency
-  for private task egress.
-- A maximum of one task preserves correctness for the in-memory active-session
-  registry but does not provide active-active availability.
+- A maximum of one task (`backend_max_capacity=1`) preserves correctness and
+  does not provide active-active availability, even though the DynamoDB
+  session registry needed to safely raise it is already live.
 - ALB, NAT Gateway, and WAF retain baseline cost while ECS is at zero.
 - Container Insights is intentionally disabled for cost control; the dashboard
   uses standard ECS metrics.
