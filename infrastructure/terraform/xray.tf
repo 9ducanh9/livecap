@@ -11,9 +11,9 @@
 # digest for supply-chain parity with the app image.
 
 variable "enable_xray" {
-  description = "Enable AWS X-Ray tracing: X-Ray daemon sidecar + task-role publish permission + ENABLE_XRAY on the app. Default off."
+  description = "Enable AWS X-Ray tracing: X-Ray daemon sidecar + task-role publish permission + ENABLE_XRAY on the app."
   type        = bool
-  default     = false
+  default     = true
 }
 
 locals {

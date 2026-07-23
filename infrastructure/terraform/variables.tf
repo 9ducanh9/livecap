@@ -69,9 +69,9 @@ variable "backend_max_capacity" {
 }
 
 variable "enable_multi_az_nat" {
-  description = "Add a second NAT gateway in the other AZ and route each private subnet through the NAT in its own AZ (removes the single-AZ egress dependency). Costs one extra NAT + EIP. Default keeps the single cost-optimized NAT."
+  description = "Add a second NAT gateway in the other AZ and route each private subnet through the NAT in its own AZ (removes the single-AZ egress dependency). Costs one extra NAT + EIP."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "target_nat_gateway_secondary_subnet_key" {
@@ -83,7 +83,7 @@ variable "target_nat_gateway_secondary_subnet_key" {
 variable "enable_tts" {
   description = "Enable the text-to-speech endpoint (A2, Amazon Polly). English only — Polly has no Vietnamese voice."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "tts_voice_id_en" {
@@ -95,7 +95,7 @@ variable "tts_voice_id_en" {
 variable "enable_text_analysis" {
   description = "Enable the text-analysis endpoint (A3, Amazon Comprehend sentiment + key phrases). English only — Comprehend does not support Vietnamese."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "task_cpu_architecture" {
@@ -286,7 +286,7 @@ variable "idle_scale_down_grace_seconds" {
 variable "enable_wake_endpoint" {
   description = "Create an AWS_IAM Lambda Function URL exposed through the signed CloudFront /api/wake origin."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "wake_endpoint_timeout_seconds" {
@@ -594,7 +594,7 @@ variable "watchtower_log_group_name" {
 variable "enable_meeting_summary" {
   description = "Enable the Amazon Bedrock end-of-session meeting summary. Adds a bedrock:InvokeModel IAM policy and passes the feature flag to the task."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "bedrock_model_id" {
@@ -624,7 +624,7 @@ variable "cloudwatch_dashboard_name" {
 variable "enable_waf" {
   description = "Create blocking AWS WAFv2 Web ACLs for CloudFront and ALB."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "waf_rate_limit" {
@@ -704,5 +704,5 @@ variable "enable_cis_benchmark" {
 variable "enable_container_insights" {
   description = "Enable CloudWatch Container Insights for the ECS cluster. Adds deeper CPU/memory/network metrics per task but incurs additional CloudWatch cost (~$0.01/metric/hour)."
   type        = bool
-  default     = false
+  default     = true
 }

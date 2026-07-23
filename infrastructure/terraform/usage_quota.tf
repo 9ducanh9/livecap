@@ -7,7 +7,7 @@
 variable "enable_usage_quota" {
   description = "Create the usage tracking DynamoDB table and wire it into the ECS task environment."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "usage_quota_ttl_days" {

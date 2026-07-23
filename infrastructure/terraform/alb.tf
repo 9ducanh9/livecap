@@ -83,3 +83,28 @@ resource "aws_lb_listener" "target_http_dev" {
     target_group_arn = aws_lb_target_group.target_backend.arn
   }
 }
+
+# CloudFront removes the viewer Host header before sending an origin request, so
+# the preview distribution uses this internal header to select its own target
+# group. The stable distribution has no such header and remains the default.
+locals {
+  target_alb_listener_arn = var.target_alb_ssl_certificate_arn != "" ? aws_lb_listener.target_https[0].arn : aws_lb_listener.target_http_dev[0].arn
+}
+
+resource "aws_lb_listener_rule" "preview_backend" {
+  count        = var.enable_preview_backend ? 1 : 0
+  listener_arn = local.target_alb_listener_arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.preview_backend[0].arn
+  }
+
+  condition {
+    http_header {
+      http_header_name = "X-LiveCap-Environment"
+      values           = ["preview"]
+    }
+  }
+}

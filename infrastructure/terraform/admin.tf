@@ -60,7 +60,18 @@ resource "aws_iam_role_policy" "admin_dashboard_access" {
           Action   = ["dynamodb:Scan"]
           Resource = aws_dynamodb_table.usage[0].arn
         }
-      ] : []
+      ] : [],
+      # Admin audit table: PutItem for recording actions, Query for reading entries
+      [
+        {
+          Effect = "Allow"
+          Action = [
+            "dynamodb:PutItem",
+            "dynamodb:Query",
+          ]
+          Resource = aws_dynamodb_table.admin_audit[0].arn
+        }
+      ]
     )
   })
 }
@@ -68,4 +79,51 @@ resource "aws_iam_role_policy" "admin_dashboard_access" {
 output "admin_group_name" {
   description = "Cognito group name that grants /admin dashboard access."
   value       = try(aws_cognito_user_group.admin[0].name, null)
+}
+
+# --- Admin Audit DynamoDB Table ---
+# Stores audit log entries for admin mutating actions (disable, enable,
+# reset_password, change_tier). PK: TARGET#{username}, SK: TS#{timestamp}#{uuid}.
+# TTL expires entries after 365 days. Gated on enable_cognito_auth.
+
+locals {
+  admin_audit_table_name = "${var.project_name}-admin-audit-${var.environment}"
+}
+
+resource "aws_dynamodb_table" "admin_audit" {
+  count = var.enable_cognito_auth ? 1 : 0
+
+  name         = local.admin_audit_table_name
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "pk"
+  range_key    = "sk"
+
+  attribute {
+    name = "pk"
+    type = "S"
+  }
+
+  attribute {
+    name = "sk"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = false
+  }
+
+  tags = merge(var.tags, {
+    Name    = local.admin_audit_table_name
+    Feature = "admin-panel"
+  })
+}
+
+output "admin_audit_table_name" {
+  description = "DynamoDB table for admin action audit logging."
+  value       = try(aws_dynamodb_table.admin_audit[0].name, null)
 }
