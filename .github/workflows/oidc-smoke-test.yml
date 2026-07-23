@@ -2,6 +2,11 @@ name: AWS OIDC smoke test
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - Update
+    paths:
+      - ".github/workflows/oidc-smoke-test.yml"
 
 permissions:
   id-token: write
