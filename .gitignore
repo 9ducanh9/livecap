@@ -30,6 +30,15 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
+# AI agent / IDE tools (keep locally, never push to remote)
+.kiro/
+.claude/
+.agents/
+.codex/
+.kombai/
+COLLAB_LOG.md
+HANDOFF.md
+
 # Terraform
 **/.terraform/
 *.tfstate
