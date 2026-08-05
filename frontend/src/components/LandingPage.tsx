@@ -110,8 +110,8 @@ export default function LandingPage() {
   );
 }
 
-const DEMO_VI = 'Chúng ta bắt đầu phần cập nhật kiến trúc nhé.';
-const DEMO_EN = "Let's begin with the architecture update.";
+const DEMO_VI = 'Chào mừng bạn đến với LiveCap!';
+const DEMO_EN = 'Welcome to LiveCap!';
 const TYPE_MS = 42;
 const LINE_PAUSE_MS = 350;
 const HOLD_MS = 2200;
