@@ -230,7 +230,7 @@ export default function DashboardPage() {
               <ArrowLeft className="w-4 h-4 text-ink/45 group-hover:text-emerald-pro transition-colors" />
               <span className="text-sm font-semibold text-ink/55 group-hover:text-ink transition-colors">Home</span>
             </a>
-            <div className="flex items-center gap-3 pl-5 py-2">
+            <div className="flex items-center gap-3 px-5 py-2">
               <img src="/LiveCap.svg" alt="" className="h-10 w-10 rounded-xl" />
               <span className="font-instrument text-xl font-bold tracking-[-0.08em] text-ink">LIVECAP</span>
               <StatusDot status={statusCopy.tone} label={statusCopy.label} />
