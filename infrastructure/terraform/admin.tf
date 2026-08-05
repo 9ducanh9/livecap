@@ -28,6 +28,10 @@ resource "aws_iam_role_policy" "admin_dashboard_access" {
           Action = [
             "cognito-idp:AdminListGroupsForUser",
             "cognito-idp:ListUsers",
+            "cognito-idp:AdminGetUser",
+            "cognito-idp:AdminDisableUser",
+            "cognito-idp:AdminEnableUser",
+            "cognito-idp:AdminResetUserPassword",
           ]
           Resource = aws_cognito_user_pool.livecap[0].arn
         },
@@ -56,11 +60,23 @@ resource "aws_iam_role_policy" "admin_dashboard_access" {
       ],
       var.enable_usage_quota ? [
         {
+          # Scan for the overview/users list; GetItem for user-detail profile
+          # + monthly usage lookups; UpdateItem for change_tier
+          # (admin_users.py writes tier + quota limits directly).
           Effect   = "Allow"
-          Action   = ["dynamodb:Scan"]
+          Action   = ["dynamodb:Scan", "dynamodb:GetItem", "dynamodb:UpdateItem"]
           Resource = aws_dynamodb_table.usage[0].arn
         }
       ] : [],
+      # User-detail page reads a user's recent sessions from the
+      # transcript-history table (admin_users.py get_user_detail).
+      [
+        {
+          Effect   = "Allow"
+          Action   = ["dynamodb:Query"]
+          Resource = aws_dynamodb_table.transcript_history[0].arn
+        }
+      ],
       # Admin audit table: PutItem for recording actions, Query for reading entries
       [
         {
