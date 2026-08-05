@@ -45,8 +45,8 @@ export default function LandingPage() {
               REAL-TIME CONVERSATION SUPPORT
             </div>
             <h1 className="font-instrument text-5xl font-bold leading-[.94] tracking-[-0.07em] text-[#102247] sm:text-6xl lg:text-8xl">
-              LiveCap captions<br />
-              <span className="text-[#0a9c88]">every voice, live.</span>
+              Real-time captions<br />
+              <span className="text-[#0a9c88]">for every conversation</span>
             </h1>
             <p className="mt-7 max-w-xl text-lg leading-8 text-[#52647f] sm:text-xl">
               LiveCap provides real-time Vietnamese-English meeting captions and translation. Capture browser microphone audio and follow live bilingual captions as people speak.
