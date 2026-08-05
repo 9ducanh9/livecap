@@ -1,4 +1,4 @@
-import { ArrowRight, AudioLines, Check, Clock3, Cloud, FileText, Globe2, LockKeyhole, Mic2, Sparkles } from 'lucide-react';
+import { ArrowRight, AudioLines, Check, Clock3, Cloud, FileText, Globe2, LockKeyhole, Sparkles } from 'lucide-react';
 
 const capabilities = [
   { icon: AudioLines, label: 'Live captions', copy: 'Turn speech into readable, continuously updating captions.' },
@@ -53,7 +53,7 @@ export default function LandingPage() {
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-4">
               <a href="/app" className="inline-flex items-center gap-3 rounded-full bg-[#0a9c88] px-6 py-4 text-sm font-bold text-white shadow-xl shadow-[#0a9c88]/20 transition-all hover:-translate-y-0.5 hover:bg-[#087b6c]">
-                <Mic2 className="h-4 w-4" /> Start a live session <ArrowRight className="h-4 w-4" />
+                Start a live session
               </a>
               <a href="#how-it-works" className="rounded-full px-4 py-3 text-sm font-bold text-[#435572] transition-colors hover:text-[#0a9c88]">See how it works</a>
             </div>
