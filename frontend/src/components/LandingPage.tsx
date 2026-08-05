@@ -30,6 +30,7 @@ export default function LandingPage() {
           <a className="transition-colors hover:text-[#102247]" href="#how-it-works">How it works</a>
           <a className="transition-colors hover:text-[#102247]" href="#features">Features</a>
           <a className="transition-colors hover:text-[#102247]" href="#security">Security</a>
+          <a className="transition-colors hover:text-[#102247]" href="/privacy">Privacy</a>
         </nav>
         <a href="/app" className="inline-flex items-center gap-2 rounded-full bg-[#102247] px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-[#102247]/15 transition-transform hover:-translate-y-0.5 hover:bg-[#18376f] sm:px-5">
           Open workspace <ArrowRight className="h-4 w-4" />
