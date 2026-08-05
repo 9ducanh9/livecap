@@ -788,6 +788,109 @@ def enable_user(cognito_username: str, admin_user_id: str) -> UserActionResult:
     return UserActionResult(success=True, message="User enabled successfully")
 
 
+def delete_user(cognito_username: str, admin_user_id: str) -> UserActionResult:
+    """Permanently delete a user: their Cognito account plus usage-table rows.
+
+    Unlike disable/enable, a Cognito deletion cannot be rolled back, so this
+    follows the same convention as ``reset_password`` below rather than the
+    disable/enable rollback pattern: execute the (irreversible) mutation
+    first, then audit, logging critically (not rolling back — there is
+    nothing to roll back to) if the audit write fails.
+
+    Args:
+        cognito_username: The Cognito username of the target user.
+        admin_user_id: The admin performing the action (for audit).
+
+    Returns:
+        UserActionResult indicating success or failure.
+
+    Raises:
+        HTTPException(500): If audit logging fails (deletion still happened).
+        HTTPException(502): If the Cognito call fails.
+        HTTPException(404): If the user does not exist.
+    """
+    settings = get_settings()
+    cognito_client = boto3.client("cognito-idp", region_name=settings.aws_region)
+
+    # Look up the email first -- Cognito won't have it to give us afterward,
+    # and the audit record and response message should show it, not just
+    # the opaque username/sub.
+    try:
+        user_resp = cognito_client.admin_get_user(
+            UserPoolId=settings.cognito_user_pool_id,
+            Username=cognito_username,
+        )
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code", "")
+        if error_code == "UserNotFoundException":
+            raise HTTPException(status_code=404, detail="User not found")
+        logger.error("Cognito AdminGetUser failed before delete: %s", error_code)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to look up user before deleting: {error_code}",
+        )
+    except BotoCoreError as exc:
+        logger.error("Cognito AdminGetUser request failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Failed to look up user before deleting")
+    attributes = {a["Name"]: a["Value"] for a in user_resp.get("UserAttributes", [])}
+    email = attributes.get("email", cognito_username)
+
+    # Execute mutation
+    try:
+        cognito_client.admin_delete_user(
+            UserPoolId=settings.cognito_user_pool_id,
+            Username=cognito_username,
+        )
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code", "")
+        if error_code == "UserNotFoundException":
+            raise HTTPException(status_code=404, detail="User not found")
+        logger.error("Cognito AdminDeleteUser failed: %s", error_code)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to delete user: {error_code}",
+        )
+    except BotoCoreError as exc:
+        logger.error("Cognito AdminDeleteUser request failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Failed to delete user")
+
+    # Best-effort cleanup of this user's usage-table rows (profile + last 3
+    # months). Not fatal if it fails -- the Cognito account, which is what
+    # actually grants access, is already gone; leftover usage rows are
+    # orphaned data, not a security or correctness issue.
+    try:
+        dynamodb = boto3.resource("dynamodb", region_name=settings.aws_region)
+        usage_table = dynamodb.Table(_usage_table_name())
+        usage_table.delete_item(Key={"pk": f"USER#{cognito_username}", "sk": "PROFILE"})
+        for month in _get_last_n_months(3):
+            usage_table.delete_item(
+                Key={"pk": f"USER#{cognito_username}", "sk": f"MONTH#{month}"}
+            )
+    except (ClientError, BotoCoreError) as exc:
+        logger.warning(
+            "Failed to clean up usage-table rows for deleted user %s: %s",
+            cognito_username,
+            exc,
+        )
+
+    # Write audit log — can't rollback a deletion, so log critically on failure
+    try:
+        _record_audit(admin_user_id, cognito_username, "delete", email, "deleted")
+    except Exception as exc:
+        logger.critical(
+            "Audit write failed for delete_user(%s). "
+            "User was deleted but NOT audited. Error: %s",
+            cognito_username,
+            exc,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Action failed: unable to record audit log",
+        )
+
+    return UserActionResult(success=True, message=f"User {email} permanently deleted")
+
+
 def reset_password(cognito_username: str, admin_user_id: str) -> UserActionResult:
     """Trigger a password reset for a user via Cognito.
 

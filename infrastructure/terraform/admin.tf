@@ -32,6 +32,7 @@ resource "aws_iam_role_policy" "admin_dashboard_access" {
             "cognito-idp:AdminDisableUser",
             "cognito-idp:AdminEnableUser",
             "cognito-idp:AdminResetUserPassword",
+            "cognito-idp:AdminDeleteUser",
           ]
           Resource = aws_cognito_user_pool.livecap[0].arn
         },
@@ -62,9 +63,10 @@ resource "aws_iam_role_policy" "admin_dashboard_access" {
         {
           # Scan for the overview/users list; GetItem for user-detail profile
           # + monthly usage lookups; UpdateItem for change_tier
-          # (admin_users.py writes tier + quota limits directly).
+          # (admin_users.py writes tier + quota limits directly); DeleteItem
+          # for delete_user's best-effort profile/month row cleanup.
           Effect   = "Allow"
-          Action   = ["dynamodb:Scan", "dynamodb:GetItem", "dynamodb:UpdateItem"]
+          Action   = ["dynamodb:Scan", "dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"]
           Resource = aws_dynamodb_table.usage[0].arn
         }
       ] : [],

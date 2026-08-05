@@ -250,6 +250,28 @@ export async function resetPassword(username: string): Promise<ActionResult> {
   return (await response.json()) as ActionResult;
 }
 
+/** Permanently deletes a user's Cognito account and usage-table rows.
+ * Irreversible -- there is no "undo" endpoint. Throws AdminAccessError for
+ * auth/permission issues or operation failures. */
+export async function deleteUser(username: string): Promise<ActionResult> {
+  const response = await authenticatedFetch(
+    `${apiBaseUrl()}/api/admin/users/${encodeURIComponent(username)}`,
+    { method: 'DELETE' }
+  );
+
+  if (response.status === 401) {
+    throw new AdminAccessError('Sign in is required to perform this action.');
+  }
+  if (response.status === 403) {
+    throw new AdminAccessError('Your account does not have admin access.');
+  }
+  if (!response.ok) {
+    const detail = await parseErrorDetail(response, 'Failed to delete user. Please try again.');
+    throw new AdminAccessError(detail);
+  }
+  return (await response.json()) as ActionResult;
+}
+
 // --- Phase 3: Analytics Interfaces ---
 
 export interface DateRangeParams {

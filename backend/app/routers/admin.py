@@ -15,6 +15,7 @@ Phase 2 additions:
 - ``POST /api/admin/users/{cognito_username}/enable`` — enable a user
 - ``POST /api/admin/users/{cognito_username}/reset-password`` — trigger password reset
 - ``POST /api/admin/users/{cognito_username}/change-tier`` — change subscription tier
+- ``DELETE /api/admin/users/{cognito_username}`` — permanently delete a user
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ from app.services.admin_users import (
     UserActionResult,
     UserDetail,
     change_tier,
+    delete_user,
     disable_user,
     enable_user,
     get_user_detail,
@@ -135,6 +137,16 @@ async def post_enable_user(
     """Enable a previously disabled user account."""
 
     return enable_user(cognito_username, admin.user_id)
+
+
+@router.delete("/users/{cognito_username}", response_model=UserActionResult)
+async def delete_user_endpoint(
+    cognito_username: str,
+    admin: AuthenticatedUser = Depends(require_admin_user),
+) -> UserActionResult:
+    """Permanently delete a user's Cognito account and usage-table rows."""
+
+    return delete_user(cognito_username, admin.user_id)
 
 
 @router.post("/users/{cognito_username}/reset-password", response_model=UserActionResult)
