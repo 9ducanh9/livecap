@@ -45,11 +45,11 @@ export default function LandingPage() {
               REAL-TIME CONVERSATION SUPPORT
             </div>
             <h1 className="font-instrument text-5xl font-bold leading-[.94] tracking-[-0.07em] text-[#102247] sm:text-6xl lg:text-8xl">
-              Every voice,<br />
-              <span className="text-[#0a9c88]">in the room.</span>
+              LiveCap captions<br />
+              <span className="text-[#0a9c88]">every voice, live.</span>
             </h1>
             <p className="mt-7 max-w-xl text-lg leading-8 text-[#52647f] sm:text-xl">
-              Live captions and bilingual translation for conversations that need everyone to stay in sync.
+              LiveCap provides real-time Vietnamese-English meeting captions and translation. Capture browser microphone audio and follow live bilingual captions as people speak.
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-4">
               <a href="/app" className="inline-flex items-center gap-3 rounded-full bg-[#0a9c88] px-6 py-4 text-sm font-bold text-white shadow-xl shadow-[#0a9c88]/20 transition-all hover:-translate-y-0.5 hover:bg-[#087b6c]">
