@@ -6,6 +6,7 @@ import DashboardPage from './DashboardPage';
 import AdminShell from './AdminShell';
 import AdminGuard from './AdminGuard';
 import AuthGate from './AuthGate';
+import PrivacyPolicyPage from './PrivacyPolicyPage';
 
 // Lazy-loaded admin sub-pages
 const AdminUsersPage = lazy(() => import('./admin/AdminUsersPage'));
@@ -29,6 +30,7 @@ export default function App() {
         <Routes>
           {/* Public landing */}
           <Route path="/" element={<LandingPage />} />
+          <Route path="/privacy" element={<PrivacyPolicyPage />} />
 
           {/* Authenticated workspace */}
           <Route
