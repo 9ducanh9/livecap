@@ -79,6 +79,7 @@ apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
 
 - Updated the landing-page hero so the visible H1 explicitly names **LiveCap** and its real-time captioning purpose.
 - Added a plain-language description of browser microphone capture and Vietnamese-English live captions. This is a content-only change for the Google OAuth homepage review; no authentication or runtime behavior changed.
+- Built and deployed the reviewed frontend to `livecap-frontend-dev-720459752315`; CloudFront invalidation `IDVXAHGBK8BP7PZZ35XGKJA2TD` completed and `https://livecap.logantai.com/` returned HTTP 200 with the new bundle.
 - `COLLAB_LOG.md` is now tracked rather than ignored so future cross-agent entries are part of the reviewed branch history.
 
 ### 2026-08-05 - Live config - SES custom MAIL FROM and DMARC verified
