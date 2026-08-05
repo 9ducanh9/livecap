@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { ArrowRight, AudioLines, Check, Clock3, Cloud, FileText, Globe2, LockKeyhole, Sparkles } from 'lucide-react';
 
 const capabilities = [
@@ -70,9 +71,20 @@ export default function LandingPage() {
                 <span className="flex items-center gap-1.5 rounded-full bg-[#e4fbf5] px-2.5 py-1 text-[10px] font-bold tracking-wider text-[#087b6c]"><span className="h-1.5 w-1.5 rounded-full bg-[#16ae96] animate-pulse" />LIVE</span>
               </div>
               <div className="space-y-6 py-7">
-                <Caption language="VI" text="Chúng ta bắt đầu phần cập nhật kiến trúc nhé." />
-                <Caption language="EN" text="Let's begin with the architecture update." emphasis />
-                <div className="flex items-end gap-1.5 pt-1" aria-label="Audio activity indicator">{[12, 26, 40, 20, 52, 32, 16, 36, 24, 46, 14, 28].map((height, index) => <span key={index} className="w-1 rounded-full bg-[#0a9c88]/70" style={{ height }} />)}</div>
+                <TypewriterCaptionDemo />
+                <div className="flex items-end gap-1.5 pt-1" aria-label="Audio activity indicator">
+                  {[12, 26, 40, 20, 52, 32, 16, 36, 24, 46, 14, 28].map((height, index) => (
+                    <span
+                      key={index}
+                      className="eq-bar w-1 rounded-full bg-[#0a9c88]/70"
+                      style={{
+                        height,
+                        animationDuration: `${0.7 + (index % 5) * 0.13}s`,
+                        animationDelay: `${(index % 6) * 0.09}s`,
+                      }}
+                    />
+                  ))}
+                </div>
               </div>
               <div className="flex items-center justify-between rounded-2xl bg-[#f3f6fb] px-4 py-3"><span className="flex items-center gap-2 text-xs font-medium text-[#71819a]"><Clock3 className="h-3.5 w-3.5" />00:12:48 elapsed</span><span className="text-xs font-bold text-[#0a9c88]">Capturing clearly</span></div>
             </div>
@@ -98,6 +110,83 @@ export default function LandingPage() {
   );
 }
 
-function Caption({ language, text, emphasis = false }: { language: string; text: string; emphasis?: boolean }) {
-  return <div className={emphasis ? 'border-l-2 border-[#0a9c88] pl-4' : ''}><span className={`text-[10px] font-bold tracking-[.16em] ${emphasis ? 'text-[#0a9c88]' : 'text-[#8795aa]'}`}>{language}</span><p className={`mt-2 text-base leading-7 ${emphasis ? 'font-bold text-[#102247]' : 'text-[#52647f]'}`}>{text}</p></div>;
+const DEMO_VI = 'Chúng ta bắt đầu phần cập nhật kiến trúc nhé.';
+const DEMO_EN = "Let's begin with the architecture update.";
+const TYPE_MS = 42;
+const LINE_PAUSE_MS = 350;
+const HOLD_MS = 2200;
+const RESET_PAUSE_MS = 500;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Decorative hero mockup, not the real caption feed -- loops a typewriter
+ * reveal of VI then EN so the preview card feels alive instead of a static
+ * screenshot. Skips straight to the finished state for
+ * prefers-reduced-motion.
+ */
+function TypewriterCaptionDemo() {
+  const [viText, setViText] = useState('');
+  const [enText, setEnText] = useState('');
+  const [typingLang, setTypingLang] = useState<'vi' | 'en' | null>('vi');
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setViText(DEMO_VI);
+      setEnText(DEMO_EN);
+      setTypingLang(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loop() {
+      while (!cancelled) {
+        setViText('');
+        setEnText('');
+        setTypingLang('vi');
+        for (let i = 1; i <= DEMO_VI.length && !cancelled; i++) {
+          setViText(DEMO_VI.slice(0, i));
+          await sleep(TYPE_MS);
+        }
+        if (cancelled) break;
+        await sleep(LINE_PAUSE_MS);
+
+        setTypingLang('en');
+        for (let i = 1; i <= DEMO_EN.length && !cancelled; i++) {
+          setEnText(DEMO_EN.slice(0, i));
+          await sleep(TYPE_MS);
+        }
+        if (cancelled) break;
+        setTypingLang(null);
+        await sleep(HOLD_MS + RESET_PAUSE_MS);
+      }
+    }
+
+    void loop();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <>
+      <div>
+        <span className="text-[10px] font-bold tracking-[.16em] text-[#8795aa]">VI</span>
+        <p className="mt-2 min-h-[1.75rem] text-base leading-7 text-[#52647f]">
+          {viText}
+          {typingLang === 'vi' && <span className="typewriter-caret ml-0.5 inline-block h-4 w-[2px] -translate-y-0.5 bg-[#8795aa]" />}
+        </p>
+      </div>
+      <div className="border-l-2 border-[#0a9c88] pl-4">
+        <span className="text-[10px] font-bold tracking-[.16em] text-[#0a9c88]">EN</span>
+        <p className="mt-2 min-h-[1.75rem] text-base font-bold leading-7 text-[#102247]">
+          {enText}
+          {typingLang === 'en' && <span className="typewriter-caret ml-0.5 inline-block h-4 w-[2px] -translate-y-0.5 bg-[#0a9c88]" />}
+        </p>
+      </div>
+    </>
+  );
 }
