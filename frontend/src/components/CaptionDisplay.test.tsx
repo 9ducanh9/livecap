@@ -45,7 +45,7 @@ describe('CaptionDisplay', () => {
     expect(screen.getByText('This is a finalized line')).toBeTruthy();
   });
 
-  it('joins finalized segments into one bilingual transcript flow', () => {
+  it('renders each finalized segment as its own transcript line, not merged', () => {
     const secondSegment: Segment = {
       ...partialSegment,
       segmentId: 'final-2',
@@ -63,8 +63,12 @@ describe('CaptionDisplay', () => {
     );
 
     expect(screen.getByLabelText('Finalized transcript')).toBeTruthy();
-    expect(screen.getByText('Xin chao dong tiep theo')).toBeTruthy();
-    expect(screen.getByText('Hello the next line')).toBeTruthy();
+    // Each segment keeps its own text node -- no space-joined merge.
+    expect(screen.getByText('Xin chao')).toBeTruthy();
+    expect(screen.getByText('dong tiep theo')).toBeTruthy();
+    expect(screen.getByText('Hello')).toBeTruthy();
+    expect(screen.getByText('the next line')).toBeTruthy();
+    expect(screen.queryByText('Xin chao dong tiep theo')).toBeNull();
   });
 
   it('shows a translation fallback while partial translation is unavailable', () => {

@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { gsap } from 'gsap';
 import type { Segment } from '../types/index';
 import { MessageSquare, MicOff, Info, Sparkles } from 'lucide-react';
 
@@ -11,6 +10,17 @@ interface CaptionDisplayProps {
   permissionDenied?: boolean;
 }
 
+const LISTENING_PLACEHOLDER: Segment = {
+  segmentId: 'listening-placeholder',
+  speakerLabel: '',
+  textVi: '',
+  textEn: '',
+  spokenLanguage: 'vi',
+  isFinal: false,
+  timestampStart: 0,
+  timestampEnd: 0,
+};
+
 export default function CaptionDisplay({
   segments,
   currentPartial,
@@ -19,23 +29,39 @@ export default function CaptionDisplay({
   permissionDenied,
 }: CaptionDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const hasLiveStage = Boolean(isCapturing || currentPartial);
+  const liveRow = currentPartial ?? (isCapturing ? LISTENING_PLACEHOLDER : null);
+  const hasContent = segments.length > 0 || Boolean(liveRow);
+
+  // Every caption feed we looked at (Meet, Zoom, Teams) auto-follows the
+  // newest line instead of leaving the reader to scroll manually.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [segments.length, liveRow?.textVi, liveRow?.textEn]);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden gap-4">
-      {hasLiveStage && (
-        <LiveCaptionStage segment={currentPartial} isCapturing={isCapturing} />
-      )}
-
+    <div className="flex h-full flex-col overflow-hidden gap-3">
       <div
         className="flex-1 overflow-y-auto space-y-2 custom-scrollbar"
         ref={scrollRef}
       >
-        {/* Finalized transcript stays as one continuous bilingual stream. */}
-        {segments.length > 0 && <TranscriptFlow segments={segments} />}
+        {segments.length > 0 && (
+          <div aria-label="Finalized transcript" className="space-y-2">
+            {segments.map((segment) => (
+              <TranscriptRow key={segment.segmentId} segment={segment} />
+            ))}
+          </div>
+        )}
+
+        {liveRow && (
+          <div aria-label="Live captions">
+            <TranscriptRow segment={liveRow} isPartial isCapturing={isCapturing} />
+          </div>
+        )}
 
         {/* Empty state */}
-        {segments.length === 0 && !currentPartial && !permissionDenied && !isConnecting && (
+        {!hasContent && !permissionDenied && !isConnecting && (
           <div className="flex flex-1 flex-col items-center justify-center text-center p-10 min-h-[400px]">
             <div className="relative mb-8 grid h-20 w-20 place-items-center rounded-[1.65rem] bg-gradient-to-br from-[#e2fbf5] to-[#dcecff] shadow-[0_16px_32px_rgba(10,156,136,0.12)]">
               <MessageSquare className="h-8 w-8 text-emerald-pro" />
@@ -68,7 +94,7 @@ export default function CaptionDisplay({
         )}
 
         {/* Connecting */}
-        {isConnecting && segments.length === 0 && !currentPartial && (
+        {isConnecting && !hasContent && (
           <div className="flex flex-col items-center justify-center py-32 space-y-8">
             <div className="w-24 h-px bg-ink/10 overflow-hidden relative">
               <div className="absolute inset-y-0 w-1/2 bg-crimson animate-[loading_1.5s_infinite_linear]" />
@@ -95,135 +121,50 @@ export default function CaptionDisplay({
   );
 }
 
-function LiveCaptionStage({ segment, isCapturing = false }: { segment: Segment | null; isCapturing?: boolean }) {
-  const vietnameseText = segment?.textVi ?? '';
-  const englishText = segment?.textEn ?? '';
-
-  return (
-    <section
-      aria-label="Live captions"
-      className="relative overflow-hidden rounded-2xl border border-[#bde8de] bg-[#effbf8] text-ink shadow-[0_16px_40px_rgba(16,34,71,0.08)]"
-    >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_20%,rgba(53,190,169,0.20),transparent_35%),radial-gradient(circle_at_88%_0%,rgba(169,199,255,0.3),transparent_32%)]" />
-      <div className="relative px-5 py-5 sm:px-7 sm:py-6 space-y-5">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="h-2 w-2 rounded-full bg-emerald-pro shadow-[0_0_14px_rgba(10,156,136,0.5)] animate-pulse" />
-            <span className="text-xs font-bold text-ink/60">
-              {isCapturing ? 'Live captions' : 'Ready to listen'}
-            </span>
-          </div>
-        </div>
-
-        <div className="grid gap-6 md:grid-cols-2 md:divide-x md:divide-[#bde8de]">
-          <LiveCaptionTextLine
-            label="VIETNAMESE"
-            text={vietnameseText}
-            fallback={isCapturing ? 'Đang lắng nghe...' : 'Bắt đầu để ghi âm'}
-            tone="primary"
-          />
-          <div className="md:pl-6">
-            <LiveCaptionTextLine
-              label="ENGLISH"
-              text={englishText}
-              fallback={vietnameseText ? 'Translating...' : 'Waiting for speech...'}
-              tone="secondary"
-            />
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function LiveCaptionTextLine({
-  label,
-  text,
-  fallback,
-  tone,
+/**
+ * One caption line: a finalized segment or the current in-progress one,
+ * sharing the same layout so a line doesn't jump style the moment it
+ * finalizes — only the accent (pulsing dot vs. timestamp) and text weight
+ * change. Matches the row-per-utterance pattern common to Meet/Zoom/Teams,
+ * instead of concatenating every segment into one growing paragraph.
+ */
+function TranscriptRow({
+  segment,
+  isPartial = false,
+  isCapturing = false,
 }: {
-  label: string;
-  text: string;
-  fallback: string;
-  tone: 'primary' | 'secondary';
+  segment: Segment;
+  isPartial?: boolean;
+  isCapturing?: boolean;
 }) {
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const textRef = useRef<HTMLSpanElement>(null);
-  const visibleText = text.trim() || fallback;
-  const hasText = text.trim().length > 0;
-
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    const textNode = textRef.current;
-    if (!viewport || !textNode) return;
-
-    gsap.killTweensOf(textNode);
-    gsap.set(textNode, { x: 0 });
-
-    const overflow = textNode.scrollWidth - viewport.clientWidth;
-    if (overflow > 0) {
-      const duration = Math.min(Math.max(overflow / 55, 2.5), 8);
-      gsap.to(textNode, {
-        x: -overflow,
-        duration,
-        delay: 0.35,
-        ease: 'none',
-        repeat: -1,
-        yoyo: true,
-        repeatDelay: 0.9,
-      });
-    }
-
-    return () => gsap.killTweensOf(textNode);
-  }, [visibleText]);
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-3">
-        <span
-          className={`text-[10px] font-bold uppercase tracking-[0.16em] ${
-            tone === 'primary' ? 'text-emerald-pro/80' : 'text-[#416baf]/75'
-          }`}
-        >
-          {label}
-        </span>
-        <div className={`h-px flex-1 ${tone === 'primary' ? 'bg-emerald-pro/20' : 'bg-[#416baf]/20'}`} />
-      </div>
-      <div ref={viewportRef} className="overflow-hidden">
-        <span
-          ref={textRef}
-          className={`inline-block min-w-max whitespace-nowrap text-lg font-semibold leading-7 tracking-[-0.02em] sm:text-xl ${
-            hasText
-              ? tone === 'primary'
-                ? 'text-ink'
-                : 'bg-gradient-to-r from-emerald-pro via-ink to-[#416baf] bg-clip-text text-transparent'
-              : 'text-ink/25'
-          }`}
-        >
-          {visibleText}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function TranscriptFlow({ segments }: { segments: Segment[] }) {
-  const vietnameseText = segments.map((segment) => segment.textVi.trim()).filter(Boolean).join(' ');
-  const englishText = segments.map((segment) => segment.textEn.trim()).filter(Boolean).join(' ');
-  const latestSegment = segments[segments.length - 1];
+  const vietnameseText = segment.textVi.trim();
+  const englishText = segment.textEn.trim();
+  const viFallback = isPartial ? (isCapturing ? 'Đang lắng nghe...' : 'Bắt đầu để ghi âm') : '...';
+  const enFallback = isPartial ? (vietnameseText ? 'Translating...' : 'Waiting for speech...') : '...';
 
   return (
     <section
-      aria-label="Finalized transcript"
-      className="overflow-hidden rounded-2xl border border-ink/8 bg-white/55"
+      aria-label={isPartial ? undefined : 'Transcript line'}
+      className={`overflow-hidden rounded-2xl border transition-colors duration-300 ${
+        isPartial
+          ? 'border-[#bde8de] bg-[#effbf8]/70'
+          : 'border-ink/8 bg-white/55'
+      }`}
     >
       <div className="flex items-center justify-between border-b border-ink/8 px-5 py-3 font-mono">
         <span className="text-[9px] font-bold uppercase tracking-[0.25em] text-ink/40">
-          {latestSegment.speakerLabel}
+          {segment.speakerLabel || (isPartial ? 'LIVE' : '')}
         </span>
-        <span className="text-[9px] tabular-nums text-ink/40">
-          {formatTimestamp(latestSegment.timestampStart)}
-        </span>
+        {isPartial ? (
+          <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.25em] text-emerald-pro/70">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-pro animate-pulse" />
+            Live
+          </span>
+        ) : (
+          <span className="text-[9px] tabular-nums text-ink/40">
+            {formatTimestamp(segment.timestampStart)}
+          </span>
+        )}
       </div>
       <div className="grid lg:grid-cols-2 lg:divide-x lg:divide-ink/6">
         <div className="min-w-0 px-5 py-4">
@@ -231,8 +172,12 @@ function TranscriptFlow({ segments }: { segments: Segment[] }) {
             <span className="font-mono text-[8px] font-bold uppercase tracking-[0.3em] text-ink/40">VIETNAMESE</span>
             <div className="h-px flex-1 bg-ink/10" />
           </div>
-          <p className="break-words whitespace-normal text-sm font-medium leading-relaxed tracking-tight text-ink">
-            {vietnameseText || '...'}
+          <p
+            className={`break-words whitespace-normal text-sm font-medium leading-relaxed tracking-tight ${
+              vietnameseText ? 'text-ink' : 'text-ink/35'
+            }`}
+          >
+            {vietnameseText || viFallback}
           </p>
         </div>
         <div className="min-w-0 px-5 py-4">
@@ -240,8 +185,12 @@ function TranscriptFlow({ segments }: { segments: Segment[] }) {
             <span className="font-mono text-[8px] font-bold uppercase tracking-[0.3em] text-emerald-pro/70">ENGLISH</span>
             <div className="h-px flex-1 bg-emerald-pro/15" />
           </div>
-          <p className="break-words whitespace-normal text-sm font-medium leading-relaxed tracking-tight text-emerald-pro">
-            {englishText || '...'}
+          <p
+            className={`break-words whitespace-normal text-sm font-medium leading-relaxed tracking-tight ${
+              englishText ? 'text-emerald-pro' : 'text-emerald-pro/35'
+            }`}
+          >
+            {englishText || enFallback}
           </p>
         </div>
       </div>
