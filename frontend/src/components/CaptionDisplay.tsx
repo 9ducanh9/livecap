@@ -43,20 +43,33 @@ export default function CaptionDisplay({
   return (
     <div className="flex h-full flex-col overflow-hidden gap-3">
       <div
-        className="flex-1 overflow-y-auto space-y-2 custom-scrollbar"
+        className="flex-1 overflow-y-auto custom-scrollbar"
         ref={scrollRef}
       >
-        {segments.length > 0 && (
-          <div aria-label="Finalized transcript" className="space-y-2">
-            {segments.map((segment) => (
-              <TranscriptRow key={segment.segmentId} segment={segment} />
-            ))}
-          </div>
-        )}
+        {hasContent && (
+          <div className="overflow-hidden rounded-2xl border border-ink/8 bg-white/55 divide-y divide-ink/8">
+            <div className="grid lg:grid-cols-2 lg:divide-x lg:divide-ink/6 bg-ink/[0.02]">
+              <div className="px-5 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.3em] text-ink/40">
+                Vietnamese
+              </div>
+              <div className="px-5 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.3em] text-emerald-pro/70">
+                English
+              </div>
+            </div>
 
-        {liveRow && (
-          <div aria-label="Live captions">
-            <TranscriptRow segment={liveRow} isPartial isCapturing={isCapturing} />
+            {segments.length > 0 && (
+              <div aria-label="Finalized transcript" className="divide-y divide-ink/8">
+                {segments.map((segment) => (
+                  <TranscriptRow key={segment.segmentId} segment={segment} />
+                ))}
+              </div>
+            )}
+
+            {liveRow && (
+              <div aria-label="Live captions" className="bg-[#effbf8]/70">
+                <TranscriptRow segment={liveRow} isPartial isCapturing={isCapturing} />
+              </div>
+            )}
           </div>
         )}
 
@@ -145,13 +158,9 @@ function TranscriptRow({
   return (
     <section
       aria-label={isPartial ? undefined : 'Transcript line'}
-      className={`overflow-hidden rounded-2xl border transition-colors duration-300 ${
-        isPartial
-          ? 'border-[#bde8de] bg-[#effbf8]/70'
-          : 'border-ink/8 bg-white/55'
-      }`}
+      className="transition-colors duration-300"
     >
-      <div className="flex items-center justify-between border-b border-ink/8 px-5 py-3 font-mono">
+      <div className="flex items-center justify-between px-5 pt-2.5 font-mono">
         <span className="text-[9px] font-bold uppercase tracking-[0.25em] text-ink/40">
           {segment.speakerLabel || (isPartial ? 'LIVE' : '')}
         </span>
@@ -167,11 +176,7 @@ function TranscriptRow({
         )}
       </div>
       <div className="grid lg:grid-cols-2 lg:divide-x lg:divide-ink/6">
-        <div className="min-w-0 px-5 py-4">
-          <div className="mb-2 flex items-center gap-3">
-            <span className="font-mono text-[8px] font-bold uppercase tracking-[0.3em] text-ink/40">VIETNAMESE</span>
-            <div className="h-px flex-1 bg-ink/10" />
-          </div>
+        <div className="min-w-0 px-5 py-2.5">
           <p
             className={`break-words whitespace-normal text-sm font-medium leading-relaxed tracking-tight ${
               vietnameseText ? 'text-ink' : 'text-ink/35'
@@ -180,11 +185,7 @@ function TranscriptRow({
             {vietnameseText || viFallback}
           </p>
         </div>
-        <div className="min-w-0 px-5 py-4">
-          <div className="mb-2 flex items-center gap-3">
-            <span className="font-mono text-[8px] font-bold uppercase tracking-[0.3em] text-emerald-pro/70">ENGLISH</span>
-            <div className="h-px flex-1 bg-emerald-pro/15" />
-          </div>
+        <div className="min-w-0 px-5 py-2.5">
           <p
             className={`break-words whitespace-normal text-sm font-medium leading-relaxed tracking-tight ${
               englishText ? 'text-emerald-pro' : 'text-emerald-pro/35'
