@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, UserCheck, Crown, Building2, AlertCircle, LoaderCircle, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Users, UserCheck, Crown, Building2, AlertCircle, LoaderCircle, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
 import { StatsCard } from './StatsCard';
 import { DataTable, type Column } from './DataTable';
 import { FilterBar } from './FilterBar';
 import { ConfirmDialog } from './ConfirmDialog';
 import { AdminNotification } from './AdminNotification';
-import { getUsers, disableUser, enableUser, AdminAccessError, type PaginatedUsers } from '../../services/adminService';
+import { getUsers, disableUser, enableUser, deleteUser, AdminAccessError, type PaginatedUsers } from '../../services/adminService';
 
 /** Row type compatible with DataTable's Record<string, unknown> constraint. */
 interface UserRow {
@@ -31,6 +31,7 @@ export default function AdminUsersPage() {
   // Mutation state for row actions
   const [mutatingUser, setMutatingUser] = useState<string | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<UserRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
   const [notification, setNotification] = useState<{
     message: string;
     type: 'success' | 'error';
@@ -115,6 +116,27 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleDeleteClick = (user: UserRow) => {
+    setDeleteTarget(user);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    setDeleteTarget(null);
+    setMutatingUser(target.cognito_username);
+    try {
+      const result = await deleteUser(target.cognito_username);
+      setNotification({ message: result.message || 'User deleted.', type: 'success', visible: true });
+      fetchUsers();
+    } catch (err) {
+      const message = err instanceof AdminAccessError ? err.message : 'Delete failed.';
+      setNotification({ message, type: 'error', visible: true });
+    } finally {
+      setMutatingUser(null);
+    }
+  };
+
   // Show Identity Provider column when duplicate emails exist
   const showIdentityProvider = useMemo(() => {
     if (!data?.users) return false;
@@ -176,7 +198,7 @@ export default function AdminUsersPage() {
         header: 'Status',
         render: (item) => (
           <span
-            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
               item.status === 'enabled' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
             }`}
           >
@@ -217,31 +239,45 @@ export default function AdminUsersPage() {
         key: 'actions',
         header: 'Actions',
         render: (item) => (
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              handleToggleClick(item);
-            }}
-            disabled={mutatingUser === item.cognito_username}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-              item.status === 'enabled'
-                ? 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
-                : 'border border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
-            }`}
-            title={item.status === 'enabled' ? 'Disable user' : 'Enable user'}
-          >
-            {item.status === 'enabled' ? (
-              <>
-                <ToggleLeft className="h-3.5 w-3.5" />
-                Disable
-              </>
-            ) : (
-              <>
-                <ToggleRight className="h-3.5 w-3.5" />
-                Enable
-              </>
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                handleToggleClick(item);
+              }}
+              disabled={mutatingUser === item.cognito_username}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                item.status === 'enabled'
+                  ? 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+                  : 'border border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
+              }`}
+              title={item.status === 'enabled' ? 'Disable user' : 'Enable user'}
+            >
+              {item.status === 'enabled' ? (
+                <>
+                  <ToggleLeft className="h-3.5 w-3.5" />
+                  Disable
+                </>
+              ) : (
+                <>
+                  <ToggleRight className="h-3.5 w-3.5" />
+                  Enable
+                </>
+              )}
+            </button>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteClick(item);
+              }}
+              disabled={mutatingUser === item.cognito_username}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Permanently delete user"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </button>
+          </div>
         ),
       }
     );
@@ -272,6 +308,17 @@ export default function AdminUsersPage() {
         variant="danger"
         onConfirm={handleConfirmToggle}
         onCancel={() => setConfirmTarget(null)}
+      />
+
+      {/* Confirm Dialog for permanent delete */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Permanently Delete User"
+        message={`This will permanently delete ${deleteTarget?.email ?? 'this user'}'s account and usage data. This cannot be undone — the account cannot be recovered.`}
+        confirmLabel="Delete permanently"
+        variant="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteTarget(null)}
       />
 
       {/* Page header */}

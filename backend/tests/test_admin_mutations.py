@@ -22,6 +22,7 @@ from app.services.admin_users import (
     UserActionResult,
     UserRecord,
     change_tier,
+    delete_user,
     disable_user,
     enable_user,
     reset_password,
@@ -110,6 +111,91 @@ class TestDisableUser:
 
         assert exc_info.value.status_code == 404
         mock_audit.record_action.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Service-level tests: delete_user
+# ---------------------------------------------------------------------------
+
+
+def _admin_get_user_response(email: str = "target@example.com") -> dict:
+    return {"UserAttributes": [{"Name": "email", "Value": email}]}
+
+
+class TestDeleteUser:
+    """Tests for delete_user service function."""
+
+    @patch("app.services.admin_users.admin_audit")
+    @patch("app.services.admin_users.boto3")
+    @patch("app.services.admin_users.get_settings")
+    def test_delete_user_success(self, mock_get_settings, mock_boto3, mock_audit):
+        """AdminGetUser (for email) + AdminDeleteUser + audit -> success,
+        and the usage-table PROFILE/MONTH rows get best-effort cleaned up."""
+        mock_get_settings.return_value = _mock_settings()
+        mock_cognito = MagicMock()
+        mock_cognito.admin_get_user.return_value = _admin_get_user_response()
+        mock_boto3.client.return_value = mock_cognito
+        mock_usage_table = MagicMock()
+        mock_boto3.resource.return_value.Table.return_value = mock_usage_table
+
+        result = delete_user("testuser", "admin-1")
+
+        assert isinstance(result, UserActionResult)
+        assert result.success is True
+        assert "target@example.com" in result.message
+        mock_cognito.admin_delete_user.assert_called_once_with(
+            UserPoolId="us-east-1_TestPool",
+            Username="testuser",
+        )
+        mock_usage_table.delete_item.assert_any_call(
+            Key={"pk": "USER#testuser", "sk": "PROFILE"}
+        )
+        mock_audit.record_action.assert_called_once_with(
+            admin_user_id="admin-1",
+            target_user_id="testuser",
+            action_type="delete",
+            previous_value="target@example.com",
+            new_value="deleted",
+        )
+
+    @patch("app.services.admin_users.admin_audit")
+    @patch("app.services.admin_users.boto3")
+    @patch("app.services.admin_users.get_settings")
+    def test_delete_user_not_found(self, mock_get_settings, mock_boto3, mock_audit):
+        """AdminGetUser raising UserNotFoundException -> 404, nothing deleted or audited."""
+        mock_get_settings.return_value = _mock_settings()
+        mock_cognito = MagicMock()
+        mock_cognito.admin_get_user.side_effect = ClientError(
+            {"Error": {"Code": "UserNotFoundException", "Message": "User not found"}},
+            "AdminGetUser",
+        )
+        mock_boto3.client.return_value = mock_cognito
+
+        with pytest.raises(HTTPException) as exc_info:
+            delete_user("nonexistent", "admin-1")
+
+        assert exc_info.value.status_code == 404
+        mock_cognito.admin_delete_user.assert_not_called()
+        mock_audit.record_action.assert_not_called()
+
+    @patch("app.services.admin_users.admin_audit")
+    @patch("app.services.admin_users.boto3")
+    @patch("app.services.admin_users.get_settings")
+    def test_delete_user_audit_failure_still_deleted(self, mock_get_settings, mock_boto3, mock_audit):
+        """Deletion can't be rolled back: if audit fails afterward, the user
+        is still gone and the caller gets a 500 (matching reset_password's
+        convention), not a silent rollback that can't actually happen."""
+        mock_get_settings.return_value = _mock_settings()
+        mock_cognito = MagicMock()
+        mock_cognito.admin_get_user.return_value = _admin_get_user_response()
+        mock_boto3.client.return_value = mock_cognito
+        mock_audit.record_action.side_effect = RuntimeError("dynamo down")
+
+        with pytest.raises(HTTPException) as exc_info:
+            delete_user("testuser", "admin-1")
+
+        assert exc_info.value.status_code == 500
+        mock_cognito.admin_delete_user.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
