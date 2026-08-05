@@ -59,3 +59,27 @@
     opacity: 1;
   }
 }
+
+/* Landing page hero preview: audio-equalizer bar bounce */
+@keyframes eq-bounce {
+  0%, 100% { transform: scaleY(0.28); }
+  50% { transform: scaleY(1); }
+}
+
+.eq-bar {
+  transform-origin: bottom;
+  animation-name: eq-bounce;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+/* Typewriter caret blink for the landing page hero preview */
+@keyframes caret-blink {
+  0%, 45% { opacity: 1; }
+  50%, 95% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.typewriter-caret {
+  animation: caret-blink 1s step-end infinite;
+}
