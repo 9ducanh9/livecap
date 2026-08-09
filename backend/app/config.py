@@ -40,7 +40,13 @@ DEFAULT_IDLE_SCALE_DOWN_GRACE_SECONDS = 300
 # Meeting summary (Amazon Bedrock). Disabled by default so the feature is
 # strictly opt-in and never adds Bedrock cost unless explicitly enabled.
 DEFAULT_ENABLE_MEETING_SUMMARY = False
-DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+# "us."-prefixed inference profiles are US-region-only. This project runs in
+# ap-southeast-1, which only has the "global." profile for this model
+# (confirmed via `aws bedrock list-inference-profiles`) -- a "us." profile ID
+# here returns ValidationException("The provided model identifier is
+# invalid.") on every call, which is why meeting notes never worked.
+DEFAULT_BEDROCK_MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 # Minimum finalized segments before a summary is worth generating.
 DEFAULT_SUMMARY_MIN_SEGMENTS = 3
 # Upper bound on transcript characters sent to Bedrock (cost/latency guard).
