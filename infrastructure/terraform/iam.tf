@@ -122,30 +122,6 @@ resource "aws_iam_role_policy" "translate_access" {
   })
 }
 
-# Policy for the optional Amazon Bedrock meeting-summary feature. Only created
-# when enable_meeting_summary is true, keeping the task role least-privilege by
-# default. Scoped to foundation models (InvokeModel only).
-resource "aws_iam_role_policy" "bedrock_access" {
-  count = var.enable_meeting_summary ? 1 : 0
-
-  name = "${var.project_name}-bedrock-access"
-  role = aws_iam_role.ecs_task.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "bedrock:InvokeModel"
-        ]
-        Resource = [
-          "arn:aws:bedrock:*::foundation-model/*"
-        ]
-      }
-    ]
-  })
-}
 
 # Policy for the optional text-to-speech feature (A2, Amazon Polly). Only
 # created when enable_tts is true.

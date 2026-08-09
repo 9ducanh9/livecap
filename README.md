@@ -32,8 +32,8 @@ branch. Its exact deployment status and feature flags are captured in the
 tables below and in [`docs/upgrade-roadmap.md`](docs/upgrade-roadmap.md).
 
 - **Meeting notes** are generated only when a participant explicitly selects
-  **Create meeting notes** after a session. The Bedrock-backed endpoint remains
-  disabled by default through `ENABLE_MEETING_SUMMARY=false`.
+  **Create meeting notes** after a session. The DeepSeek-backed endpoint
+  remains disabled by default through `ENABLE_MEETING_SUMMARY=false`.
 - **Accounts and transcript history** are live on the custom-domain target
   environment and enforced by default (`ENABLE_AUTH=true`). Cognito Hosted UI
   (email + Google OAuth) authenticates the user, DynamoDB stores the

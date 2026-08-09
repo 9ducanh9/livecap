@@ -76,7 +76,7 @@ class TestGenerateSummary:
         assert summarize.await_args.kwargs["session_id"] == "sess-42"
         assert len(summarize.await_args.kwargs["segments"]) == 3
 
-    def test_returns_retryable_error_when_bedrock_has_no_usable_response(self) -> None:
+    def test_returns_retryable_error_when_summary_has_no_usable_response(self) -> None:
         with patch("app.routers.summary.get_settings", return_value=_settings()), patch(
             "app.routers.summary.summarize_session", new=AsyncMock(return_value=None)
         ):

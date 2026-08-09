@@ -1,9 +1,9 @@
-"""Tests for the Amazon Bedrock meeting-summary Summarization_Service.
+"""Tests for the DeepSeek meeting-summary Summarization_Service.
 
 The pure helpers (transcript building, prompt building, response parsing,
 export rendering) are tested directly. The network path in
-``summarize_session`` is exercised with ``_invoke_bedrock_sync`` patched, so no
-AWS calls are made.
+``summarize_session`` is exercised with ``_invoke_deepseek_sync`` patched, so
+no real HTTP calls are made.
 """
 
 from __future__ import annotations
@@ -198,17 +198,36 @@ def test_summarize_session_disabled_returns_none():
     assert result is None
 
 
+def test_summarize_session_no_api_key_returns_none():
+    settings = Settings(
+        enable_meeting_summary=True, summary_min_segments=1, deepseek_api_key=""
+    )
+    segs = [_seg("s1", "Speaker 1", "en", text_en="hello world")]
+    with patch.object(summarization, "_invoke_deepseek_sync") as mocked:
+        result = asyncio.run(summarize_session("sess", segs, settings))
+    assert result is None
+    mocked.assert_not_called()
+
+
 def test_summarize_session_too_few_segments_returns_none():
-    settings = Settings(enable_meeting_summary=True, summary_min_segments=3)
+    settings = Settings(
+        enable_meeting_summary=True,
+        summary_min_segments=3,
+        deepseek_api_key="sk-test",
+    )
     segs = [_seg("s1", "Speaker 1", "en", text_en="hi")]
-    with patch.object(summarization, "_invoke_bedrock_sync") as mocked:
+    with patch.object(summarization, "_invoke_deepseek_sync") as mocked:
         result = asyncio.run(summarize_session("sess", segs, settings))
     assert result is None
     mocked.assert_not_called()
 
 
 def test_summarize_session_success_path():
-    settings = Settings(enable_meeting_summary=True, summary_min_segments=2)
+    settings = Settings(
+        enable_meeting_summary=True,
+        summary_min_segments=2,
+        deepseek_api_key="sk-test",
+    )
     segs = [
         _seg("s1", "Speaker 1", "en", text_en="We should ship Friday."),
         _seg("s2", "Speaker 2", "vi", text_vi="Đồng ý."),
@@ -222,7 +241,7 @@ def test_summarize_session_success_path():
         }
     )
     with patch.object(
-        summarization, "_invoke_bedrock_sync", return_value=model_json
+        summarization, "_invoke_deepseek_sync", return_value=model_json
     ) as mocked:
         result = asyncio.run(summarize_session("sess", segs, settings))
     assert result is not None
@@ -231,21 +250,29 @@ def test_summarize_session_success_path():
     mocked.assert_called_once()
 
 
-def test_summarize_session_swallows_bedrock_error():
-    settings = Settings(enable_meeting_summary=True, summary_min_segments=1)
+def test_summarize_session_swallows_deepseek_error():
+    settings = Settings(
+        enable_meeting_summary=True,
+        summary_min_segments=1,
+        deepseek_api_key="sk-test",
+    )
     segs = [_seg("s1", "Speaker 1", "en", text_en="hello world")]
     with patch.object(
-        summarization, "_invoke_bedrock_sync", side_effect=RuntimeError("boom")
+        summarization, "_invoke_deepseek_sync", side_effect=RuntimeError("boom")
     ):
         result = asyncio.run(summarize_session("sess", segs, settings))
     assert result is None
 
 
 def test_summarize_session_empty_model_output_returns_none():
-    settings = Settings(enable_meeting_summary=True, summary_min_segments=1)
+    settings = Settings(
+        enable_meeting_summary=True,
+        summary_min_segments=1,
+        deepseek_api_key="sk-test",
+    )
     segs = [_seg("s1", "Speaker 1", "en", text_en="hello world")]
     with patch.object(
-        summarization, "_invoke_bedrock_sync", return_value="{}"
+        summarization, "_invoke_deepseek_sync", return_value="{}"
     ):
         result = asyncio.run(summarize_session("sess", segs, settings))
     assert result is None

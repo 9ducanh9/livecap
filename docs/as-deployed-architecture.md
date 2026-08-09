@@ -147,7 +147,7 @@ task replacement.
 | ECS capacity | Desired 0–1 (`backend_max_capacity=1`); a shared DynamoDB session registry is already live as the precondition for raising this, see `docs/multi-task-runbook.md` |
 | Backend image | `945f2cf-amd64` (immutable Git-SHA ECR tag), task definition `livecap-target-backend-dev:27` |
 | Authentication | Amazon Cognito User Pool (email + Google OAuth); custom login UI; **enforced by default** (`ENABLE_AUTH=true`) |
-| AI/ML services | Transcribe Streaming (+ custom vocabulary), Translate, Bedrock (Claude meeting notes), Polly (TTS), Comprehend (sentiment/keywords) |
+| AI/ML services | Transcribe Streaming (+ custom vocabulary), Translate, DeepSeek (meeting notes — not AWS; needs `DEEPSEEK_API_KEY`), Polly (TTS), Comprehend (sentiment/keywords) |
 | Session store | DynamoDB `livecap-sessions-dev` (shared across tasks, TTL) |
 | Transcript history | DynamoDB `livecap-transcript-history-dev` (per-user, TTL 14 days) |
 | Usage quota | DynamoDB `livecap-usage-dev` (per-user monthly sessions/minutes; tiers: free, pro, business, unlimited) |
