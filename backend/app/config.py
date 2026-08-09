@@ -37,21 +37,20 @@ DEFAULT_MAX_CONCURRENT_SESSIONS = 4
 DEFAULT_MAX_SESSIONS_PER_IP = 1
 DEFAULT_ENABLE_IDLE_SCALE_DOWN = False
 DEFAULT_IDLE_SCALE_DOWN_GRACE_SECONDS = 300
-# Meeting summary (Amazon Bedrock). Disabled by default so the feature is
-# strictly opt-in and never adds Bedrock cost unless explicitly enabled.
+# Meeting summary (DeepSeek). Disabled by default so the feature is strictly
+# opt-in and never adds cost unless explicitly enabled. Previously called
+# Anthropic-on-Bedrock, but every Anthropic model quota in this account's
+# Bedrock region was 0 (confirmed with a real InvokeModel call -- not a code
+# bug, just unapproved AWS quota), so the feature never actually worked.
+# Switched to DeepSeek's OpenAI-compatible API, which needs its own key
+# rather than AWS credentials already on the task role.
 DEFAULT_ENABLE_MEETING_SUMMARY = False
-
-# "us."-prefixed inference profiles are US-region-only. This project runs in
-# ap-southeast-1, which only has the "global." profile for this model
-# (confirmed via `aws bedrock list-inference-profiles`) -- a "us." profile ID
-# here returns ValidationException("The provided model identifier is
-# invalid.") on every call, which is why meeting notes never worked.
-DEFAULT_BEDROCK_MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+DEFAULT_DEEPSEEK_MODEL = "deepseek-chat"
 # Minimum finalized segments before a summary is worth generating.
 DEFAULT_SUMMARY_MIN_SEGMENTS = 3
-# Upper bound on transcript characters sent to Bedrock (cost/latency guard).
+# Upper bound on transcript characters sent to the model (cost/latency guard).
 DEFAULT_SUMMARY_MAX_INPUT_CHARS = 12_000
-# Wall-clock budget for one user-requested Bedrock call.
+# Wall-clock budget for one user-requested summary call.
 DEFAULT_SUMMARY_TIMEOUT_SECONDS = 20
 # Session registry backend. "memory" is process-local (single task). "dynamodb"
 # shares the active-session limits across tasks, unblocking horizontal scaling.
@@ -147,8 +146,8 @@ class Settings:
     ecs_cluster_name: str = ""
     ecs_service_name: str = ""
     enable_meeting_summary: bool = DEFAULT_ENABLE_MEETING_SUMMARY
-    bedrock_model_id: str = DEFAULT_BEDROCK_MODEL_ID
-    bedrock_region: str = ""
+    deepseek_api_key: str = ""
+    deepseek_model: str = DEFAULT_DEEPSEEK_MODEL
     summary_min_segments: int = DEFAULT_SUMMARY_MIN_SEGMENTS
     summary_max_input_chars: int = DEFAULT_SUMMARY_MAX_INPUT_CHARS
     summary_timeout_seconds: int = DEFAULT_SUMMARY_TIMEOUT_SECONDS
@@ -165,11 +164,6 @@ class Settings:
     stripe_price_id_pro: str = DEFAULT_STRIPE_PRICE_ID_PRO
     stripe_price_id_business: str = DEFAULT_STRIPE_PRICE_ID_BUSINESS
     frontend_base_url: str = DEFAULT_FRONTEND_BASE_URL
-
-    @property
-    def resolved_bedrock_region(self) -> str:
-        """Region for Bedrock calls, falling back to the main AWS region."""
-        return self.bedrock_region.strip() or self.aws_region
 
     @property
     def allowed_origins(self) -> tuple[str, ...]:
@@ -230,8 +224,8 @@ class Settings:
             enable_meeting_summary=_get_bool(
                 "ENABLE_MEETING_SUMMARY", DEFAULT_ENABLE_MEETING_SUMMARY
             ),
-            bedrock_model_id=_get_str("BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID),
-            bedrock_region=_get_str("BEDROCK_REGION", ""),
+            deepseek_api_key=_get_str("DEEPSEEK_API_KEY", ""),
+            deepseek_model=_get_str("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL),
             summary_min_segments=max(
                 1, _get_int("SUMMARY_MIN_SEGMENTS", DEFAULT_SUMMARY_MIN_SEGMENTS)
             ),

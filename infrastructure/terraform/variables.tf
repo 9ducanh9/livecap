@@ -592,21 +592,22 @@ variable "watchtower_log_group_name" {
 }
 
 variable "enable_meeting_summary" {
-  description = "Enable the Amazon Bedrock end-of-session meeting summary. Adds a bedrock:InvokeModel IAM policy and passes the feature flag to the task."
+  description = "Enable the DeepSeek end-of-session meeting summary. Passes the feature flag and (if set) the DeepSeek API key secret to the task. Previously called Anthropic-on-Bedrock, but every Anthropic model quota in this account's Bedrock region was 0 (an unapproved AWS quota, not a code bug), so it never actually worked -- see COLLAB_LOG.md."
   type        = bool
   default     = true
 }
 
-variable "bedrock_model_id" {
-  description = "Amazon Bedrock model ID used for meeting summaries (Anthropic Claude messages API). Must be an inference profile actually invokable from the deployment region: 'us.'-prefixed profiles are US-only; ap-southeast-1 (this project's region) only has the 'global.' profile for this model, confirmed via aws bedrock list-inference-profiles."
-  type        = string
-  default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
-}
-
-variable "bedrock_region" {
-  description = "Region for Amazon Bedrock calls. Leave empty to use aws_region. Set this when the model is not available in aws_region (e.g. ap-southeast-1)."
+variable "deepseek_api_key" {
+  description = "DeepSeek API key (sk-...) for the meeting-summary feature. Sensitive -- set via a local .tfvars file that is never committed. Leave empty to keep the feature effectively disabled even if enable_meeting_summary is true."
   type        = string
   default     = ""
+  sensitive   = true
+}
+
+variable "deepseek_model" {
+  description = "DeepSeek model name for meeting summaries (not secret)."
+  type        = string
+  default     = "deepseek-chat"
 }
 
 variable "enable_cloudwatch_dashboard" {

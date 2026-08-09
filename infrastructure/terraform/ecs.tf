@@ -57,8 +57,7 @@ resource "aws_ecs_task_definition" "target_backend" {
       { name = "ECS_CLUSTER_NAME", value = aws_ecs_cluster.main.name },
       { name = "ECS_SERVICE_NAME", value = "${var.project_name}-target-service-${var.environment}" },
       { name = "ENABLE_MEETING_SUMMARY", value = tostring(var.enable_meeting_summary) },
-      { name = "BEDROCK_MODEL_ID", value = var.bedrock_model_id },
-      { name = "BEDROCK_REGION", value = var.bedrock_region },
+      { name = "DEEPSEEK_MODEL", value = var.deepseek_model },
       { name = "SESSION_STORE_BACKEND", value = var.enable_dynamodb_session_store ? "dynamodb" : "memory" },
       { name = "SESSION_TABLE_NAME", value = local.session_table_name },
       { name = "SESSION_TTL_SECONDS", value = tostring(var.session_ttl_seconds) },
@@ -84,15 +83,20 @@ resource "aws_ecs_task_definition" "target_backend" {
       { name = "FRONTEND_BASE_URL", value = local.frontend_base_url },
     ]
 
-    # Stripe API credentials are real secrets (unlike everything in
-    # `environment` above), so they're injected from Secrets Manager rather
-    # than stored as plaintext task-definition env vars. Empty list (not a
-    # missing key) when not configured, so container startup doesn't depend
-    # on resources that don't exist yet.
-    secrets = local.stripe_secrets_configured ? [
-      { name = "STRIPE_SECRET_KEY", valueFrom = aws_secretsmanager_secret.stripe_secret_key[0].arn },
-      { name = "STRIPE_WEBHOOK_SECRET", valueFrom = aws_secretsmanager_secret.stripe_webhook_secret[0].arn },
-    ] : []
+    # Stripe and DeepSeek API credentials are real secrets (unlike everything
+    # in `environment` above), so they're injected from Secrets Manager
+    # rather than stored as plaintext task-definition env vars. Each list is
+    # empty (not a missing key) when not configured, so container startup
+    # doesn't depend on resources that don't exist yet.
+    secrets = concat(
+      local.stripe_secrets_configured ? [
+        { name = "STRIPE_SECRET_KEY", valueFrom = aws_secretsmanager_secret.stripe_secret_key[0].arn },
+        { name = "STRIPE_WEBHOOK_SECRET", valueFrom = aws_secretsmanager_secret.stripe_webhook_secret[0].arn },
+      ] : [],
+      local.deepseek_secret_configured ? [
+        { name = "DEEPSEEK_API_KEY", valueFrom = aws_secretsmanager_secret.deepseek_api_key[0].arn },
+      ] : [],
+    )
 
     logConfiguration = {
       logDriver = "awslogs"

@@ -1,22 +1,30 @@
-"""Summarization_Service: Amazon Bedrock meeting summary integration.
+"""Summarization_Service: DeepSeek meeting summary integration.
 
 Turns a finished Session's finalized transcript into a structured, bilingual
-wrap-up (summary, key points, decisions, action items, topics) by invoking an
-Anthropic Claude model through Amazon Bedrock.
+wrap-up (summary, key points, decisions, action items, topics) by calling the
+DeepSeek chat completions API (OpenAI-compatible).
+
+Previously called an Anthropic Claude model through Amazon Bedrock, but every
+Anthropic model quota in the account's Bedrock region was 0 (unrelated to any
+code bug -- confirmed with a real InvokeModel call, see COLLAB_LOG.md), so
+the feature never actually worked. DeepSeek needs its own API key
+(``DEEPSEEK_API_KEY``) rather than the AWS credentials already on the task
+role, but has no dependency on Bedrock quota approval.
 
 Design notes
 ------------
-* **Opt-in.** Controlled by ``settings.enable_meeting_summary`` (default off);
-  when disabled the WebSocket handler never imports or calls this service, so
-  there is no Bedrock cost.
-* **Best effort.** Any failure (Bedrock unavailable, throttling, malformed
+* **Opt-in.** Controlled by ``settings.enable_meeting_summary`` (default off)
+  *and* requires ``settings.deepseek_api_key`` to be set; when either is
+  missing the WebSocket handler never calls this service, so there is no
+  DeepSeek cost.
+* **Best effort.** Any failure (API unavailable, rate limiting, malformed
   model output) returns ``None`` and is logged; it never breaks session
   teardown.
-* **Bounded.** The transcript sent to Bedrock is capped by
+* **Bounded.** The transcript sent to the model is capped by
   ``settings.summary_max_input_chars`` to bound token cost and latency.
 * **Testable.** The pure helpers :func:`build_transcript_text`,
-  :func:`build_prompt`, and :func:`parse_summary_response` are AWS-free and
-  unit tested; the network call lives only in :func:`summarize_session`.
+  :func:`build_prompt`, and :func:`parse_summary_response` are network-free
+  and unit tested; the network call lives only in :func:`summarize_session`.
 """
 
 from __future__ import annotations
@@ -30,8 +38,8 @@ from app.config import Settings, get_settings
 from app.models import FinalizedSegmentMessage, GlossaryItem, SessionSummary
 from app.services.logging_service import get_logger, log_integration_error
 
-_SERVICE_NAME = "Amazon Bedrock"
-_ANTHROPIC_VERSION = "bedrock-2023-05-31"
+_SERVICE_NAME = "DeepSeek"
+_DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
 _MAX_OUTPUT_TOKENS = 1536
 
 _SYSTEM_PROMPT = (
@@ -160,37 +168,47 @@ def parse_summary_response(raw_text: str) -> SessionSummary | None:
     )
 
 
-def _invoke_bedrock_sync(
+def _invoke_deepseek_sync(
     *,
-    model_id: str,
-    region: str,
+    api_key: str,
+    model: str,
     prompt: str,
+    timeout_seconds: int,
 ) -> str:
-    """Synchronous Bedrock invoke_model call. Runs in a worker thread.
+    """Synchronous DeepSeek chat-completions call. Runs in a worker thread.
 
-    Imported lazily so environments without botocore still import this module.
+    Imported lazily so environments without httpx still import this module.
+    ``timeout_seconds`` bounds the httpx call itself (not just the
+    ``asyncio.wait_for`` around the calling thread) -- ``asyncio.to_thread``
+    can't actually interrupt a real OS thread on cancellation, so without
+    this the request would keep running in the background past the
+    caller's deadline.
     """
-    import boto3  # noqa: PLC0415
+    import httpx  # noqa: PLC0415
 
-    client = boto3.client("bedrock-runtime", region_name=region)
     body = {
-        "anthropic_version": _ANTHROPIC_VERSION,
+        "model": model,
         "max_tokens": _MAX_OUTPUT_TOKENS,
         "temperature": 0.2,
-        "system": _SYSTEM_PROMPT,
+        "response_format": {"type": "json_object"},
         "messages": [
-            {"role": "user", "content": [{"type": "text", "text": prompt}]}
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
         ],
     }
-    response = client.invoke_model(modelId=model_id, body=json.dumps(body))
-    payload = json.loads(response["body"].read())
-    # Anthropic-on-Bedrock returns {"content": [{"type": "text", "text": ...}]}.
-    parts = payload.get("content", [])
-    return "".join(
-        part.get("text", "")
-        for part in parts
-        if isinstance(part, dict) and part.get("type") == "text"
+    response = httpx.post(
+        _DEEPSEEK_API_URL,
+        json=body,
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=timeout_seconds,
     )
+    response.raise_for_status()
+    payload = response.json()
+    # OpenAI-compatible: {"choices": [{"message": {"content": "..."}}]}.
+    choices = payload.get("choices", [])
+    if not choices:
+        return ""
+    return choices[0].get("message", {}).get("content", "")
 
 
 async def summarize_session(
@@ -207,6 +225,13 @@ async def summarize_session(
     logger: logging.Logger = get_logger()
 
     if not settings.enable_meeting_summary:
+        return None
+
+    if not settings.deepseek_api_key:
+        logger.warning(
+            "summary_skipped_no_api_key",
+            extra={"event": "summary_skipped_no_api_key", "session_id": session_id},
+        )
         return None
 
     if len(segments) < settings.summary_min_segments:
@@ -230,10 +255,11 @@ async def summarize_session(
     try:
         raw_text = await asyncio.wait_for(
             asyncio.to_thread(
-                _invoke_bedrock_sync,
-                model_id=settings.bedrock_model_id,
-                region=settings.resolved_bedrock_region,
+                _invoke_deepseek_sync,
+                api_key=settings.deepseek_api_key,
+                model=settings.deepseek_model,
                 prompt=prompt,
+                timeout_seconds=settings.summary_timeout_seconds,
             ),
             timeout=settings.summary_timeout_seconds,
         )

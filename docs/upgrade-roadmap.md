@@ -21,7 +21,7 @@ cost versus availability tradeoff.
 
 | Area | Item | Status | Notes |
 |---|---|---|---|
-| AI | Meeting notes with Amazon Bedrock | Implemented, off by default | Runs only after the participant explicitly selects Create meeting notes. Bedrock model access and the flag are human-controlled. |
+| AI | Meeting notes with DeepSeek | Implemented, off by default | Runs only after the participant explicitly selects Create meeting notes. Needs both `ENABLE_MEETING_SUMMARY=true` and a real `DEEPSEEK_API_KEY`. Switched from Amazon Bedrock 2026-08-06 — every Anthropic model quota in this account's Bedrock region was 0 (unapproved AWS quota, confirmed via a real InvokeModel call), so it never worked. |
 | AI | Transcribe custom vocabulary | Implemented, off by default | Enable only after vocabulary content is reviewed. |
 | AI | Polly, Comprehend, context-aware LLM translation | Planned | Keep the existing Translate path as the low-cost default. |
 | Scale | DynamoDB session registry | Live | The shared registry and TTL cleanup remove the former in-process-only dependency. |
@@ -48,8 +48,8 @@ cost versus availability tradeoff.
    production — `AdminUsersPage`, `AdminUsagePage`, `AdminRevenuePage`,
    `AdminSystemPage`, etc. currently have none (backend has property + unit
    tests; the audit table and IAM are already live and correct).
-4. Enable Bedrock only after model access, cost limits, and user-facing consent
-   are reviewed.
+4. Set a real `DEEPSEEK_API_KEY` (Secrets Manager, via `terraform.tfvars`)
+   only after cost limits and user-facing consent are reviewed.
 5. Move Stripe billing from test mode to live mode once checkout, webhook, and
    tier-sync are fully verified end to end (checkout → webhook → `UsagePanel`
    reflecting the new tier).

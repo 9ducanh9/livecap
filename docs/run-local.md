@@ -1,9 +1,9 @@
 # Run LiveCap locally (including optional meeting notes)
 
-Two terminals (PowerShell on Windows). The captions, translation and summary all
-call real AWS services, so you need AWS credentials with **Amazon Transcribe,
-Amazon Translate, and Amazon Bedrock (`bedrock:InvokeModel`)** access, and the
-Bedrock model enabled for your region.
+Two terminals (PowerShell on Windows). Captions and translation call real AWS
+services, so you need AWS credentials with **Amazon Transcribe and Amazon
+Translate** access. Meeting notes (summary) call **DeepSeek** instead of AWS —
+you need a separate DeepSeek API key, not more AWS permissions.
 
 ## 1. Backend
 
@@ -18,12 +18,13 @@ Copy-Item .env.example .env
 Edit `.env`:
 
 - `ENABLE_MEETING_SUMMARY=true`
-- `BEDROCK_MODEL_ID=anthropic.claude-3-haiku-20240307-v1:0`
-- If that model is not available in `AWS_REGION` (ap-southeast-1), set
-  `BEDROCK_REGION=us-east-1` (or a region where you enabled it), or use an
-  inference-profile ID as `BEDROCK_MODEL_ID`.
+- `DEEPSEEK_API_KEY=sk-...` — get one at
+  [platform.deepseek.com](https://platform.deepseek.com/). Required; without
+  it the feature gates itself off even when `ENABLE_MEETING_SUMMARY=true`.
+- `DEEPSEEK_MODEL=deepseek-chat` (default, usually fine to leave as-is).
 
-Provide AWS credentials **via a profile, not in `.env`**:
+Provide AWS credentials **via a profile, not in `.env`** (for Transcribe/
+Translate only — DeepSeek's key above is separate):
 
 ```powershell
 $env:AWS_PROFILE = "your-profile"   # or run: aws configure
@@ -31,9 +32,6 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Check: open `http://127.0.0.1:8000/api/health` → `{"status":"healthy",...}`.
-
-Enable Bedrock model access once in the AWS console: **Bedrock → Model access →**
-enable the Claude model in the region you point `BEDROCK_REGION` at.
 
 ## 2. Frontend
 
@@ -56,7 +54,7 @@ Open `http://127.0.0.1:5173`, go to the caption workspace, allow the microphone.
    (`SUMMARY_MIN_SEGMENTS=3`).
 2. Press **Stop** while still connected.
 3. After the session ends, choose **Create meeting notes**. This is the only
-   action that calls Amazon Bedrock.
+   action that calls DeepSeek.
 4. The **AI meeting summary** panel appears with summary (VI/EN), key points,
    decisions, action items, plus the A1+ extraction: **keywords, insights,
    glossary, follow-up questions**. The Download TXT export includes them too.
@@ -64,9 +62,27 @@ Open `http://127.0.0.1:5173`, go to the caption workspace, allow the microphone.
 ## Troubleshooting
 
 - The notes button is disabled: fewer than 3 finalized caption rows were captured.
-- Backend logs `Amazon Bedrock` integration error: model access not enabled, or
-  the model id/region is wrong for your account. Check `BEDROCK_REGION`.
-- 403/AccessDenied: the credentials lack `bedrock:InvokeModel` (or Transcribe/
-  Translate) permissions.
-- Summary is best-effort: on any Bedrock error the session still ends normally,
-  just without a summary.
+- Backend logs a `DeepSeek` integration error and returns no summary: check
+  `DEEPSEEK_API_KEY` is set and the key is active on
+  [platform.deepseek.com](https://platform.deepseek.com/).
+- Summary is best-effort: on any DeepSeek error (bad key, rate limit,
+  timeout, malformed output) the session still ends normally, just without a
+  summary — check backend logs for the actual cause.
+
+## Historical note: why this isn't Amazon Bedrock anymore
+
+Meeting notes originally called an Anthropic Claude model through Amazon
+Bedrock. It never worked in production: `BEDROCK_MODEL_ID` was set to a
+`us.`-prefixed cross-region inference profile, which only resolves from US
+regions, while this project's Bedrock calls run from `ap-southeast-1` — every
+call failed with `ValidationException("The provided model identifier is
+invalid.")`. Fixing the model ID to the correct `global.` profile (confirmed
+via `aws bedrock list-inference-profiles`) surfaced a second, deeper problem:
+every Anthropic model quota in this AWS account's Bedrock region was `0`
+(`aws service-quotas get-service-quota` confirmed `Adjustable: true, Value:
+0.0`) — an unapproved AWS quota, not a code bug, and not something fixable
+from the app side. Rather than wait on an AWS quota increase request with an
+uncertain timeline, the integration was switched to DeepSeek's
+OpenAI-compatible chat completions API, which needs its own key instead of
+Bedrock quota approval. See `COLLAB_LOG.md` (local) for the full
+investigation.
