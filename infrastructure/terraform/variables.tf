@@ -598,9 +598,9 @@ variable "enable_meeting_summary" {
 }
 
 variable "bedrock_model_id" {
-  description = "Amazon Bedrock model ID used for meeting summaries (Anthropic Claude messages API)."
+  description = "Amazon Bedrock model ID used for meeting summaries (Anthropic Claude messages API). Must be an inference profile actually invokable from the deployment region: 'us.'-prefixed profiles are US-only; ap-southeast-1 (this project's region) only has the 'global.' profile for this model, confirmed via aws bedrock list-inference-profiles."
   type        = string
-  default     = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+  default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 }
 
 variable "bedrock_region" {
