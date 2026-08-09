@@ -1,4 +1,4 @@
-"""On-demand Amazon Bedrock meeting-summary endpoint.
+"""On-demand DeepSeek meeting-summary endpoint.
 
 The browser calls this endpoint only after a user has stopped a session and
 explicitly requested meeting notes. Finalized captions are supplied in the
@@ -23,7 +23,7 @@ router = APIRouter()
     responses={
         400: {"description": "Not enough finalized captions were provided."},
         409: {"description": "Meeting summaries are disabled."},
-        502: {"description": "Amazon Bedrock did not return a usable summary."},
+        502: {"description": "DeepSeek did not return a usable summary."},
     },
 )
 async def generate_summary(
