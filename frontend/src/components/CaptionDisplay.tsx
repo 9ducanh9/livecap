@@ -76,9 +76,9 @@ export default function CaptionDisplay({
         {/* Empty state */}
         {!hasContent && !permissionDenied && !isConnecting && (
           <div className="flex flex-1 flex-col items-center justify-center text-center p-10 min-h-[400px]">
-            <div className="relative mb-8 grid h-20 w-20 place-items-center rounded-[1.65rem] bg-gradient-to-br from-[#e2fbf5] to-[#dcecff] shadow-[0_16px_32px_rgba(10,156,136,0.12)]">
+            <div className="relative mb-8 grid h-20 w-20 place-items-center rounded-[1.65rem] bg-gradient-to-br from-[#e2fbf5] to-[#dcecff] shadow-[0_16px_32px_rgba(10,156,136,0.12)] animate-breathe">
               <MessageSquare className="h-8 w-8 text-emerald-pro" />
-              <span className="absolute -right-1 -top-1 grid h-7 w-7 place-items-center rounded-full border-2 border-white bg-ink text-[#7ee5d0]"><Sparkles className="h-3.5 w-3.5" /></span>
+              <span className="absolute -right-1 -top-1 grid h-7 w-7 place-items-center rounded-full border-2 border-white bg-ink text-[#7ee5d0] animate-twinkle"><Sparkles className="h-3.5 w-3.5" /></span>
             </div>
             <div className="max-w-md space-y-4">
               <h3 className="font-instrument text-4xl font-bold tracking-[-0.06em] text-ink">Your conversation, clearly.</h3>
@@ -86,7 +86,17 @@ export default function CaptionDisplay({
                 Start a session and your live captions will appear here.
               </p>
               <div className="mx-auto mt-8 flex h-12 items-end justify-center gap-1.5" aria-hidden="true">
-                {[12, 22, 34, 18, 44, 29, 16, 38, 24, 32, 14, 20].map((height, index) => <span key={index} className="w-1.5 rounded-full bg-emerald-pro/55" style={{ height }} />)}
+                {[12, 22, 34, 18, 44, 29, 16, 38, 24, 32, 14, 20].map((height, index) => (
+                  <span
+                    key={index}
+                    className="eq-bar w-1.5 rounded-full bg-emerald-pro/55"
+                    style={{
+                      height,
+                      animationDuration: `${0.7 + (index % 5) * 0.13}s`,
+                      animationDelay: `${(index % 6) * 0.09}s`,
+                    }}
+                  />
+                ))}
               </div>
               <p className="pt-3 text-sm font-medium text-emerald-pro">Speak naturally. We’ll keep up.</p>
             </div>

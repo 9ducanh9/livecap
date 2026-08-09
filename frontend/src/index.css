@@ -83,3 +83,23 @@
 .typewriter-caret {
   animation: caret-blink 1s step-end infinite;
 }
+
+/* Empty-state icon: slow "breathing" scale so the waiting state feels alive */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
+.animate-breathe {
+  animation: breathe 3.2s ease-in-out infinite;
+}
+
+/* Empty-state sparkle badge: gentle twinkle */
+@keyframes twinkle {
+  0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  50% { transform: scale(1.15) rotate(8deg); opacity: 0.75; }
+}
+
+.animate-twinkle {
+  animation: twinkle 2.4s ease-in-out infinite;
+}
