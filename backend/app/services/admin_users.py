@@ -791,6 +791,19 @@ def enable_user(cognito_username: str, admin_user_id: str) -> UserActionResult:
 def delete_user(cognito_username: str, admin_user_id: str) -> UserActionResult:
     """Permanently delete a user: their Cognito account plus usage-table rows.
 
+    Idempotent: if Cognito has no record of this user (an unconfirmed
+    signup Cognito auto-expired, a previous delete that got this far
+    already, a manual AWS Console delete, ...), that's treated as "already
+    deleted" rather than an error -- this still runs the DynamoDB cleanup
+    and audit below rather than bailing out. Without this, ``list_users``'s
+    defensive union (users with DynamoDB rows but no matching Cognito
+    account still show up, so a registered-but-orphaned row isn't silently
+    dropped) means a user whose Cognito side is already gone renders as a
+    blank-email "ghost" row that a 404-and-stop delete could never actually
+    clear -- confirmed live: an admin's delete click on exactly such a row
+    hit `UserNotFoundException` and left two months of orphaned MONTH# rows
+    behind with no PROFILE row, still showing every list refresh.
+
     Unlike disable/enable, a Cognito deletion cannot be rolled back, so this
     follows the same convention as ``reset_password`` below rather than the
     disable/enable rollback pattern: execute the (irreversible) mutation
@@ -806,8 +819,8 @@ def delete_user(cognito_username: str, admin_user_id: str) -> UserActionResult:
 
     Raises:
         HTTPException(500): If audit logging fails (deletion still happened).
-        HTTPException(502): If the Cognito call fails.
-        HTTPException(404): If the user does not exist.
+        HTTPException(502): If a Cognito call fails for a reason other than
+            the user already being gone.
     """
     settings = get_settings()
     cognito_client = boto3.client("cognito-idp", region_name=settings.aws_region)
@@ -815,44 +828,47 @@ def delete_user(cognito_username: str, admin_user_id: str) -> UserActionResult:
     # Look up the email first -- Cognito won't have it to give us afterward,
     # and the audit record and response message should show it, not just
     # the opaque username/sub.
+    already_gone = False
+    email = cognito_username
     try:
         user_resp = cognito_client.admin_get_user(
             UserPoolId=settings.cognito_user_pool_id,
             Username=cognito_username,
         )
+        attributes = {a["Name"]: a["Value"] for a in user_resp.get("UserAttributes", [])}
+        email = attributes.get("email", cognito_username)
     except ClientError as exc:
         error_code = exc.response.get("Error", {}).get("Code", "")
-        if error_code == "UserNotFoundException":
-            raise HTTPException(status_code=404, detail="User not found")
-        logger.error("Cognito AdminGetUser failed before delete: %s", error_code)
-        raise HTTPException(
-            status_code=502,
-            detail=f"Failed to look up user before deleting: {error_code}",
-        )
+        if error_code != "UserNotFoundException":
+            logger.error("Cognito AdminGetUser failed before delete: %s", error_code)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to look up user before deleting: {error_code}",
+            )
+        already_gone = True
     except BotoCoreError as exc:
         logger.error("Cognito AdminGetUser request failed: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="Failed to look up user before deleting")
-    attributes = {a["Name"]: a["Value"] for a in user_resp.get("UserAttributes", [])}
-    email = attributes.get("email", cognito_username)
 
-    # Execute mutation
-    try:
-        cognito_client.admin_delete_user(
-            UserPoolId=settings.cognito_user_pool_id,
-            Username=cognito_username,
-        )
-    except ClientError as exc:
-        error_code = exc.response.get("Error", {}).get("Code", "")
-        if error_code == "UserNotFoundException":
-            raise HTTPException(status_code=404, detail="User not found")
-        logger.error("Cognito AdminDeleteUser failed: %s", error_code)
-        raise HTTPException(
-            status_code=502,
-            detail=f"Failed to delete user: {error_code}",
-        )
-    except BotoCoreError as exc:
-        logger.error("Cognito AdminDeleteUser request failed: %s", type(exc).__name__)
-        raise HTTPException(status_code=502, detail="Failed to delete user")
+    # Execute mutation -- skip if Cognito already has nothing to delete.
+    if not already_gone:
+        try:
+            cognito_client.admin_delete_user(
+                UserPoolId=settings.cognito_user_pool_id,
+                Username=cognito_username,
+            )
+        except ClientError as exc:
+            error_code = exc.response.get("Error", {}).get("Code", "")
+            if error_code != "UserNotFoundException":
+                logger.error("Cognito AdminDeleteUser failed: %s", error_code)
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Failed to delete user: {error_code}",
+                )
+            already_gone = True
+        except BotoCoreError as exc:
+            logger.error("Cognito AdminDeleteUser request failed: %s", type(exc).__name__)
+            raise HTTPException(status_code=502, detail="Failed to delete user")
 
     # Best-effort cleanup of this user's usage-table rows (profile + last 3
     # months). Not fatal if it fails -- the Cognito account, which is what
@@ -888,7 +904,12 @@ def delete_user(cognito_username: str, admin_user_id: str) -> UserActionResult:
             detail="Action failed: unable to record audit log",
         )
 
-    return UserActionResult(success=True, message=f"User {email} permanently deleted")
+    message = (
+        f"User {email} permanently deleted"
+        if not already_gone
+        else f"Cleaned up leftover data for {email} (Cognito account was already gone)"
+    )
+    return UserActionResult(success=True, message=message)
 
 
 def reset_password(cognito_username: str, admin_user_id: str) -> UserActionResult:

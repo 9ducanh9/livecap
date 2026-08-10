@@ -161,8 +161,15 @@ class TestDeleteUser:
     @patch("app.services.admin_users.admin_audit")
     @patch("app.services.admin_users.boto3")
     @patch("app.services.admin_users.get_settings")
-    def test_delete_user_not_found(self, mock_get_settings, mock_boto3, mock_audit):
-        """AdminGetUser raising UserNotFoundException -> 404, nothing deleted or audited."""
+    def test_delete_user_already_gone_still_cleans_up(
+        self, mock_get_settings, mock_boto3, mock_audit
+    ):
+        """AdminGetUser raising UserNotFoundException means Cognito already
+        has nothing to delete, not an error: still runs the DynamoDB cleanup
+        and audit (idempotent), skipping AdminDeleteUser rather than 404ing
+        and leaving orphaned usage-table rows -- the exact bug hit live: a
+        ghost admin-panel row (Cognito gone, DynamoDB rows orphaned) that a
+        404-and-stop delete could never actually clear."""
         mock_get_settings.return_value = _mock_settings()
         mock_cognito = MagicMock()
         mock_cognito.admin_get_user.side_effect = ClientError(
@@ -170,13 +177,24 @@ class TestDeleteUser:
             "AdminGetUser",
         )
         mock_boto3.client.return_value = mock_cognito
+        mock_usage_table = MagicMock()
+        mock_boto3.resource.return_value.Table.return_value = mock_usage_table
 
-        with pytest.raises(HTTPException) as exc_info:
-            delete_user("nonexistent", "admin-1")
+        result = delete_user("orphaned-user", "admin-1")
 
-        assert exc_info.value.status_code == 404
+        assert isinstance(result, UserActionResult)
+        assert result.success is True
         mock_cognito.admin_delete_user.assert_not_called()
-        mock_audit.record_action.assert_not_called()
+        mock_usage_table.delete_item.assert_any_call(
+            Key={"pk": "USER#orphaned-user", "sk": "PROFILE"}
+        )
+        mock_audit.record_action.assert_called_once_with(
+            admin_user_id="admin-1",
+            target_user_id="orphaned-user",
+            action_type="delete",
+            previous_value="orphaned-user",
+            new_value="deleted",
+        )
 
     @patch("app.services.admin_users.admin_audit")
     @patch("app.services.admin_users.boto3")
