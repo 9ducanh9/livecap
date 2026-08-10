@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode, type FormEvent } from 'react';
-import { LoaderCircle, LogIn, UserPlus, Mail, Lock, ArrowLeft, AlertCircle } from 'lucide-react';
+import { LoaderCircle, LogIn, UserPlus, Mail, Lock, ArrowLeft, AlertCircle, KeyRound, CheckCircle2 } from 'lucide-react';
 import {
   CognitoUserPool,
   CognitoUser,
@@ -27,7 +27,7 @@ function storeTokens(result: { getAccessToken: () => { getJwtToken: () => string
   sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
-type AuthView = 'login' | 'register' | 'confirm';
+type AuthView = 'login' | 'register' | 'confirm' | 'forgot' | 'reset';
 
 function AuthError({ message }: { message: string }) {
   return (
@@ -71,6 +71,9 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmCode, setConfirmCode] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [resetSent, setResetSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -146,6 +149,57 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
     }
   };
 
+  const handleForgotPassword = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const user = new CognitoUser({ Username: email, Pool: getUserPool() });
+      await new Promise<void>((resolve, reject) => {
+        user.forgotPassword({
+          onSuccess: () => resolve(),
+          onFailure: (err) => reject(err),
+        });
+      });
+      setResetSent(true);
+      setView('reset');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not send a reset code.';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const user = new CognitoUser({ Username: email, Pool: getUserPool() });
+      await new Promise<void>((resolve, reject) => {
+        user.confirmPassword(resetCode, newPassword, {
+          onSuccess: () => resolve(),
+          onFailure: (err) => reject(err),
+        });
+      });
+      // Sign the user in with their new password right away.
+      const authDetails = new AuthenticationDetails({ Username: email, Password: newPassword });
+      await new Promise<void>((resolve, reject) => {
+        user.authenticateUser(authDetails, {
+          onSuccess: (result) => { storeTokens(result); resolve(); },
+          onFailure: (err) => reject(err),
+        });
+      });
+      onSuccess();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not reset the password.';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <main className="min-h-screen flex items-center justify-center bg-paper px-4">
       <div className="w-full max-w-md">
@@ -177,7 +231,16 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Password</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Password</label>
+                    <button
+                      type="button"
+                      onClick={() => { setError(null); setResetSent(false); setView('forgot'); }}
+                      className="text-xs font-semibold text-emerald-pro hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
                   <div className="mt-1 flex items-center gap-2 rounded-xl border border-[#dce5f2] px-3 py-2.5 focus-within:border-emerald-pro focus-within:ring-1 focus-within:ring-emerald-pro/30">
                     <Lock className="h-4 w-4 text-ink-muted" />
                     <input
@@ -294,6 +357,90 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
                 >
                   {loading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
                   Verify & sign in
+                </button>
+              </form>
+            </>
+          )}
+
+          {view === 'forgot' && (
+            <>
+              <button type="button" onClick={() => { setError(null); setView('login'); }} className="flex items-center gap-1 text-sm text-ink-muted hover:text-ink mb-4">
+                <ArrowLeft className="h-3.5 w-3.5" /> Back to sign in
+              </button>
+              <h1 className="font-instrument text-xl font-bold text-ink">Reset your password</h1>
+              <p className="mt-1 text-sm text-ink-muted">We'll email you a code to reset it</p>
+
+              {error && <AuthError message={error} />}
+
+              <form onSubmit={(e) => void handleForgotPassword(e)} className="mt-6 space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Email</label>
+                  <div className="mt-1 flex items-center gap-2 rounded-xl border border-[#dce5f2] px-3 py-2.5 focus-within:border-emerald-pro focus-within:ring-1 focus-within:ring-emerald-pro/30">
+                    <Mail className="h-4 w-4 text-ink-muted" />
+                    <input
+                      type="email" required autoComplete="email" placeholder="you@example.com"
+                      value={email} onChange={(e) => setEmail(e.target.value)}
+                      className="flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted/50"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="submit" disabled={loading}
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-ink text-sm font-bold text-white transition-colors hover:bg-[#18376f] disabled:opacity-50"
+                >
+                  {loading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                  Send reset code
+                </button>
+              </form>
+            </>
+          )}
+
+          {view === 'reset' && (
+            <>
+              <button type="button" onClick={() => { setError(null); setView('forgot'); }} className="flex items-center gap-1 text-sm text-ink-muted hover:text-ink mb-4">
+                <ArrowLeft className="h-3.5 w-3.5" /> Back
+              </button>
+              <h1 className="font-instrument text-xl font-bold text-ink">Check your email</h1>
+              <p className="mt-1 text-sm text-ink-muted">Enter the code we sent to <strong className="text-ink">{email}</strong> and a new password</p>
+
+              {resetSent && !error && (
+                <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-emerald-pro/20 bg-emerald-pro/5 px-4 py-3 text-sm text-emerald-pro">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>Reset code sent. Check your inbox (and spam folder).</span>
+                </div>
+              )}
+              {error && <AuthError message={error} />}
+
+              <form onSubmit={(e) => void handleResetPassword(e)} className="mt-6 space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Verification code</label>
+                  <div className="mt-1 flex items-center gap-2 rounded-xl border border-[#dce5f2] px-3 py-2.5 focus-within:border-emerald-pro focus-within:ring-1 focus-within:ring-emerald-pro/30">
+                    <KeyRound className="h-4 w-4 text-ink-muted" />
+                    <input
+                      type="text" required autoComplete="one-time-code" placeholder="123456"
+                      value={resetCode} onChange={(e) => setResetCode(e.target.value)}
+                      className="flex-1 bg-transparent text-center text-lg font-mono tracking-[0.3em] text-ink outline-none placeholder:text-ink-muted/50"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide">New password</label>
+                  <div className="mt-1 flex items-center gap-2 rounded-xl border border-[#dce5f2] px-3 py-2.5 focus-within:border-emerald-pro focus-within:ring-1 focus-within:ring-emerald-pro/30">
+                    <Lock className="h-4 w-4 text-ink-muted" />
+                    <input
+                      type="password" required autoComplete="new-password" placeholder="Min 12 chars, mixed case + number + symbol"
+                      value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                      className="flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted/50"
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-ink-muted">At least 12 characters, uppercase, lowercase, number, and symbol.</p>
+                </div>
+                <button
+                  type="submit" disabled={loading}
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-pro text-sm font-bold text-white transition-colors hover:bg-emerald-pro/90 disabled:opacity-50"
+                >
+                  {loading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                  Reset password & sign in
                 </button>
               </form>
             </>
