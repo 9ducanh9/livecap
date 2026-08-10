@@ -75,6 +75,11 @@ apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
 
 ## Change log (newest first)
 
+### 2026-08-10 - Codex - Ignored local operational scripts
+
+- Added exact ignore rules for the untracked frontend deploy launcher, local backend/frontend launchers, and the one-off history-rewrite script.
+- These files remain available locally and are intentionally excluded from commits because they execute environment-specific deployment, dependency-install, or history-rewrite actions.
+
 ### 2026-08-10 - Codex - Hardened the Cognito password-reset form
 
 - Reset-code fields now accept digits only, cap input at six digits, and use the `X X X X X X` placeholder.
