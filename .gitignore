@@ -38,6 +38,12 @@ Thumbs.db
 .kombai/
 HANDOFF.md
 
+# Local operational launchers and one-off maintenance scripts
+deploy-frontend.bat
+run-backend.bat
+run-frontend.bat
+rewrite-remove-claude-coauthor.ps1
+
 # Internal working notes (personal draft, not reviewer-facing)
 docs/architecture-summary-6pillars.md
 docs/architecture-diagram.mermaid
