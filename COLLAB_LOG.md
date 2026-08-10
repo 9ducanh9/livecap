@@ -75,6 +75,12 @@ apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
 
 ## Change log (newest first)
 
+### 2026-08-10 - Codex - Applied Cognito branded verification email trigger
+
+- Applied the reviewed `cognito-custom-message.tfplan`: **4 resources added, 1 Cognito user-pool update in place, 0 destroyed**.
+- Created `livecap-cognito-custom-message-dev` (Python 3.12) with Cognito invocation restricted to user pool `ap-southeast-1_uCz3Q7M9B`.
+- Verified the pool's `CustomMessage` trigger points to the Lambda and invoked it with an internal `CustomMessage_SignUp` test event. It returned the `Confirm your LiveCap account` subject and branded HTML message with the logo URL and Cognito `{####}` placeholder. No email was sent during verification.
+
 ### 2026-08-06 — Claude (Cowork) — Meeting notes: root-caused Bedrock, switched to DeepSeek, verified live
 
 User: "luồng AI transcript ấy, t chưa xài nó thành công bao giờ cả" — investigated

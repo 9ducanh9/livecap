@@ -40,6 +40,23 @@ variable "cognito_domain_prefix" {
   default     = ""
 }
 
+variable "cognito_from_email" {
+  description = "Optional SES-backed From address for Cognito email. Leave empty to keep the Cognito default sender."
+  type        = string
+  default     = ""
+}
+
+variable "cognito_ses_source_arn" {
+  description = "Optional verified SES identity ARN used by Cognito when cognito_from_email is set. Keep account-specific values in untracked tfvars."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = (trimspace(var.cognito_from_email) == "") == (trimspace(var.cognito_ses_source_arn) == "")
+    error_message = "cognito_from_email and cognito_ses_source_arn must either both be set or both be empty."
+  }
+}
+
 variable "google_client_id" {
   description = "Google OAuth 2.0 Client ID for social login. Leave empty to disable Google sign-in."
   type        = string
@@ -78,8 +95,26 @@ resource "aws_cognito_user_pool" "livecap" {
     require_uppercase = true
   }
 
+  # Plain-text fallback for any trigger source the custom message Lambda
+  # below doesn't recognize.
   verification_message_template {
     default_email_option = "CONFIRM_WITH_CODE"
+    email_subject        = "Confirm your LiveCap account"
+    email_message        = "Welcome to LiveCap. Your verification code is {####}. It expires in 24 hours."
+  }
+
+  lambda_config {
+    custom_message = aws_lambda_function.cognito_custom_message[0].arn
+  }
+
+  dynamic "email_configuration" {
+    for_each = trimspace(var.cognito_ses_source_arn) == "" ? [] : [true]
+
+    content {
+      email_sending_account = "DEVELOPER"
+      from_email_address    = var.cognito_from_email
+      source_arn            = var.cognito_ses_source_arn
+    }
   }
 
   tags = merge(var.tags, {
