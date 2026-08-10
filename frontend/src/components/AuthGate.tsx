@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode, type FormEvent } from 'react';
-import { LoaderCircle, LogIn, UserPlus, Mail, Lock, ArrowLeft } from 'lucide-react';
+import { LoaderCircle, LogIn, UserPlus, Mail, Lock, ArrowLeft, AlertCircle } from 'lucide-react';
 import {
   CognitoUserPool,
   CognitoUser,
@@ -28,6 +28,15 @@ function storeTokens(result: { getAccessToken: () => { getJwtToken: () => string
 }
 
 type AuthView = 'login' | 'register' | 'confirm';
+
+function AuthError({ message }: { message: string }) {
+  return (
+    <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-crimson">
+      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+      <span>{message}</span>
+    </div>
+  );
+}
 
 export default function AuthGate({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<'checking' | 'anonymous' | 'signed-in'>(() =>
@@ -153,7 +162,7 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
               <h1 className="font-instrument text-xl font-bold text-ink">Welcome back</h1>
               <p className="mt-1 text-sm text-ink-muted">Sign in to your workspace</p>
 
-              {error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-crimson">{error}</p>}
+              {error && <AuthError message={error} />}
 
               <form onSubmit={(e) => void handleLogin(e)} className="mt-6 space-y-4">
                 <div>
@@ -221,7 +230,7 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
               <h1 className="font-instrument text-xl font-bold text-ink">Create account</h1>
               <p className="mt-1 text-sm text-ink-muted">Sign up with your email</p>
 
-              {error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-crimson">{error}</p>}
+              {error && <AuthError message={error} />}
 
               <form onSubmit={(e) => void handleRegister(e)} className="mt-6 space-y-4">
                 <div>
@@ -266,7 +275,7 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
               <h1 className="font-instrument text-xl font-bold text-ink">Check your email</h1>
               <p className="mt-1 text-sm text-ink-muted">We sent a verification code to <strong className="text-ink">{email}</strong></p>
 
-              {error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-crimson">{error}</p>}
+              {error && <AuthError message={error} />}
 
               <form onSubmit={(e) => void handleConfirm(e)} className="mt-6 space-y-4">
                 <div>
