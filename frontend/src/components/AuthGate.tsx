@@ -38,6 +38,17 @@ function AuthError({ message }: { message: string }) {
   );
 }
 
+function sixDigitCode(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 6);
+}
+
+function cognitoErrorCode(error: unknown): string {
+  if (typeof error !== 'object' || error === null) return '';
+  const value = error as { code?: unknown; name?: unknown };
+  if (typeof value.code === 'string') return value.code;
+  return typeof value.name === 'string' ? value.name : '';
+}
+
 export default function AuthGate({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<'checking' | 'anonymous' | 'signed-in'>(() =>
     isAuthConfigured() ? 'checking' : 'signed-in'
@@ -74,6 +85,7 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [resetSent, setResetSent] = useState(false);
+  const [resetCodeError, setResetCodeError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -124,6 +136,10 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
   const handleConfirm = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (confirmCode.length !== 6) {
+      setError('Enter the 6-digit verification code from your email.');
+      return;
+    }
     setLoading(true);
     try {
       const user = new CognitoUser({ Username: email, Pool: getUserPool() });
@@ -152,20 +168,35 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
   const handleForgotPassword = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setResetCodeError(null);
     setLoading(true);
     try {
-      const user = new CognitoUser({ Username: email, Pool: getUserPool() });
+      const normalizedEmail = email.trim().toLowerCase();
+      const user = new CognitoUser({ Username: normalizedEmail, Pool: getUserPool() });
       await new Promise<void>((resolve, reject) => {
         user.forgotPassword({
           onSuccess: () => resolve(),
           onFailure: (err) => reject(err),
         });
       });
+      setEmail(normalizedEmail);
+      setResetCode('');
+      setNewPassword('');
       setResetSent(true);
       setView('reset');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Could not send a reset code.';
-      setError(msg);
+      // Keep this response neutral so the password-reset form cannot be used
+      // to discover whether an email address has a LiveCap account.
+      const code = cognitoErrorCode(err);
+      if (code === 'UserNotFoundException') {
+        setResetCode('');
+        setNewPassword('');
+        setResetSent(true);
+        setView('reset');
+      } else {
+        const msg = err instanceof Error ? err.message : 'Could not send a reset code.';
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -174,6 +205,15 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
   const handleResetPassword = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setResetCodeError(null);
+    if (resetCode.length !== 6) {
+      setResetCodeError('Enter all 6 digits from the reset email.');
+      return;
+    }
+    if (newPassword.length === 0) {
+      setError('Enter a new password to continue.');
+      return;
+    }
     setLoading(true);
     try {
       const user = new CognitoUser({ Username: email, Pool: getUserPool() });
@@ -193,8 +233,17 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
       });
       onSuccess();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Could not reset the password.';
-      setError(msg);
+      const code = cognitoErrorCode(err);
+      if (code === 'CodeMismatchException') {
+        setResetCodeError('This code is invalid. Check the latest email and try again.');
+      } else if (code === 'ExpiredCodeException') {
+        setResetCodeError('This code has expired. Request a new reset code and try again.');
+      } else if (code === 'InvalidPasswordException') {
+        setError('Use at least 12 characters with uppercase, lowercase, a number, and a symbol.');
+      } else {
+        const msg = err instanceof Error ? err.message : 'Could not reset the password.';
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -345,8 +394,8 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
                   <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Verification code</label>
                   <div className="mt-1 flex items-center gap-2 rounded-xl border border-[#dce5f2] px-3 py-2.5 focus-within:border-emerald-pro focus-within:ring-1 focus-within:ring-emerald-pro/30">
                     <input
-                      type="text" required autoComplete="one-time-code" placeholder="123456"
-                      value={confirmCode} onChange={(e) => setConfirmCode(e.target.value)}
+                      type="text" required inputMode="numeric" maxLength={6} autoComplete="one-time-code" placeholder="X X X X X X"
+                      value={confirmCode} onChange={(e) => setConfirmCode(sixDigitCode(e.target.value))}
                       className="flex-1 bg-transparent text-center text-lg font-mono tracking-[0.3em] text-ink outline-none placeholder:text-ink-muted/50"
                     />
                   </div>
@@ -401,12 +450,12 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
                 <ArrowLeft className="h-3.5 w-3.5" /> Back
               </button>
               <h1 className="font-instrument text-xl font-bold text-ink">Check your email</h1>
-              <p className="mt-1 text-sm text-ink-muted">Enter the code we sent to <strong className="text-ink">{email}</strong> and a new password</p>
+              <p className="mt-1 text-sm text-ink-muted">Enter the 6-digit code for <strong className="text-ink">{email}</strong></p>
 
               {resetSent && !error && (
                 <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-emerald-pro/20 bg-emerald-pro/5 px-4 py-3 text-sm text-emerald-pro">
                   <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>Reset code sent. Check your inbox (and spam folder).</span>
+                  <span>If an account exists for this email, we sent a reset code. Check your inbox and spam folder.</span>
                 </div>
               )}
               {error && <AuthError message={error} />}
@@ -417,26 +466,38 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
                   <div className="mt-1 flex items-center gap-2 rounded-xl border border-[#dce5f2] px-3 py-2.5 focus-within:border-emerald-pro focus-within:ring-1 focus-within:ring-emerald-pro/30">
                     <KeyRound className="h-4 w-4 text-ink-muted" />
                     <input
-                      type="text" required autoComplete="one-time-code" placeholder="123456"
-                      value={resetCode} onChange={(e) => setResetCode(e.target.value)}
+                      type="text" required inputMode="numeric" maxLength={6} autoComplete="one-time-code" placeholder="X X X X X X"
+                      value={resetCode}
+                      onChange={(e) => {
+                        setResetCode(sixDigitCode(e.target.value));
+                        setResetCodeError(null);
+                      }}
+                      onBlur={() => {
+                        if (resetCode.length > 0 && resetCode.length < 6) {
+                          setResetCodeError('Enter all 6 digits from the reset email.');
+                        }
+                      }}
                       className="flex-1 bg-transparent text-center text-lg font-mono tracking-[0.3em] text-ink outline-none placeholder:text-ink-muted/50"
                     />
                   </div>
+                  {resetCodeError && <p className="mt-1.5 text-[11px] text-crimson">{resetCodeError}</p>}
                 </div>
-                <div>
-                  <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide">New password</label>
-                  <div className="mt-1 flex items-center gap-2 rounded-xl border border-[#dce5f2] px-3 py-2.5 focus-within:border-emerald-pro focus-within:ring-1 focus-within:ring-emerald-pro/30">
-                    <Lock className="h-4 w-4 text-ink-muted" />
-                    <input
-                      type="password" required autoComplete="new-password" placeholder="Min 12 chars, mixed case + number + symbol"
-                      value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-                      className="flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted/50"
-                    />
+                {resetCode.length === 6 && (
+                  <div>
+                    <label className="text-xs font-semibold text-ink-muted uppercase tracking-wide">New password</label>
+                    <div className="mt-1 flex items-center gap-2 rounded-xl border border-[#dce5f2] px-3 py-2.5 focus-within:border-emerald-pro focus-within:ring-1 focus-within:ring-emerald-pro/30">
+                      <Lock className="h-4 w-4 text-ink-muted" />
+                      <input
+                        type="password" required autoComplete="new-password" placeholder="Min 12 chars, mixed case + number + symbol"
+                        value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                        className="flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted/50"
+                      />
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-ink-muted">At least 12 characters, uppercase, lowercase, number, and symbol.</p>
                   </div>
-                  <p className="mt-1.5 text-[11px] text-ink-muted">At least 12 characters, uppercase, lowercase, number, and symbol.</p>
-                </div>
+                )}
                 <button
-                  type="submit" disabled={loading}
+                  type="submit" disabled={loading || resetCode.length !== 6}
                   className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-pro text-sm font-bold text-white transition-colors hover:bg-emerald-pro/90 disabled:opacity-50"
                 >
                   {loading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}

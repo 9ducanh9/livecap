@@ -121,13 +121,31 @@ describe('DashboardPage start flow', () => {
   });
 
   it('requests AI meeting notes only after the user chooses to create them', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        summary_en: 'Launch planning is underway.', summary_vi: 'Dang lap ke hoach ra mat.',
-        key_points: [], decisions: [], action_items: [], topics: [], keywords: [],
-        insights: [], glossary: [], follow_up_questions: [],
-      }),
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/usage')) {
+        return {
+          ok: true,
+          json: async () => ({
+            tier: 'free', sessions_used: 0, minutes_used: 0, quota_error: null,
+            limits: {
+              max_sessions_per_month: 3, max_minutes_per_session: 30,
+              max_minutes_per_month: 90, meeting_notes_enabled: true,
+            },
+          }),
+        };
+      }
+      if (url.includes('/api/transcripts')) {
+        return { ok: true, json: async () => [] };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          summary_en: 'Launch planning is underway.', summary_vi: 'Dang lap ke hoach ra mat.',
+          key_points: [], decisions: [], action_items: [], topics: [], keywords: [],
+          insights: [], glossary: [], follow_up_questions: [],
+        }),
+      };
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -144,11 +162,14 @@ describe('DashboardPage start flow', () => {
       mocks.webSocketOptions.onSessionEnd();
     });
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/summary'))
+    ).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Create meeting notes' }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    expect(fetchMock.mock.calls[0][0]).toContain('/api/sessions/session-1/summary');
+    await waitFor(() => expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/api/sessions/session-1/summary'))
+    ).toBe(true));
     expect(screen.getByText('AI meeting summary')).toBeTruthy();
   });
 });

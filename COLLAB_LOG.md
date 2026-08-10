@@ -75,6 +75,14 @@ apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
 
 ## Change log (newest first)
 
+### 2026-08-10 - Codex - Hardened the Cognito password-reset form
+
+- Reset-code fields now accept digits only, cap input at six digits, and use the `X X X X X X` placeholder.
+- The reset flow reports incomplete, invalid, and expired codes clearly. The new-password field stays hidden until a six-digit code is entered; Cognito validates the actual code together with the new password on submission.
+- Reset requests now use a neutral response: `If an account exists...`. This prevents account enumeration for arbitrary email addresses while still allowing legitimate users to reset their password.
+- Updated the meeting-notes test to assert that no summary request is made before the user clicks the action; dashboard hydration now legitimately fetches usage and transcript history.
+- Verification: `npm.cmd test` passed (24 tests); `npm.cmd run build` passed; `git diff --check` passed.
+
 ### 2026-08-10 - Codex - Applied Cognito branded verification email trigger
 
 - Applied the reviewed `cognito-custom-message.tfplan`: **4 resources added, 1 Cognito user-pool update in place, 0 destroyed**.
