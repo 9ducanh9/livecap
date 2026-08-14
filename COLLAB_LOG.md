@@ -75,6 +75,11 @@ apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
 
 ## Change log (newest first)
 
+### 2026-08-15 - Codex - Restructured the public README
+
+- Replaced the long operational snapshot with a scannable project overview: live demo, product preview, problem, solution, architecture, local quick start, operational facts, stack, structure, and documentation links.
+- Kept verifiable product and infrastructure claims while moving detailed deployment and rollout material to the existing documentation.
+
 ### 2026-08-10 - Codex - Ignored local operational scripts
 
 - Added exact ignore rules for the untracked frontend deploy launcher, local backend/frontend launchers, and the one-off history-rewrite script.
