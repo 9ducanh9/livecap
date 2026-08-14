@@ -1,312 +1,162 @@
 # LiveCap
 
+> Real-time Vietnamese-English captions for meetings, built on AWS.
+
 [![CI](https://github.com/9ducanh9/livecap/actions/workflows/ci.yml/badge.svg)](https://github.com/9ducanh9/livecap/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/9ducanh9/livecap)](https://github.com/9ducanh9/livecap/releases/latest)
 
-LiveCap is a real-time Vietnamese-English meeting caption application. It
-captures microphone audio in the browser, streams 16 kHz PCM over a secure
-WebSocket, transcribes speech with Amazon Transcribe, translates finalized text
-with Amazon Translate, and displays bilingual captions side by side.
-
-- [Live demo](https://livecap.logantai.com/)
-- [Open the caption workspace](https://livecap.logantai.com/app)
-- [Latest tagged release](https://github.com/9ducanh9/livecap/releases/latest)
-- [Three-minute demo guide](docs/demo-guide.md)
-- [Verified as-deployed architecture](docs/as-deployed-architecture.md)
-
-> **Cold-start notice:** To reduce idle cost, LiveCap scales its ECS backend to
-> zero after five minutes without an active session. The first **Start session**
-> after an idle period usually takes 30-60 seconds while Fargate starts and
-> passes its health check. During that window, `/api/health` may temporarily
-> return `503 Service Unavailable`; keep the workspace open while it shows
-> **Starting backend**. The UI retries for up to 120 seconds.
-
-The latest tagged release is `v1.5.2`. The live environment also includes
-post-release frontend and AWS hardening tracked in
-[PR #4](https://github.com/9ducanh9/livecap/pull/4).
-
-## Development and Feature Status
-
-[`Update`](https://github.com/9ducanh9/livecap/tree/Update) is the integration
-branch. Its exact deployment status and feature flags are captured in the
-tables below and in [`docs/upgrade-roadmap.md`](docs/upgrade-roadmap.md).
-
-- **Meeting notes** are generated only when a participant explicitly selects
-  **Create meeting notes** after a session. The DeepSeek-backed endpoint
-  remains disabled by default through `ENABLE_MEETING_SUMMARY=false`.
-- **Accounts and transcript history** are live on the custom-domain target
-  environment and enforced by default (`ENABLE_AUTH=true`). Cognito Hosted UI
-  (email + Google OAuth) authenticates the user, DynamoDB stores the
-  user-owned metadata, and private TXT exports remain in S3 for 14 days.
-- **Per-user usage quotas, Stripe subscription billing (Pro/Business, test
-  mode), and an admin dashboard** (`/admin`, gated on Cognito group
-  membership) are live. See [`docs/upgrade-roadmap.md`](docs/upgrade-roadmap.md)
-  for current capability status.
-- Optional reliability, cost, and transcription improvements remain
-  feature-gated until their individual rollout gates are approved.
-
-For local feature testing, see [`docs/run-local.md`](docs/run-local.md).
-
-## Product Preview
-
-### Landing Page
+[Live demo](https://livecap.logantai.com/) | [Open workspace](https://livecap.logantai.com/app) | [Demo guide](docs/demo-guide.md) | [Architecture](docs/as-deployed-architecture.md)
 
 ![LiveCap landing page](docs/livecap-landing.png)
 
-### Caption Workspace
+## Contents
 
-This screenshot shows the current production caption workspace in its ready
-state before microphone capture begins.
+- [Problem](#problem)
+- [Solution](#solution)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Operational Facts](#operational-facts)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Verification](#verification)
 
-![LiveCap caption dashboard](docs/livecap-dashboard.png)
+## Problem
 
-## Core Capabilities
+Vietnamese-English meetings lose context when participants wait for manual
+translation or receive notes after the conversation. LiveCap makes the spoken
+conversation readable as it happens, while keeping the operator workflow
+small: open the app, choose a microphone, and start a session.
 
-- Real-time English and Vietnamese transcription through parallel Amazon
-  Transcribe streams.
-- Finalized bilingual caption rows with speaker labels and timestamps.
-- Browser microphone capture with 16 kHz, 16-bit, mono PCM output.
-- WebSocket heartbeat and three bounded reconnect attempts using 1, 2, and 4
-  second backoff.
-- Process-local global and per-IP session limits.
-- Thirty-minute session limit with automatic stop.
-- TXT transcript export to private S3 through a time-limited presigned URL.
-- Wake-on-demand ECS startup and five-minute idle scale-down.
-- No raw audio storage.
-- Cognito sign-in and owner-scoped transcript history (enabled by default on
-  the target environment).
-- Per-user usage quotas (Free/Pro/Business tiers) and Stripe subscription
-  billing (test mode).
-- Admin dashboard (`/admin`) for user management, usage analytics, revenue,
-  and system health — gated on Cognito group membership.
+## Solution
 
-## Current Deployment Snapshot
-
-Facts below were checked directly against live AWS on 2026-07-24 (not just
-inferred from Terraform config — `aws ecs describe-services`,
-`describe-task-definition`, `ec2 describe-nat-gateways`, etc.). This is a
-point-in-time snapshot, not a formal release verification; for the
-authoritative current state at any given moment, re-check AWS directly.
-
-| Area | State |
-|---|---|
-| Backend | 391/400 tests pass on this checkout (Python 3.14 `.venv`, project targets 3.11); the 9 failures are a local-`.env`-only artifact (`ENABLE_AUTH=true` locally), not a product bug |
-| Frontend | `tsc --noEmit` and `npm run build` clean; 23/24 `npm test` pass (1 local-`.env.local`-only artifact); no test coverage yet for the admin panel UI |
-| Terraform | `fmt`, `init -backend=false`, and `validate` pass |
-| Backend compute | ECS service `livecap-target-service-dev`, task definition `livecap-target-backend-dev:26` |
-| Container | ECR image `945f2cf-amd64` (immutable Git-SHA tag) — note: 2 unreleased commits (`99bf090`, `131d391`) are not in this image yet |
-| Network | Custom VPC, two public and two private subnets across `ap-southeast-1a` and `ap-southeast-1b`; Fargate has no public IP; **two** NAT Gateways (multi-AZ egress) |
-| Edge security | CloudFront WAF and ALB WAF use blocking managed and rate-based rules |
-| Scale behavior | Verified live this session: wake `0 -> 1` (~60-70s) and the documented `/api/health` 503-during-cold-start both confirmed by direct testing |
-| Retention | Transcript objects and Terraform-managed ECS/Lambda/WAF logs: 14 days; the direct Watchtower log group still needs a retention policy |
+The browser captures microphone audio and sends 16 kHz PCM through a secure
+WebSocket. A FastAPI backend running on ECS Fargate streams it to Amazon
+Transcribe, translates finalized text with Amazon Translate, and returns
+bilingual captions to the browser. Exported TXT transcripts are private S3
+objects; LiveCap does not store raw audio.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    User["Browser"] -->|HTTPS and WSS| CFWAF["CloudFront WAF - BLOCK"]
-    CFWAF --> CF["CloudFront"]
-    CF -->|OAC origin fetch| Frontend["Private S3 frontend bucket"]
-    CF -->|/api/wake - OAC SigV4| Wake["Wake Lambda - AWS_IAM URL"]
-    Wake -->|ECS UpdateService desired 1| ECS["ECS service - max 1 task"]
-    CF -->|HTTPS /api and WSS /ws| ALBWAF["Regional ALB WAF - BLOCK"]
-    ALBWAF --> ALB["Public multi-AZ ALB"]
-    ALB -->|Target group port 8000| Task["Fargate task in private subnet"]
+    Browser[Browser] -->|HTTPS / WSS| CFWAF[CloudFront WAF]
+    CFWAF --> CF[CloudFront]
+    CF -->|Static site via OAC| Frontend[Private S3 frontend bucket]
+    CF -->|/api/wake| Wake[Wake Lambda]
+    Wake -->|UpdateService 0 to 1| ECS[ECS service]
+    CF -->|/api and /ws| ALBWAF[ALB WAF]
+    ALBWAF --> ALB[Multi-AZ ALB]
+    ALB --> Task[Fargate task in private subnet]
     ECS --> Task
-    ECR["ECR immutable image"] -.-> Task
-    Task -->|private egress| NAT["NAT Gateways x2 (multi-AZ)"]
-    NAT --> Transcribe["Amazon Transcribe"]
-    NAT --> Translate["Amazon Translate"]
-    Task -->|finalized TXT only| Transcript["Private S3 transcript bucket"]
-    Task -.-> CloudWatch["CloudWatch logs and metrics"]
+    ECR[ECR immutable image] -.-> Task
+    Task --> Transcribe[Amazon Transcribe]
+    Task --> Translate[Amazon Translate]
+    Task --> Transcript[Private S3 transcript bucket]
+    Task -.-> CloudWatch[CloudWatch]
 ```
 
-CloudFront is the only browser-facing application entrypoint. It serves the
-React frontend from private S3, routes `/api/*` and `/ws/*` to the HTTPS ALB
-origin, and routes `/api/wake` to an IAM-protected Lambda Function URL signed by
-CloudFront Origin Access Control.
+CloudFront is the browser entry point. It serves the React frontend from a
+private S3 bucket and routes API/WebSocket traffic to the ALB. The Fargate task
+has no public IP; ALB and CloudFront each have a WAF Web ACL. See the
+[as-deployed architecture](docs/as-deployed-architecture.md) for request,
+wake, idle, security, and availability flows.
 
-The ALB spans two public subnets. The ECS Fargate task can be placed in either
-of two private subnets with `assign_public_ip=false`; outbound AWS service
-calls use one of two NAT Gateways (one per AZ, `enable_multi_az_nat=true`).
-The service is currently capped at one task (`backend_max_capacity=1`); a
-shared DynamoDB session registry is already live as the precondition for
-raising that cap (see `docs/multi-task-runbook.md`).
+![LiveCap caption workspace](docs/livecap-dashboard.png)
 
-See [As-Deployed Architecture](docs/as-deployed-architecture.md) for resource
-placement, request and response paths, wake and idle flows, availability
-behavior, and remaining production boundaries.
+## Quick Start
 
-![LiveCap AWS architecture](docs/livecap-target-architecture.png)
-
-## Technology Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | React 18, TypeScript, Vite, Tailwind CSS, GSAP |
-| Backend | Python 3.11, FastAPI, Uvicorn, WebSocket |
-| AI services | Amazon Transcribe Streaming, Amazon Translate |
-| Compute | Amazon ECS Fargate behind an Application Load Balancer |
-| Network | Custom two-AZ VPC, public ALB subnets, private task subnets, NAT Gateway |
-| Edge and storage | CloudFront, AWS WAF, private S3 frontend and transcript buckets |
-| Delivery | Docker, Amazon ECR, Terraform, GitHub Actions |
-| Operations | CloudWatch logs/dashboard, AWS Budget, ECR scanning, Dependabot, Gitleaks |
-
-## Repository Layout
-
-```text
-livecap/
-  |-- backend/                  # FastAPI application and tests
-  |-- frontend/                 # React application and tests
-|-- infrastructure/
-|   |-- bootstrap/            # Remote-state S3 bootstrap
-|   `-- terraform/            # As-deployed AWS infrastructure
-|-- docs/                     # Architecture, demo, design, and screenshots
-|-- .github/workflows/ci.yml  # Test, build, Terraform, and secret gates
-`-- README.md
-```
-
-## Local Development
-
-### Prerequisites
-
-- Python 3.11+
-- Node.js 20 and npm
-- AWS credentials supplied by an AWS profile or role when testing real
-  Transcribe, Translate, or S3 calls
-
-Do not place AWS access keys in `.env` files.
-
-### Backend
+Prerequisites: Python 3.11+, Node.js 20+, and AWS credentials when testing real
+Transcribe, Translate, or S3 operations. Never place AWS access keys in `.env`.
 
 ```powershell
+git clone https://github.com/9ducanh9/livecap.git
+cd livecap
+
+# Terminal 1: backend
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 Copy-Item .env.example .env
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Health endpoint: `http://127.0.0.1:8000/api/health`
-
-Local AWS calls require a valid profile or temporary credentials. Local mode
-does not fall back to the ECS task role available in AWS.
-
-### Frontend
-
 ```powershell
+# Terminal 2: frontend
 cd frontend
 npm ci
 Copy-Item .env.example .env
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`.
+Open `http://127.0.0.1:5173`. For local Cognito, Stripe, and feature-flag
+configuration, use [the local run guide](docs/run-local.md).
 
-## Configuration
+## Operational Facts
 
-- Backend settings: [`backend/.env.example`](backend/.env.example)
-- Frontend settings: [`frontend/.env.example`](frontend/.env.example)
-- Terraform inputs:
-  [`infrastructure/terraform/terraform.tfvars.example`](infrastructure/terraform/terraform.tfvars.example)
-- Remote backend example:
-  [`infrastructure/terraform/backend.hcl.example`](infrastructure/terraform/backend.hcl.example)
+| Area | Current design |
+| --- | --- |
+| Compute | ECS Fargate scales from 0 to 1 task; current maximum is one task |
+| Cold start | The first session after idle normally waits about 30-60 seconds for Fargate and health checks |
+| Session safety | WebSocket heartbeat, bounded reconnects, a 30-minute limit, and concurrent-session guards |
+| Data retention | Private transcript objects and Terraform-managed logs are retained for 14 days |
+| Storage | Finalized text exports only; no raw audio storage |
+| Cost trade-off | Scale-to-zero reduces idle Fargate cost; ALB, NAT Gateways, and WAF retain baseline cost |
 
-Real `.env`, `terraform.tfvars`, `backend.hcl`, state, plan, and crash files are
-ignored and must remain untracked.
+## Tech Stack
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS, GSAP |
+| Backend | Python 3.11, FastAPI, Uvicorn, WebSocket |
+| Speech and translation | Amazon Transcribe Streaming, Amazon Translate |
+| Compute and delivery | ECS Fargate, Docker, Amazon ECR, GitHub Actions |
+| Edge and network | CloudFront, AWS WAF, ALB, custom two-AZ VPC, NAT Gateway |
+| Data and operations | Amazon S3, DynamoDB, Cognito, CloudWatch, Terraform |
+
+## Project Structure
+
+```text
+livecap/
+|-- backend/                    # FastAPI application, services, and tests
+|-- frontend/                   # React application, UI, and tests
+|-- infrastructure/
+|   |-- bootstrap/              # Remote Terraform state bootstrap
+|   `-- terraform/              # AWS infrastructure source of truth
+|-- docs/                       # Demo, architecture, rollout, and run guides
+|-- .github/workflows/          # CI and deployment workflow definitions
+|-- COLLAB_LOG.md               # Shared implementation log for contributors
+`-- README.md
+```
 
 ## Verification
 
-### Backend
-
 ```powershell
+# Backend
 cd backend
 python -m compileall app
 python -m pytest
-```
 
-### Frontend
-
-```powershell
+# Frontend
 cd frontend
-npm ci
 npm test
 npm run build
 ```
 
-### Terraform Syntax Only
-
-```powershell
-terraform -chdir=infrastructure/bootstrap/remote-state init -backend=false
-terraform -chdir=infrastructure/bootstrap/remote-state validate
-terraform -chdir=infrastructure/terraform init -backend=false
-terraform -chdir=infrastructure/terraform fmt -check
-terraform -chdir=infrastructure/terraform validate
-```
-
-These commands do not apply infrastructure or migrate state.
-
-## Deployment Safety
-
-The custom-VPC target stack was introduced through a parallel blue/green-style
-cutover. The legacy ALB/ECS rollback stack has since been retired. Any remaining
-legacy EC2, storage, or IAM resource must be inventoried and reviewed separately
-before deletion.
-
-Before any infrastructure change:
-
-1. Use the reviewed remote state and untracked `backend.hcl`/`terraform.tfvars`.
-2. Push backend images under immutable Git SHA-derived tags.
-3. Run and review a full Terraform plan.
-4. Confirm that the plan does not replace or destroy active runtime resources.
-5. Never run `terraform apply`, `terraform destroy`, or state migration from CI.
-
-The authoritative infrastructure workflow is
-[`infrastructure/terraform/README.md`](infrastructure/terraform/README.md).
-
-## Security, Availability, and Cost Boundaries
-
-- CloudFront and the ALB have separate WAF Web ACLs with blocking managed and
-  rate-based rules.
-- The ALB security group accepts HTTPS only from the AWS-managed CloudFront
-  origin-facing prefix list; the task accepts port 8000 only from the ALB.
-- The wake Lambda Function URL requires `AWS_IAM`; CloudFront signs origin
-  requests through OAC, so direct Function URL calls are denied.
-- IAM roles provide runtime AWS access; credentials are not embedded in code or
-  container images.
-- Frontend and transcript buckets are private. Transcript downloads expire,
-  transcript objects are removed after 14 days, and raw audio is not stored.
-- Session duration and concurrent-session guards bound Transcribe and Translate
-  usage.
-- Scale-to-zero reduces idle Fargate compute, but ALB, NAT Gateway, and WAF
-  retain fixed or baseline cost while provisioned.
-- Maximum task count remains one (`backend_max_capacity=1`). ECS self-heals a
-  failed task, but this is not active-active high availability and an
-  in-flight WebSocket session is lost.
-- Two NAT Gateways (one per AZ) provide multi-AZ egress for private tasks —
-  a deliberate cost tradeoff over a single shared NAT Gateway.
-- ECR scanning remains a release gate; inherited operating-system findings must
-  be reviewed whenever the pinned base image is rebuilt.
-- The `$50` AWS Budget exists, but a notification subscriber is not currently
-  configured; the dashboard and Cost Explorer remain the active review paths.
-- The direct Watchtower `livecap` log group still needs an explicit retention
-  policy even though Terraform-managed ECS, Lambda, and WAF log groups use 14
-  days.
+Terraform validation instructions are in
+[infrastructure/terraform/README.md](infrastructure/terraform/README.md).
+CI never applies infrastructure or migrates Terraform state.
 
 ## Documentation
 
 - [Documentation index](docs/README.md)
-- [Demo guide](docs/demo-guide.md)
+- [Three-minute demo guide](docs/demo-guide.md)
 - [As-deployed architecture](docs/as-deployed-architecture.md)
 - [Upgrade roadmap](docs/upgrade-roadmap.md)
-- [Cognito and transcript-history rollout](docs/cognito-history-rollout.md)
-- [Stable/preview runtime environments](docs/frontend-runtime-environments.md)
 - [Infrastructure overview](infrastructure/README.md)
-- [Terraform source of truth](infrastructure/terraform/README.md)
-- [Local feature test guide](docs/run-local.md)
 
-## License
+## License and Author
 
-This repository is an academic project. No open-source license has been
-assigned.
+This is an academic capstone project; no open-source license has been assigned.
+
+Built by [Lam Chi Tai](https://github.com/9ducanh9).
