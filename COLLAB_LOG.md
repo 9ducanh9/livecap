@@ -75,6 +75,14 @@ apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
 
 ## Change log (newest first)
 
+### 2026-08-16 - Codex - Proposed LiveCap Rooms and redrew the target architecture
+
+- Reviewed the current repository, Terraform defaults/flags, handoff, and the latest recorded live-state entry before proposing a new product direction. The current shell has no `livecap-codex` AWS CLI profile, so this was not recorded as a fresh live AWS audit.
+- Added `docs/shared-rooms-product-direction.md`: a user-problem-led proposal for one host to publish bilingual captions to room viewers joining by QR/code, with late-join catch-up and reconnect behavior.
+- Kept the existing audio path and proposed AWS AppSync Events for viewer WebSocket fan-out, a Lambda room authorizer, a short-TTL DynamoDB room-events table, and a Secrets Manager signing key. All new resources are explicitly marked as proposed and not deployed.
+- Added editable SVG and PNG architecture artifacts using the official AWS Architecture Icons package (Q2 2026). The diagram distinguishes Global, Singapore regional, VPC, two-AZ, managed-service, and external-service boundaries and labels the existing/proposed flows.
+- Verification: SVG parsed as XML; PNG rendered at `2800x1600` and passed visual inspection; the proposal contains no Mermaid; `git diff --check` passed. No application or Terraform logic changed.
+
 ### 2026-08-15 - Codex - Restructured the public README
 
 - Replaced the long operational snapshot with a scannable project overview: live demo, product preview, problem, solution, architecture, local quick start, operational facts, stack, structure, and documentation links.
