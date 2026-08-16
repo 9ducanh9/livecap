@@ -153,6 +153,7 @@ CI never applies infrastructure or migrates Terraform state.
 - [Three-minute demo guide](docs/demo-guide.md)
 - [As-deployed architecture](docs/as-deployed-architecture.md)
 - [Upgrade roadmap](docs/upgrade-roadmap.md)
+- [Proposed LiveCap Rooms direction](docs/shared-rooms-product-direction.md)
 - [Infrastructure overview](infrastructure/README.md)
 
 ## License and Author
