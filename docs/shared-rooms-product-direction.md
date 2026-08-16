@@ -21,7 +21,7 @@ Day la de xuat san pham va kien truc, **chua phai trang thai da deploy**.
 Nhanh `feature/livecap-rooms` da co mot vertical slice chay local de danh gia
 trai nghiem truoc khi tao tai nguyen AWS moi:
 
-- Host tao/khoa room, nhan ma sau ky tu va link viewer.
+- Host tao/khoa room, nhan QR, link viewer va ma sau ky tu.
 - Viewer vao `/rooms/{room_code}`, chon VI, EN hoac song ngu.
 - Backend phat chi caption finalized, giu snapshot ngan cho late join va gioi
   han retry/heartbeat o viewer.

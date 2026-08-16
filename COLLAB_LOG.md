@@ -75,6 +75,13 @@ apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
 
 ## Change log (newest first)
 
+### 2026-08-17 - Codex - Added scannable QR sharing for LiveCap Rooms
+
+- Added `qrcode.react` and generated the QR directly from the room viewer URL, so the QR and copied link always target the same room.
+- Added show/hide QR controls while retaining the copy-link action and six-character join code as fallbacks.
+- Added a focused component test for QR rendering and visibility controls; the frontend suite passes with `28 passed`, the production build passes with `1893 modules transformed`, and the local host panel renders the QR for its generated room URL.
+- Local note: a QR containing `127.0.0.1` is only reachable on the development machine. A deployed build automatically uses its public origin, while phone testing on local development requires a LAN-reachable URL or tunnel.
+
 ### 2026-08-17 - Codex - Built the local LiveCap Rooms vertical slice
 
 - Created branch `feature/livecap-rooms` from `Update`; no AWS resources were applied or deployed.
