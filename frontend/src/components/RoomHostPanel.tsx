@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Check, Copy, Link2, LoaderCircle, Radio, Users, X } from 'lucide-react';
+import { Check, Copy, Link2, LoaderCircle, QrCode, Radio, Users, X } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import type { HostedRoom } from '../services/roomService';
 
 interface RoomHostPanelProps {
@@ -21,6 +22,7 @@ export default function RoomHostPanel({
 }: RoomHostPanelProps) {
   const [title, setTitle] = useState('LiveCap room');
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
+  const [showQr, setShowQr] = useState(true);
 
   const copy = async (value: string, kind: 'code' | 'link') => {
     await navigator.clipboard.writeText(value);
@@ -87,7 +89,33 @@ export default function RoomHostPanel({
             </button>
           </div>
           <div className="px-4 py-4">
-            <p className="text-xs text-ink-muted">Join code</p>
+            <button
+              type="button"
+              onClick={() => setShowQr((current) => !current)}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-ink text-xs font-bold text-white transition hover:bg-emerald-pro"
+              aria-expanded={showQr}
+            >
+              <QrCode className="h-4 w-4" />
+              {showQr ? 'Hide QR code' : 'Show QR code'}
+            </button>
+            {showQr && (
+              <div className="mt-3 rounded-xl border border-ink/10 bg-white p-3 text-center">
+                <div className="mx-auto w-fit rounded-lg bg-white p-2">
+                  <QRCodeSVG
+                    value={room.joinUrl}
+                    size={176}
+                    level="M"
+                    bgColor="#ffffff"
+                    fgColor="#0b1f44"
+                    role="img"
+                    aria-label="Viewer room QR code"
+                  />
+                </div>
+                <p className="mt-2 text-[11px] font-bold text-ink">Scan to join live captions</p>
+                <p className="mt-1 break-all text-[9px] leading-relaxed text-ink/45">{room.joinUrl}</p>
+              </div>
+            )}
+            <p className="mt-4 text-xs text-ink-muted">Join code</p>
             <div className="mt-1 flex items-center justify-between gap-2">
               <span className="font-mono text-2xl font-bold tracking-[0.22em] text-ink">
                 {room.roomCode}
