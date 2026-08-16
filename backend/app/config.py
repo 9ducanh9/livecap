@@ -72,6 +72,11 @@ DEFAULT_ENABLE_STRIPE_BILLING = False
 DEFAULT_STRIPE_PRICE_ID_PRO = ""
 DEFAULT_STRIPE_PRICE_ID_BUSINESS = ""
 DEFAULT_FRONTEND_BASE_URL = "http://localhost:5173"
+# Shared caption rooms are a local vertical slice until the AppSync-backed
+# fan-out is reviewed. Keep them opt-in so existing deployments are unchanged.
+DEFAULT_ENABLE_SHARED_ROOMS = False
+DEFAULT_ROOM_TTL_SECONDS = 14_400
+DEFAULT_ROOM_MAX_SEGMENTS = 100
 
 
 def _get_int(name: str, default: int) -> int:
@@ -164,6 +169,9 @@ class Settings:
     stripe_price_id_pro: str = DEFAULT_STRIPE_PRICE_ID_PRO
     stripe_price_id_business: str = DEFAULT_STRIPE_PRICE_ID_BUSINESS
     frontend_base_url: str = DEFAULT_FRONTEND_BASE_URL
+    enable_shared_rooms: bool = DEFAULT_ENABLE_SHARED_ROOMS
+    room_ttl_seconds: int = DEFAULT_ROOM_TTL_SECONDS
+    room_max_segments: int = DEFAULT_ROOM_MAX_SEGMENTS
 
     @property
     def allowed_origins(self) -> tuple[str, ...]:
@@ -278,6 +286,15 @@ class Settings:
             ),
             frontend_base_url=_get_str(
                 "FRONTEND_BASE_URL", DEFAULT_FRONTEND_BASE_URL
+            ),
+            enable_shared_rooms=_get_bool(
+                "ENABLE_SHARED_ROOMS", DEFAULT_ENABLE_SHARED_ROOMS
+            ),
+            room_ttl_seconds=max(
+                300, _get_int("ROOM_TTL_SECONDS", DEFAULT_ROOM_TTL_SECONDS)
+            ),
+            room_max_segments=max(
+                10, _get_int("ROOM_MAX_SEGMENTS", DEFAULT_ROOM_MAX_SEGMENTS)
             ),
         )
 

@@ -23,6 +23,7 @@ from app.config import get_settings
 from app.routers import enrichment as enrichment_router
 from app.routers import export as export_router
 from app.routers import history as history_router
+from app.routers import rooms as rooms_router
 from app.routers import summary as summary_router
 from app.routers import websocket as websocket_router
 from app.services.logging_service import get_logger, setup_logging
@@ -122,6 +123,9 @@ app.include_router(summary_router.router)
 
 # Optional English-only enrichment: POST /api/tts and POST /api/analyze
 app.include_router(enrichment_router.router)
+
+# Feature-gated local shared-room vertical slice.
+app.include_router(rooms_router.router)
 
 # Usage quota: GET /api/usage
 from app.routers import quota as quota_router

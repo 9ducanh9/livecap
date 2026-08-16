@@ -16,6 +16,19 @@ khong bat ECS tu quan ly hang tram ket noi viewer.
 
 Day la de xuat san pham va kien truc, **chua phai trang thai da deploy**.
 
+### Trang thai prototype
+
+Nhanh `feature/livecap-rooms` da co mot vertical slice chay local de danh gia
+trai nghiem truoc khi tao tai nguyen AWS moi:
+
+- Host tao/khoa room, nhan ma sau ky tu va link viewer.
+- Viewer vao `/rooms/{room_code}`, chon VI, EN hoac song ngu.
+- Backend phat chi caption finalized, giu snapshot ngan cho late join va gioi
+  han retry/heartbeat o viewer.
+- Room store va fan-out hien la in-memory trong mot backend process, duoc bao ve
+  boi feature flag mac dinh OFF. AppSync Events, Lambda authorizer, room-events
+  DynamoDB va signing key van la kien truc de xuat, **chua deploy**.
+
 ## 2. Van de thuc te can giai quyet
 
 LiveCap hien giai quyet tot bai toan "nguoi dang mo app xem caption cua chinh

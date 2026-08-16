@@ -73,6 +73,7 @@ from app.services.session_registry import (
     active_session_registry,
     get_session_registry,
 )
+from app.services.room_service import get_room_service
 from app.services.transcription import TranscriptionService
 from app.services.translation import translate_segment
 from app.utils.audio import validate_audio_chunk
@@ -226,6 +227,28 @@ async def _send(websocket: WebSocket, message) -> None:
         await websocket.send_text(message.model_dump_json())
     except Exception:  # noqa: BLE001
         pass
+
+
+async def _send_caption(
+    websocket: WebSocket,
+    message,
+    *,
+    room_code: str | None,
+    room_host_token: str | None,
+) -> None:
+    """Send a transcription message and fan out finalized room captions."""
+
+    await _send(websocket, message)
+    if (
+        room_code
+        and room_host_token
+        and isinstance(message, FinalizedSegmentMessage)
+    ):
+        await get_room_service().publish_finalized_segment(
+            room_code,
+            room_host_token,
+            message,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -690,6 +713,8 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     """
     settings = get_settings()
     session_id = _resolve_session_id(websocket)
+    room_code = (websocket.query_params.get("room_code") or "").strip().upper()
+    room_host_token = websocket.query_params.get("room_token")
     language_mode = _resolve_language_mode(
         websocket,
         fallback_source_language_code=settings.transcribe_language_code,
@@ -723,6 +748,25 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         )
         await websocket.close(code=1008)
         return
+
+    if room_code:
+        room_bound = (
+            settings.enable_shared_rooms
+            and room_host_token is not None
+            and await get_room_service().bind_host_session(
+                room_code,
+                room_host_token,
+                session_id,
+            )
+        )
+        if not room_bound:
+            await _send_error(
+                websocket,
+                message="The shared room was not found, expired, or is not owned by this host.",
+                code=ErrorCode.INVALID_ROOM,
+            )
+            await websocket.close(code=1008)
+            return
 
     client_ip = _resolve_client_ip(websocket)
     session_registry = get_session_registry(settings)
@@ -1036,7 +1080,12 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                                 code=ErrorCode.TRANSCRIBE_ERROR,
                             )
                             break
-                        await _send(websocket, msg)
+                        await _send_caption(
+                            websocket,
+                            msg,
+                            room_code=room_code or None,
+                            room_host_token=room_host_token,
+                        )
                 finally:
                     for task in (vi_task, en_task, arbiter_task, partial_task):
                         if not task.done():
@@ -1098,7 +1147,12 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                                 timestamp_start=translated.timestamp_start,
                                 timestamp_end=translated.timestamp_end,
                             )
-                            await _send(websocket, translated_msg)
+                            await _send_caption(
+                                websocket,
+                                translated_msg,
+                                room_code=room_code or None,
+                                room_host_token=room_host_token,
+                            )
                         except Exception as exc:
                             # Translation error: log and forward untranslated
                             # segment (Requirement 5.3).
@@ -1107,7 +1161,12 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                                 service_name="Amazon Translate",
                                 error=exc,
                             )
-                            await _send(websocket, msg)
+                            await _send_caption(
+                                websocket,
+                                msg,
+                                room_code=room_code or None,
+                                room_host_token=room_host_token,
+                            )
 
                     elif isinstance(msg, Exception):
                         # Transcription error surfaced as an exception value.

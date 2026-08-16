@@ -75,6 +75,14 @@ apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
 
 ## Change log (newest first)
 
+### 2026-08-17 - Codex - Built the local LiveCap Rooms vertical slice
+
+- Created branch `feature/livecap-rooms` from `Update`; no AWS resources were applied or deployed.
+- Added a feature-gated in-memory room backend (`ENABLE_SHARED_ROOMS=false` by default): create/get/close APIs, six-character join codes, expiring host tokens, bounded finalized-caption snapshots, viewer WebSocket fan-out, duplicate protection, and room cleanup.
+- Wired finalized segments from the existing `/ws/transcribe` host connection into a room without changing the audio/Transcribe/Translate path. Partial captions and raw audio are never sent to room viewers.
+- Added a host panel to create/copy/close an audience room and a responsive public viewer at `/rooms/:roomCode` with VI, EN, and bilingual modes, late-join snapshot hydration, heartbeat, bounded reconnect, and finalized-only rendering.
+- Verification: backend compileall passed; new backend room tests passed (`4 passed`); frontend suite passed (`27 passed`); production frontend build passed (`1892 modules transformed`); local smoke test returned health `200`, created a six-character live room, loaded its snapshot, and connected the mobile viewer. Full backend suite was `398 passed, 10 failed`: nine known local-auth export-test failures already documented in this file and one dual-stream timing test that passed when rerun alone. Local Python is 3.14.2 rather than the project target 3.11.
+
 ### 2026-08-16 - Codex - Proposed LiveCap Rooms and redrew the target architecture
 
 - Reviewed the current repository, Terraform defaults/flags, handoff, and the latest recorded live-state entry before proposing a new product direction. The current shell has no `livecap-codex` AWS CLI profile, so this was not recorded as a fresh live AWS audit.

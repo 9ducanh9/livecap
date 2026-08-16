@@ -9,6 +9,7 @@ import SummaryPanel from './SummaryPanel';
 import EnrichmentPanel from './EnrichmentPanel';
 import TranscriptHistoryPanel from './TranscriptHistoryPanel';
 import UsagePanel from './UsagePanel';
+import RoomHostPanel from './RoomHostPanel';
 import { isAuthConfigured, isAdminUser } from '../services/authService';
 import {
   buildSummaryText,
@@ -19,6 +20,12 @@ import {
   isWakeBackendConfigured,
   wakeBackendIfConfigured,
 } from '../services/wakeService';
+import {
+  closeSharedRoom,
+  createSharedRoom,
+  isSharedRoomsEnabled,
+  type HostedRoom,
+} from '../services/roomService';
 import {
   Clock,
   Layers,
@@ -98,11 +105,16 @@ export default function DashboardPage() {
   const [nowMs, setNowMs] = useState(Date.now());
   const [isStarting, setIsStarting] = useState(false);
   const [startStatusLabel, setStartStatusLabel] = useState<string | null>(null);
+  const [hostedRoom, setHostedRoom] = useState<HostedRoom | null>(null);
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [roomError, setRoomError] = useState<string | null>(null);
   const stopCaptureRef = useRef<(() => void) | null>(null);
   const maxSessionSeconds = configuredMaxSessionSeconds();
 
   const { isConnectionLost, connectionStatus, connect, disconnect, sendAudioChunk } = useWebSocket({
     reconnectOnUnexpectedClose: state.isCapturing,
+    roomCode: hostedRoom?.roomCode,
+    roomToken: hostedRoom?.hostToken,
     onSessionStart(sessionId, isReconnect) {
       dispatch({ type: isReconnect ? 'SESSION_RECONNECT_START' : 'SESSION_START', sessionId });
     },
@@ -176,6 +188,29 @@ export default function DashboardPage() {
     setSummaryStatus('idle');
     setSummaryError(null);
   }, []);
+
+  const handleCreateRoom = useCallback(async (title: string) => {
+    setIsCreatingRoom(true);
+    setRoomError(null);
+    try {
+      await wakeBackendIfConfigured();
+      setHostedRoom(await createSharedRoom(title));
+    } catch (error) {
+      setRoomError(error instanceof Error ? error.message : 'Could not create a caption room.');
+    } finally {
+      setIsCreatingRoom(false);
+    }
+  }, []);
+
+  const handleCloseRoom = useCallback(() => {
+    if (!hostedRoom) return;
+    const room = hostedRoom;
+    setHostedRoom(null);
+    setRoomError(null);
+    void closeSharedRoom(room).catch((error: unknown) => {
+      setRoomError(error instanceof Error ? error.message : 'Could not close the caption room.');
+    });
+  }, [hostedRoom]);
 
   const finalizedSegmentCount = useMemo(
     () => state.segments.filter((segment) => segment.isFinal).length,
@@ -279,6 +314,16 @@ export default function DashboardPage() {
               onStop={handleStop}
               onClear={handleClear}
             />
+            {isSharedRoomsEnabled() && (
+              <RoomHostPanel
+                room={hostedRoom}
+                isCreating={isCreatingRoom}
+                isCapturing={isCapturing}
+                error={roomError}
+                onCreate={handleCreateRoom}
+                onClose={handleCloseRoom}
+              />
+            )}
             {state.sessionId && !isCapturing && (
               <MeetingNotesAction
                 finalizedSegmentCount={finalizedSegmentCount}
