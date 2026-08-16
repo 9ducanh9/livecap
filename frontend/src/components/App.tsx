@@ -7,6 +7,8 @@ import AdminShell from './AdminShell';
 import AdminGuard from './AdminGuard';
 import AuthGate from './AuthGate';
 import PrivacyPolicyPage from './PrivacyPolicyPage';
+import RoomViewerPage from './RoomViewerPage';
+import { isSharedRoomsEnabled } from '../services/roomService';
 
 // Lazy-loaded admin sub-pages
 const AdminUsersPage = lazy(() => import('./admin/AdminUsersPage'));
@@ -24,6 +26,7 @@ function PageLoader() {
 }
 
 export default function App() {
+  const roomsEnabled = isSharedRoomsEnabled();
   return (
     <BrowserRouter>
       <Suspense fallback={<PageLoader />}>
@@ -31,6 +34,10 @@ export default function App() {
           {/* Public landing */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
+          <Route
+            path="/rooms/:roomCode?"
+            element={roomsEnabled ? <RoomViewerPage /> : <Navigate to="/" replace />}
+          />
 
           {/* Authenticated workspace */}
           <Route

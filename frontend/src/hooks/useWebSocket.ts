@@ -38,6 +38,8 @@ export interface UseWebSocketOptions {
   sourceLanguage?: SourceLanguageCode;
   targetLanguage?: TargetLanguageCode;
   reconnectOnUnexpectedClose?: boolean;
+  roomCode?: string;
+  roomToken?: string;
   onSessionStart?: (sessionId: string, isReconnect: boolean) => void;
   onPartialSegment?: (segment: Segment) => void;
   onFinalizedSegment?: (segment: Segment) => void;
@@ -64,7 +66,9 @@ interface PendingConnection {
 function buildWsUrl(
   sourceLanguage?: SourceLanguageCode,
   targetLanguage?: TargetLanguageCode,
-  resumeSessionId?: string | null
+  resumeSessionId?: string | null,
+  roomCode?: string,
+  roomToken?: string,
 ): string {
   const configuredUrl = import.meta.env.VITE_WS_URL;
   const baseUrl =
@@ -82,6 +86,10 @@ function buildWsUrl(
   // On reconnect, ask the backend to resume the same logical session id (B5).
   if (resumeSessionId) {
     url.searchParams.set('session_id', resumeSessionId);
+  }
+  if (roomCode && roomToken) {
+    url.searchParams.set('room_code', roomCode);
+    url.searchParams.set('room_token', roomToken);
   }
   return url.toString();
 }
@@ -264,7 +272,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       const url = buildWsUrl(
         optionsRef.current.sourceLanguage,
         optionsRef.current.targetLanguage,
-        isRetry ? sessionIdRef.current : null
+        isRetry ? sessionIdRef.current : null,
+        optionsRef.current.roomCode,
+        optionsRef.current.roomToken,
       );
       const token = getAccessToken();
       // JWT travels in Sec-WebSocket-Protocol instead of the URL, avoiding
