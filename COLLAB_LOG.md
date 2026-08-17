@@ -75,6 +75,15 @@ apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
 
 ## Change log (newest first)
 
+### 2026-08-17 - Codex - Deployed isolated Rooms preview to the custom domain
+
+- Built and pushed preview backend image `54d9726-amd64` (`sha256:2204e63584591ed8650c060147ac97c09230c7b765c557d9c5c9d9bd94700261`) and deployed it only to `livecap-preview-service-dev`.
+- Deployed the Rooms frontend only to `livecap-frontend-preview-dev-720459752315` and CloudFront distribution `EXF7T06N8RPSP` (`dsxqvhsn58xk8.cloudfront.net`).
+- Moved `livecap.logantai.com` to the preview distribution, attached the existing ACM certificate, restricted preview wake CORS to the custom origin, and completed ECS rollout on task definition revision `:2` (`desired/running/pending = 1/1/0`).
+- Smoke checks passed: custom-domain `/`, `/app`, `/api/health`, and `POST /api/wake` returned HTTP 200. The stable MVP URL `https://dpeohr327wt9l.cloudfront.net/app` also returned HTTP 200 and still renders the anonymous MVP dashboard rather than the Rooms login flow.
+- Browser verification confirmed `https://livecap.logantai.com/app` renders the authenticated workspace login. Full signed-in host/viewer Rooms E2E remains a manual follow-up because this verification session had no user credentials.
+- Deployment stayed on branch `feature/livecap-rooms`; it was not merged into `main`, and the source branch was not pushed during this deployment.
+
 ### 2026-08-17 - Codex - Prepared an isolated Rooms domain rollout
 
 - Kept the stable ECS image/service untouched by adding a dedicated immutable image tag and shared-rooms flag for the preview backend.
