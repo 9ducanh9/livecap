@@ -235,6 +235,10 @@ resource "aws_cloudfront_distribution" "preview" {
     ssl_support_method             = var.preview_custom_domain != "" ? "sni-only" : null
     minimum_protocol_version       = "TLSv1.2_2021"
   }
+
+  # CloudFront rejects an alternate domain that is still attached elsewhere.
+  # When cutting over, wait for the stable distribution update to remove it.
+  depends_on = [aws_cloudfront_distribution.frontend]
 }
 
 resource "aws_s3_bucket_policy" "frontend_preview_cloudfront_access" {

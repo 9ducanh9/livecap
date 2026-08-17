@@ -5,6 +5,7 @@
 locals {
   preview_backend_service_name   = "${var.project_name}-preview-service-${var.environment}"
   preview_backend_allowed_origin = var.preview_custom_domain != "" ? "https://${var.preview_custom_domain}" : "*"
+  preview_backend_image_tag      = trimspace(var.preview_backend_image_tag) != "" ? var.preview_backend_image_tag : var.backend_image_tag
 }
 
 resource "aws_lb_target_group" "preview_backend" {
@@ -52,7 +53,7 @@ resource "aws_ecs_task_definition" "preview_backend" {
 
   container_definitions = jsonencode(concat([{
     name      = "${var.project_name}-backend"
-    image     = "${aws_ecr_repository.backend.repository_url}:${var.backend_image_tag}"
+    image     = "${aws_ecr_repository.backend.repository_url}:${local.preview_backend_image_tag}"
     essential = true
 
     portMappings = [{
@@ -89,10 +90,28 @@ resource "aws_ecs_task_definition" "preview_backend" {
       { name = "ENABLE_XRAY", value = tostring(var.enable_xray) },
       { name = "AWS_XRAY_DAEMON_ADDRESS", value = "127.0.0.1:2000" },
       { name = "ENABLE_AUTH", value = tostring(var.preview_enable_auth_runtime) },
+      { name = "ENABLE_SHARED_ROOMS", value = tostring(var.preview_enable_shared_rooms) },
       { name = "COGNITO_USER_POOL_ID", value = try(aws_cognito_user_pool.livecap[0].id, "") },
       { name = "TRANSCRIPT_HISTORY_TABLE_NAME", value = local.transcript_history_table_name },
       { name = "TRANSCRIPT_HISTORY_RETENTION_DAYS", value = tostring(var.transcript_history_retention_days) },
+      { name = "USAGE_TABLE_NAME", value = local.usage_table_name },
+      { name = "ENABLE_USAGE_QUOTA", value = tostring(var.enable_usage_quota) },
+      { name = "ADMIN_AUDIT_TABLE_NAME", value = local.admin_audit_table_name },
+      { name = "ENABLE_STRIPE_BILLING", value = tostring(var.enable_stripe_billing) },
+      { name = "STRIPE_PRICE_ID_PRO", value = var.stripe_price_id_pro },
+      { name = "STRIPE_PRICE_ID_BUSINESS", value = var.stripe_price_id_business },
+      { name = "FRONTEND_BASE_URL", value = var.preview_custom_domain != "" ? "https://${var.preview_custom_domain}" : "https://${aws_cloudfront_distribution.preview[0].domain_name}" },
     ]
+
+    secrets = concat(
+      local.stripe_secrets_configured ? [
+        { name = "STRIPE_SECRET_KEY", valueFrom = aws_secretsmanager_secret.stripe_secret_key[0].arn },
+        { name = "STRIPE_WEBHOOK_SECRET", valueFrom = aws_secretsmanager_secret.stripe_webhook_secret[0].arn },
+      ] : [],
+      local.deepseek_secret_configured ? [
+        { name = "DEEPSEEK_API_KEY", valueFrom = aws_secretsmanager_secret.deepseek_api_key[0].arn },
+      ] : [],
+    )
 
     logConfiguration = {
       logDriver = "awslogs"

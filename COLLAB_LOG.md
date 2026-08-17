@@ -75,6 +75,13 @@ apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
 
 ## Change log (newest first)
 
+### 2026-08-17 - Codex - Prepared an isolated Rooms domain rollout
+
+- Kept the stable ECS image/service untouched by adding a dedicated immutable image tag and shared-rooms flag for the preview backend.
+- Brought the preview task configuration to parity with the Update runtime for auth, history, usage quota, admin audit, Stripe billing, and DeepSeek secret injection.
+- Made preview CloudFront wait for the stable distribution to release the custom-domain alias, preventing a duplicate-CNAME race during cutover.
+- Verification before AWS changes: backend compileall and room tests passed (`4 passed`); frontend suite passed (`28 passed`); production build passed (`1893 modules transformed`); Terraform init/fmt/validate passed; Docker gitleaks scanned 211 commits with no leaks. No Terraform apply or deployment had run at this checkpoint.
+
 ### 2026-08-17 - Codex - Added scannable QR sharing for LiveCap Rooms
 
 - Added `qrcode.react` and generated the QR directly from the room viewer URL, so the QR and copied link always target the same room.
