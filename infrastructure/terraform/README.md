@@ -210,13 +210,11 @@ Terraform plan. Do not overwrite an existing ECR tag or force-deploy `latest`.
 
 #### Update Frontend Code
 
-```bash
-cd frontend
-npm run build
-aws s3 sync dist/ s3://$(cd ../infrastructure/terraform && terraform output -raw frontend_bucket_name)/ --delete
-aws cloudfront create-invalidation \
-  --distribution-id $(cd ../infrastructure/terraform && terraform output -raw cloudfront_distribution_id) \
-  --paths "/*"
+```powershell
+npm --prefix frontend run build
+$bucket = terraform -chdir=infrastructure/terraform output -raw frontend_bucket_name
+$distribution = terraform -chdir=infrastructure/terraform output -raw cloudfront_distribution_id
+.\tools\deploy_frontend.ps1 -Bucket $bucket -DistributionId $distribution
 ```
 
 ---
@@ -236,29 +234,35 @@ aws ecs update-service \
 
 ### Step 3: Build and Deploy Frontend
 
-```bash
-cd ../../frontend
+```powershell
+Set-Location ../../frontend
+$tfDirectory = (Resolve-Path ../infrastructure/terraform).Path
+$apiBaseUrl = terraform "-chdir=$tfDirectory" output -raw alb_backend_base_url
+$websocketUrl = terraform "-chdir=$tfDirectory" output -raw alb_websocket_url
+$wakeUrl = terraform "-chdir=$tfDirectory" output -raw wake_backend_url
 
-# Create production environment file
-cat > .env.production << EOF
-VITE_API_BASE_URL=$(cd ../infrastructure/terraform && terraform output -raw alb_backend_base_url)
-VITE_WS_URL=$(cd ../infrastructure/terraform && terraform output -raw alb_websocket_url)
-VITE_WAKE_BACKEND_URL=$(cd ../infrastructure/terraform && terraform output -raw wake_backend_url)
-VITE_BACKEND_HEALTH_URL=$(cd ../infrastructure/terraform && terraform output -raw alb_backend_base_url)/api/health
+$environmentFile = @"
+VITE_API_BASE_URL=$apiBaseUrl
+VITE_WS_URL=$websocketUrl
+VITE_WAKE_BACKEND_URL=$wakeUrl
+VITE_BACKEND_HEALTH_URL=$apiBaseUrl/api/health
 VITE_BACKEND_WAKE_TIMEOUT_SECONDS=120
 VITE_MAX_SESSION_SECONDS=1800
-EOF
+"@
+[System.IO.File]::WriteAllText(
+  (Join-Path (Get-Location) '.env.production'),
+  $environmentFile,
+  [System.Text.UTF8Encoding]::new($false)
+)
 
 # Build the frontend
 npm run build
 
-# Upload to S3
-aws s3 sync dist/ s3://$(cd ../infrastructure/terraform && terraform output -raw frontend_bucket_name)/ --delete
-
-# Invalidate CloudFront cache
-aws cloudfront create-invalidation \
-  --distribution-id $(terraform output -raw cloudfront_distribution_id) \
-  --paths "/*"
+# Upload with safe cache headers and invalidate CloudFront. The helper retains
+# older content-hashed assets so cached HTML cannot produce missing-asset 403s.
+$bucket = terraform -chdir=../infrastructure/terraform output -raw frontend_bucket_name
+$distribution = terraform -chdir=../infrastructure/terraform output -raw cloudfront_distribution_id
+..\tools\deploy_frontend.ps1 -Bucket $bucket -DistributionId $distribution
 ```
 
 ### Step 4: Access the Application
