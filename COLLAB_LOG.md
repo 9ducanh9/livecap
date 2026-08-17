@@ -75,6 +75,14 @@ apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
 
 ## Change log (newest first)
 
+### 2026-08-17 - Codex - Fixed stale frontend asset 403 after Rooms cutover
+
+- Root cause: cached preview HTML still referenced `index-DPSENjPG.js` after `aws s3 sync --delete` removed that hashed object; S3 OAC surfaced the missing object as HTTP 403 and the app rendered blank.
+- Replaced preview `index.html` metadata with `Cache-Control: no-cache, no-store, must-revalidate` and completed CloudFront invalidation `IEJYQ7YTXRK0CS33XIGD07OTEQ` on distribution `EXF7T06N8RPSP`.
+- Added `tools/deploy_frontend.ps1` so future deploys cache hashed assets as immutable, force HTML revalidation, retain old hashes for already-open clients, and wait for CloudFront invalidation completion.
+- Executed the helper against the preview stack and completed final invalidation `I4ARUVOLN3YZCDZRNPO05EE31W`; final checks returned `/app` HTTP 200, current JavaScript HTTP 200, HTML `no-cache`, and hashed assets `public, max-age=31536000, immutable`.
+- Verified fixed-name resources revalidate instead of remaining immutable, and a fresh browser session rendered the LiveCap sign-in screen with no console errors. The stable MVP distribution was not modified.
+
 ### 2026-08-17 - Codex - Deployed isolated Rooms preview to the custom domain
 
 - Built and pushed preview backend image `54d9726-amd64` (`sha256:2204e63584591ed8650c060147ac97c09230c7b765c557d9c5c9d9bd94700261`) and deployed it only to `livecap-preview-service-dev`.
