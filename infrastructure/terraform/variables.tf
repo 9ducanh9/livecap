@@ -401,6 +401,23 @@ variable "enable_preview_backend" {
   }
 }
 
+variable "preview_backend_image_tag" {
+  description = "Immutable ECR image tag for the isolated preview backend. Empty reuses backend_image_tag."
+  type        = string
+  default     = ""
+}
+
+variable "preview_enable_shared_rooms" {
+  description = "Enable the shared caption rooms vertical slice on the isolated preview backend only."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.preview_enable_shared_rooms || var.enable_preview_backend
+    error_message = "preview_enable_shared_rooms requires enable_preview_backend=true."
+  }
+}
+
 variable "preview_enable_auth_runtime" {
   description = "Require Cognito tokens on the isolated preview backend only."
   type        = bool
