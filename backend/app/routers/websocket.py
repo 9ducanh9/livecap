@@ -961,6 +961,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     reader_task = asyncio.ensure_future(_read_frames())
 
     session_end_sent = False
+    session_timed_out = False
     _session_start_ts = time.monotonic()
 
     async def _teardown(send_session_end: bool = True) -> None:
@@ -1192,6 +1193,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
 
     except TimeoutError:
         # Session timeout (Requirement 2.5).
+        session_timed_out = True
         _logger.info(
             "Session timed out",
             extra={
@@ -1235,6 +1237,15 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         try:
             await _teardown(send_session_end=True)
         finally:
+            if (
+                room_code
+                and room_host_token
+                and (stop_requested.is_set() or session_timed_out)
+            ):
+                await get_room_service().close_room(
+                    room_code,
+                    room_host_token,
+                )
             if session_registered:
                 session_registry.unregister(session_id)
                 get_idle_scale_down_scheduler(

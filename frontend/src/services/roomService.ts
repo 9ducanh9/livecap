@@ -8,6 +8,7 @@ export interface HostedRoom {
   title: string;
   status: 'live' | 'ended';
   createdAt: string;
+  liveExpiresAt: string;
   expiresAt: string;
 }
 
@@ -42,6 +43,7 @@ export async function createSharedRoom(title: string): Promise<HostedRoom> {
     title: requiredString(payload, 'title'),
     status: payload['status'] === 'ended' ? 'ended' : 'live',
     createdAt: requiredString(payload, 'created_at'),
+    liveExpiresAt: requiredString(payload, 'live_expires_at'),
     expiresAt: requiredString(payload, 'expires_at'),
   };
 }

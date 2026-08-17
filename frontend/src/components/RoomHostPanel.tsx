@@ -23,6 +23,7 @@ export default function RoomHostPanel({
   const [title, setTitle] = useState('LiveCap room');
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
   const [showQr, setShowQr] = useState(true);
+  const isArchived = room?.status === 'ended';
 
   const copy = async (value: string, kind: 'code' | 'link') => {
     await navigator.clipboard.writeText(value);
@@ -75,15 +76,15 @@ export default function RoomHostPanel({
         <div className="mt-4 overflow-hidden rounded-xl border border-emerald-pro/20 bg-[#effbf8]">
           <div className="flex items-center justify-between border-b border-emerald-pro/15 px-4 py-3">
             <span className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-pro">
-              <span className="h-2 w-2 rounded-full bg-emerald-pro animate-pulse" />
-              Room live
+              <span className={`h-2 w-2 rounded-full bg-emerald-pro ${isArchived ? '' : 'animate-pulse'}`} />
+              {isArchived ? 'Transcript saved' : 'Room live'}
             </span>
             <button
               type="button"
               onClick={onClose}
               className="rounded-md p-1 text-ink/40 transition hover:bg-white hover:text-crimson"
-              aria-label="Close audience room"
-              title="Close room"
+              aria-label={isArchived ? 'Dismiss saved room' : 'Close audience room'}
+              title={isArchived ? 'Dismiss' : 'Close room'}
             >
               <X className="h-4 w-4" />
             </button>
@@ -111,11 +112,13 @@ export default function RoomHostPanel({
                     aria-label="Viewer room QR code"
                   />
                 </div>
-                <p className="mt-2 text-[11px] font-bold text-ink">Scan to join live captions</p>
+                <p className="mt-2 text-[11px] font-bold text-ink">
+                  {isArchived ? 'Scan to view saved captions' : 'Scan to join live captions'}
+                </p>
                 <p className="mt-1 break-all text-[9px] leading-relaxed text-ink/45">{room.joinUrl}</p>
               </div>
             )}
-            <p className="mt-4 text-xs text-ink-muted">Join code</p>
+            <p className="mt-4 text-xs text-ink-muted">Room code</p>
             <div className="mt-1 flex items-center justify-between gap-2">
               <span className="font-mono text-2xl font-bold tracking-[0.22em] text-ink">
                 {room.roomCode}
@@ -137,14 +140,23 @@ export default function RoomHostPanel({
               {copied === 'link' ? <Check className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
               {copied === 'link' ? 'Link copied' : 'Copy viewer link'}
             </button>
+            <p className="mt-3 text-[10px] leading-relaxed text-ink/50">
+              The QR, viewer link, and room code open the same read-only page. Anyone with one of them can view finalized captions until {formatExpiry(room.expiresAt)}.
+            </p>
           </div>
         </div>
       )}
 
       {error && <p className="mt-2 text-[11px] leading-relaxed text-crimson">{error}</p>}
       <p className="mt-3 text-[10px] leading-relaxed text-ink/45">
-        Local preview uses one backend process. AppSync fan-out is not deployed yet.
+        Only finalized text is shared. Raw microphone audio is never stored in the room archive.
       </p>
     </section>
   );
+}
+
+function formatExpiry(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'the archive expires';
+  return date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 }

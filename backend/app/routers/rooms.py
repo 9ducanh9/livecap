@@ -1,9 +1,4 @@
-"""Local shared-room API and viewer WebSocket.
-
-The routes are feature-gated and disabled by default. They provide a runnable
-vertical slice for product review; the target AWS design replaces process-local
-fan-out with AppSync Events before enabling multi-task production use.
-"""
+"""Feature-gated shared-room API and viewer WebSocket."""
 
 from __future__ import annotations
 
@@ -15,7 +10,9 @@ from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.services.auth import AuthenticatedUser, require_authenticated_user
+from app.services.idle_scaler import get_idle_scale_down_scheduler
 from app.services.room_service import get_room_service
+from app.services.session_registry import get_session_registry
 
 
 router = APIRouter(tags=["shared rooms"])
@@ -32,6 +29,7 @@ class CreateRoomResponse(BaseModel):
     title: str
     status: Literal["live", "ended"]
     created_at: str
+    live_expires_at: str
     expires_at: str
 
 
@@ -72,6 +70,7 @@ async def create_room(
         title=room["title"],
         status=room["status"],
         created_at=room["created_at"],
+        live_expires_at=room["live_expires_at"],
         expires_at=room["expires_at"],
     )
 
@@ -117,6 +116,15 @@ async def room_viewer_socket(websocket: WebSocket, room_code: str) -> None:
         return
 
     await websocket.send_json(snapshot)
+    if snapshot["status"] == "ended":
+        await websocket.close(code=status.WS_1000_NORMAL_CLOSURE)
+        settings = get_settings()
+        registry = get_session_registry(settings)
+        get_idle_scale_down_scheduler(registry).schedule_if_idle(
+            settings=settings
+        )
+        return
+
     try:
         while True:
             message = await websocket.receive_json()

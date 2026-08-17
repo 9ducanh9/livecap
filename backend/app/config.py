@@ -76,7 +76,9 @@ DEFAULT_FRONTEND_BASE_URL = "http://localhost:5173"
 # fan-out is reviewed. Keep them opt-in so existing deployments are unchanged.
 DEFAULT_ENABLE_SHARED_ROOMS = False
 DEFAULT_ROOM_TTL_SECONDS = 14_400
-DEFAULT_ROOM_MAX_SEGMENTS = 100
+DEFAULT_ROOM_RETENTION_DAYS = 14
+DEFAULT_ROOM_MAX_SEGMENTS = 500
+DEFAULT_ROOM_TABLE_NAME = ""
 
 
 def _get_int(name: str, default: int) -> int:
@@ -171,7 +173,9 @@ class Settings:
     frontend_base_url: str = DEFAULT_FRONTEND_BASE_URL
     enable_shared_rooms: bool = DEFAULT_ENABLE_SHARED_ROOMS
     room_ttl_seconds: int = DEFAULT_ROOM_TTL_SECONDS
+    room_retention_days: int = DEFAULT_ROOM_RETENTION_DAYS
     room_max_segments: int = DEFAULT_ROOM_MAX_SEGMENTS
+    room_table_name: str = DEFAULT_ROOM_TABLE_NAME
 
     @property
     def allowed_origins(self) -> tuple[str, ...]:
@@ -293,8 +297,17 @@ class Settings:
             room_ttl_seconds=max(
                 300, _get_int("ROOM_TTL_SECONDS", DEFAULT_ROOM_TTL_SECONDS)
             ),
+            room_retention_days=max(
+                1,
+                _get_int(
+                    "ROOM_RETENTION_DAYS", DEFAULT_ROOM_RETENTION_DAYS
+                ),
+            ),
             room_max_segments=max(
                 10, _get_int("ROOM_MAX_SEGMENTS", DEFAULT_ROOM_MAX_SEGMENTS)
+            ),
+            room_table_name=_get_str(
+                "ROOM_TABLE_NAME", DEFAULT_ROOM_TABLE_NAME
             ),
         )
 
