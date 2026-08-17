@@ -180,7 +180,14 @@ export default function DashboardPage() {
   const handleStop = useCallback(() => {
     stopCapture(); disconnect(); setRecordingStartedAt(null);
     dispatch({ type: 'SET_CAPTURING', value: false });
-  }, [disconnect, stopCapture]);
+    if (hostedRoom?.status === 'live') {
+      const room = hostedRoom;
+      setHostedRoom({ ...room, status: 'ended' });
+      void closeSharedRoom(room).catch((error: unknown) => {
+        setRoomError(error instanceof Error ? error.message : 'Could not archive the caption room.');
+      });
+    }
+  }, [disconnect, hostedRoom, stopCapture]);
 
   const handleClear = useCallback(() => {
     dispatch({ type: 'CLEAR_TRANSCRIPT' });
@@ -207,6 +214,7 @@ export default function DashboardPage() {
     const room = hostedRoom;
     setHostedRoom(null);
     setRoomError(null);
+    if (room.status === 'ended') return;
     void closeSharedRoom(room).catch((error: unknown) => {
       setRoomError(error instanceof Error ? error.message : 'Could not close the caption room.');
     });

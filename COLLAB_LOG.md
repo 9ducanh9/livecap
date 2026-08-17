@@ -75,6 +75,15 @@ apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
 
 ## Change log (newest first)
 
+### 2026-08-17 - Codex - Made Rooms codes survive ECS scale-to-zero
+
+- Added optional DynamoDB persistence for room metadata and finalized captions. The six-character room code, QR, and viewer link now identify the same read-only archive; the live window defaults to 4 hours and archive expiry is live expiry plus 14 days, independently of the 300-second ECS idle grace.
+- Host room tokens are returned once and stored only as SHA-256 hashes. Partial captions and raw audio are never persisted. Local/dev still falls back to process memory when `ROOM_TABLE_NAME` is empty.
+- Host Stop/timeout marks the room `ended`; transient WebSocket disconnects do not. Ended viewers receive one archived snapshot, then close normally, while the idle scaler can return ECS to zero.
+- Added a flag-gated, pay-per-request `room-events` DynamoDB table with TTL and table-scoped ECS permissions (`GetItem`, `PutItem`, `UpdateItem`, `Query`). Preview ECS receives the table name, live/archive TTL, and segment cap. No Terraform apply or AWS deployment was run in this batch.
+- Updated host/viewer UI to distinguish live captions from a saved transcript and to explain that the code/link is a public bearer capability. Anyone with it can read finalized captions until retention expiry; private viewer authorization remains future work.
+- Verification: focused backend room tests `5 passed`; full backend suite `399 passed, 10 failed` with the same nine local auth/export baseline failures and one dual-stream timing test that passed when rerun alone; frontend `32 passed`; TypeScript and Vite production build passed using a temporary output directory (the existing generated `frontend/dist` has a local Windows ACL issue); Terraform `init -backend=false` and `validate` passed; Docker gitleaks scanned 214 commits with no leaks.
+
 ### 2026-08-17 - Codex - Fixed stale frontend asset 403 after Rooms cutover
 
 - Root cause: cached preview HTML still referenced `index-DPSENjPG.js` after `aws s3 sync --delete` removed that hashed object; S3 OAC surfaced the missing object as HTTP 403 and the app rendered blank.

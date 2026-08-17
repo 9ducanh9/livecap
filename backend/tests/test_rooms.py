@@ -111,6 +111,7 @@ def test_room_api_creates_snapshot_and_closes_room(monkeypatch) -> None:
         assert len(payload["room_code"]) == 6
         assert payload["join_url"].endswith(f"/rooms/{payload['room_code']}")
         assert payload["host_token"] not in payload["join_url"]
+        assert payload["live_expires_at"] < payload["expires_at"]
 
         snapshot = client.get(f"/api/rooms/{payload['room_code']}")
         assert snapshot.status_code == 200

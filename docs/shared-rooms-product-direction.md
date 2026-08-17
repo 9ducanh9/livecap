@@ -14,7 +14,9 @@ WAF va luong wake `0 -> 1` van duoc giu nguyen. Thanh phan moi quan trong nhat
 la **AWS AppSync Events** de phat caption toi nhieu nguoi xem bang WebSocket ma
 khong bat ECS tu quan ly hang tram ket noi viewer.
 
-Day la de xuat san pham va kien truc, **chua phai trang thai da deploy**.
+AppSync Events va authorizer trong so do la kien truc muc tieu, **chua phai
+trang thai da deploy**. Vertical slice hien tai van fan-out viewer truc tiep tu
+mot ECS process.
 
 ### Trang thai prototype
 
@@ -23,11 +25,16 @@ trai nghiem truoc khi tao tai nguyen AWS moi:
 
 - Host tao/khoa room, nhan QR, link viewer va ma sau ky tu.
 - Viewer vao `/rooms/{room_code}`, chon VI, EN hoac song ngu.
-- Backend phat chi caption finalized, giu snapshot ngan cho late join va gioi
-  han retry/heartbeat o viewer.
-- Room store va fan-out hien la in-memory trong mot backend process, duoc bao ve
-  boi feature flag mac dinh OFF. AppSync Events, Lambda authorizer, room-events
-  DynamoDB va signing key van la kien truc de xuat, **chua deploy**.
+- Backend phat chi caption finalized, giu snapshot cho late join va gioi han
+  retry/heartbeat o viewer.
+- Room metadata va finalized captions co the luu trong DynamoDB khi
+  `ROOM_TABLE_NAME` duoc cau hinh. Local/dev khong co bien nay van dung
+  process-local store de khong phu thuoc AWS.
+- Viewer fan-out van in-memory trong mot backend process va duoc bao ve boi
+  feature flag mac dinh OFF. AppSync Events, Lambda authorizer va signing key
+  van la kien truc de xuat, **chua deploy**.
+- Terraform da chuan bi table pay-per-request + TTL va IAM chi cho ECS task
+  `GetItem`, `PutItem`, `UpdateItem`, `Query`; batch nay chua apply AWS.
 
 ## 2. Van de thuc te can giai quyet
 
@@ -87,6 +94,19 @@ song ngu, khong chi cho nguoi dang cam may thu am.
 4. Neu vao tre, nhan lai mot cua so caption da finalized gan nhat.
 5. Khi mat mang ngan, client reconnect va tiep tuc tu sequence tiep theo.
 
+### Y nghia QR, link va ma room
+
+- QR, viewer link va ma sau ky tu la ba cach mo **cung mot viewer page**.
+- Ma room khong phai token wake 5 phut. No la public capability locator: ai co
+  ma/link deu co the doc finalized captions cua room trong thoi gian retention.
+- Host token rieng moi co quyen dong room; backend chi luu SHA-256 hash cua token,
+  khong luu plaintext token trong DynamoDB.
+- Room live toi da 4 gio theo mac dinh. Sau khi host Stop, room chuyen sang
+  `ended`; archive expiry la live expiry + 14 ngay, nen transcript co it nhat
+  du 14 ngay de doc sau khi room ket thuc.
+- Grace scale-down 300 giay chi dieu khien vong doi compute ECS. ECS ve 0 khong
+  lam ma room hay transcript het han khi DynamoDB store duoc cau hinh.
+
 ## 5. Kien truc de xuat
 
 ![LiveCap Rooms target architecture](livecap-shared-rooms-architecture.svg)
@@ -110,7 +130,7 @@ song ngu, khong chi cho nguoi dang cam may thu am.
 |---|---|---|
 | AWS AppSync Events | Pub/sub caption theo channel cua room | Quan ly ket noi WebSocket va fan-out doc lap voi task xu ly audio |
 | Lambda room authorizer | Xac minh token tham gia ngan han va khoa viewer vao dung room | Khong trao Cognito account hay quyen publish cho guest |
-| DynamoDB room-events | Room metadata, sequence va caption finalized gan nhat; TTL tu dong | Ho tro late join/reconnect ma khong luu audio |
+| DynamoDB room-events | Room metadata, sequence va caption finalized; TTL tu dong | Da co implementation/Terraform trong preview; can apply de song sot qua ECS scale-to-zero |
 | Secrets Manager room signing key | Bi mat ky token tham gia | Khong hardcode trong frontend/container image |
 
 ### Quyen truy cap AppSync
@@ -152,17 +172,19 @@ song ngu, khong chi cho nguoi dang cam may thu am.
 
 ### D. Vao tre va reconnect
 
-1. Viewer doi ma room lay token ngan han va danh sach finalized caption gan
-   nhat qua API.
-2. Viewer subscribe AppSync tu `last_sequence + 1`.
-3. Neu ket noi mat, client reconnect voi exponential backoff va lay phan thieu
-   tu DynamoDB truoc khi tiep tuc live.
+1. Vertical slice hien tai mo WebSocket bang ma room va nhan snapshot finalized
+   tu backend; backend lazy-load snapshot tu DynamoDB sau cold start.
+2. Kien truc muc tieu se doi ma room lay token ngan han va subscribe AppSync tu
+   `last_sequence + 1`.
+3. Neu ket noi mat, client reconnect voi exponential backoff. Room da `ended`
+   chi tra snapshot archive mot lan va dong WebSocket binh thuong.
 
 ### E. Ket thuc va retention
 
 1. Host Stop; backend ket thuc Transcribe stream va khoa room.
 2. Transcript cua owner van theo chinh sach private/14 ngay hien tai.
-3. Room token het han; room-events co TTL ngan (de xuat 24 gio).
+3. Public room archive cung co TTL 14 ngay theo mac dinh; live window 4 gio va
+   ECS idle grace 300 giay la hai lifecycle rieng.
 4. Raw audio khong duoc luu.
 
 ## 7. Vi sao dung AppSync Events
@@ -196,7 +218,7 @@ chi phi theo tung token Transcribe.
 - Create/join/close room, QR code va ma room.
 - AppSync Events + authorizer + room-events table.
 - Viewer chi-doc, VI/EN/Bilingual, reconnect co gioi han.
-- Persist chi finalized captions; room TTL 24 gio.
+- Persist chi finalized captions; live TTL 4 gio va archive retention 14 ngay.
 
 ### Phase 2 - Comprehension
 

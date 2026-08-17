@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Segment } from '../types';
 import { buildRoomWebSocketUrl, segmentFromWire } from '../services/roomService';
+import { wakeBackendIfConfigured } from '../services/wakeService';
 
 export type RoomFeedStatus = 'connecting' | 'live' | 'reconnecting' | 'ended' | 'error';
 
@@ -61,13 +62,16 @@ export function useRoomFeed(roomCode: string): RoomFeedState {
           const rawSegments = Array.isArray(payload['segments']) ? payload['segments'] : [];
           const segments = rawSegments.map(segmentFromWire).filter((item): item is Segment => item !== null);
           retryIndex = 0;
+          const ended = payload['status'] === 'ended';
+          terminalError = ended;
           setState({
             title: typeof payload['title'] === 'string' ? payload['title'] : 'LiveCap room',
-            status: payload['status'] === 'ended' ? 'ended' : 'live',
+            status: ended ? 'ended' : 'live',
             viewerCount: typeof payload['viewer_count'] === 'number' ? payload['viewer_count'] : 0,
             segments,
             error: null,
           });
+          if (ended) socket.close(1000, 'archived room loaded');
           return;
         }
         if (payload['type'] === 'room_segment') {
@@ -79,7 +83,9 @@ export function useRoomFeed(roomCode: string): RoomFeedState {
           return;
         }
         if (payload['type'] === 'room_closed') {
+          terminalError = true;
           setState((current) => ({ ...current, status: 'ended' }));
+          socket.close(1000, 'room ended');
           return;
         }
         if (payload['type'] === 'room_error') {
@@ -113,7 +119,25 @@ export function useRoomFeed(roomCode: string): RoomFeedState {
       };
     };
 
-    connect();
+    const start = async () => {
+      try {
+        await wakeBackendIfConfigured();
+      } catch (error) {
+        if (disposed) return;
+        terminalError = true;
+        setState((current) => ({
+          ...current,
+          status: 'error',
+          error: error instanceof Error
+            ? `Could not start the room service: ${error.message}`
+            : 'Could not start the room service.',
+        }));
+        return;
+      }
+      connect();
+    };
+
+    void start();
     return () => {
       disposed = true;
       if (retryTimer !== null) window.clearTimeout(retryTimer);

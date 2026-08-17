@@ -15,7 +15,8 @@ describe('RoomHostPanel', () => {
           title: 'Architecture review',
           status: 'live',
           createdAt: '2026-08-17T00:00:00Z',
-          expiresAt: '2026-08-17T04:00:00Z',
+          liveExpiresAt: '2026-08-17T04:00:00Z',
+          expiresAt: '2026-08-31T00:00:00Z',
         }}
         isCreating={false}
         isCapturing={false}
@@ -31,5 +32,31 @@ describe('RoomHostPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Hide QR code' }));
     expect(screen.queryByRole('img', { name: 'Viewer room QR code' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Show QR code' })).toBeTruthy();
+  });
+
+  it('keeps the viewer link available after the meeting ends', () => {
+    render(
+      <RoomHostPanel
+        room={{
+          roomCode: 'TABKNF',
+          hostToken: 'host-token',
+          joinUrl: 'https://livecap.logantai.com/rooms/TABKNF',
+          title: 'Saved meeting',
+          status: 'ended',
+          createdAt: '2026-08-17T00:00:00Z',
+          liveExpiresAt: '2026-08-17T04:00:00Z',
+          expiresAt: '2026-08-31T00:00:00Z',
+        }}
+        isCreating={false}
+        isCapturing={false}
+        error={null}
+        onCreate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Transcript saved')).toBeTruthy();
+    expect(screen.getByText('Scan to view saved captions')).toBeTruthy();
+    expect(screen.getByText('TABKNF')).toBeTruthy();
   });
 });

@@ -73,7 +73,7 @@ function JoinedRoom({ roomCode }: { roomCode: string }) {
 
   const status = useMemo(() => {
     if (feed.status === 'live') return { label: 'Live', dot: 'bg-emerald-pro animate-pulse', text: 'text-emerald-pro' };
-    if (feed.status === 'ended') return { label: 'Room ended', dot: 'bg-ink/25', text: 'text-ink/45' };
+    if (feed.status === 'ended') return { label: 'Saved transcript', dot: 'bg-ink/25', text: 'text-ink/45' };
     if (feed.status === 'error') return { label: 'Unavailable', dot: 'bg-crimson', text: 'text-crimson' };
     return { label: feed.status === 'reconnecting' ? 'Reconnecting' : 'Connecting', dot: 'bg-yellow-500 animate-pulse', text: 'text-yellow-700' };
   }, [feed.status]);
@@ -113,10 +113,17 @@ function JoinedRoom({ roomCode }: { roomCode: string }) {
           </div>
         )}
 
+        {feed.status === 'ended' && !feed.error && (
+          <div className="mt-5 rounded-xl border border-emerald-pro/20 bg-[#effbf8] p-4 text-sm text-ink">
+            This meeting has ended. You are viewing its finalized bilingual transcript.
+          </div>
+        )}
+
         <section className="mt-5 overflow-hidden rounded-2xl border border-[#dce5f2] bg-white shadow-brutal">
           <div className="flex items-center justify-between border-b border-[#dce5f2] px-5 py-4">
             <span className="flex items-center gap-2 text-xs font-bold text-ink/60">
-              <Radio className="h-4 w-4 text-emerald-pro" /> Finalized captions only
+              <Radio className="h-4 w-4 text-emerald-pro" />
+              {feed.status === 'ended' ? 'Finalized transcript' : 'Finalized captions only'}
             </span>
             <span className="font-mono text-[10px] text-ink/40">{feed.segments.length} lines</span>
           </div>
@@ -125,8 +132,14 @@ function JoinedRoom({ roomCode }: { roomCode: string }) {
               <div className="grid h-full min-h-[360px] place-items-center p-8 text-center">
                 <div>
                   <Languages className="mx-auto h-9 w-9 text-emerald-pro/60" />
-                  <p className="mt-4 font-bold text-ink">Waiting for the host to speak</p>
-                  <p className="mt-2 text-sm text-ink-muted">Captions appear here after each phrase is finalized.</p>
+                  <p className="mt-4 font-bold text-ink">
+                    {feed.status === 'ended' ? 'No finalized captions were saved' : 'Waiting for the host to speak'}
+                  </p>
+                  <p className="mt-2 text-sm text-ink-muted">
+                    {feed.status === 'ended'
+                      ? 'The meeting ended before a caption was finalized.'
+                      : 'Captions appear here after each phrase is finalized.'}
+                  </p>
                 </div>
               </div>
             ) : (
