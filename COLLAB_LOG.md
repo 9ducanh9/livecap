@@ -75,6 +75,13 @@ apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
 
 ## Change log (newest first)
 
+### 2026-08-27 - Codex - Applied and deployed durable Rooms preview
+
+- User explicitly authorized the deployment despite the normal human-run deploy gate. Pushed `feature/livecap-rooms` at `50000db`, built and pushed immutable x86_64 image `50000db-amd64` to ECR, then applied the reviewed saved Terraform plan.
+- Apply created pay-per-request `livecap-room-events-dev` with TTL on `expires_at`, added the ECS task-role room-table policy, registered preview task definition revision `livecap-preview-backend-dev:3`, and updated only `livecap-preview-service-dev`. No stable ECS service, ALB, CloudFront, S3, Cognito, VPC, or WAF resource changed.
+- Built the frontend with `VITE_ENABLE_SHARED_ROOMS=true` and deployed it to preview bucket `livecap-frontend-preview-dev-720459752315`; completed CloudFront preview invalidation `IBGTNPI73ML4M7JL49L81JPW6F` on `EXF7T06N8RPSP`. The stable MVP distribution was not modified.
+- Post-deploy verification: wake returned 202 and scaled preview ECS `0 -> 1`; `/api/health` returned 200; task revision `:3` was RUNNING/HEALTHY; the deployed public bundle was `index-DtztE_Of.js` and contains the Rooms UI; unauthenticated room creation returned 401 as expected; DynamoDB TTL is ENABLED. Full signed-in host/viewer archive E2E remains a manual browser check.
+
 ### 2026-08-17 - Codex - Made Rooms codes survive ECS scale-to-zero
 
 - Added optional DynamoDB persistence for room metadata and finalized captions. The six-character room code, QR, and viewer link now identify the same read-only archive; the live window defaults to 4 hours and archive expiry is live expiry plus 14 days, independently of the 300-second ECS idle grace.
