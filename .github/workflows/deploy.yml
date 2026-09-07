@@ -1,52 +1,93 @@
-# Deploy pipeline - build/push the backend image and produce a Terraform PLAN.
-#
-# Plan gate by design: this workflow NEVER runs `terraform apply`. It builds an
-# immutable, architecture-specific image, pushes it to ECR, and uploads a
-# reviewed Terraform plan. A human applies from a trusted environment after
-# reviewing the plan (see infrastructure/terraform/README.md and HANDOFF.md).
-#
-# Manual trigger only. Requires the following repository configuration:
-#   Variables:
-#     AWS_REGION            e.g. ap-southeast-1
-#     AWS_DEPLOY_ROLE_ARN   IAM role for GitHub OIDC (least privilege)
-#     ECR_REPOSITORY        backend ECR repository name
-#   Secrets:
-#     TF_BACKEND_HCL        contents of infrastructure/terraform/backend.hcl
-#     TF_VARS               contents of a terraform.tfvars for planning
-
-name: Deploy (build + plan)
+name: Deploy
 
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
   workflow_dispatch:
     inputs:
       architecture:
         description: "Image/Fargate architecture"
         type: choice
-        default: arm64
-        options: [arm64, amd64]
+        default: amd64
+        options: [amd64]
 
 permissions:
-  id-token: write
   contents: read
+  id-token: write
+
+concurrency:
+  group: livecap-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ARCHITECTURE: ${{ inputs.architecture || 'amd64' }}
 
 jobs:
-  build-push:
-    name: Build & push image (${{ inputs.architecture }})
+  verify:
+    name: Verify release
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Test backend
+        working-directory: backend
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python -m compileall app
+          pytest
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Test frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
+
+      - name: Validate Terraform
+        run: |
+          terraform fmt -check -recursive
+          terraform -chdir=infrastructure/terraform init -backend=false
+          terraform -chdir=infrastructure/terraform validate
+
+  build-backend:
+    name: Build and push backend image
+    runs-on: ubuntu-latest
+    needs: verify
     outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: Compute immutable tag
+      - name: Compute immutable image tag
         id: meta
-        run: echo "image_tag=${GITHUB_SHA::7}-${{ inputs.architecture }}" >> "$GITHUB_OUTPUT"
+        run: echo "image_tag=${GITHUB_SHA::7}-${ARCHITECTURE}" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: "720459752315"
 
       - name: Login to Amazon ECR
         id: ecr
@@ -55,20 +96,20 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push
+      - name: Build and push immutable image
         uses: docker/build-push-action@v6
         with:
           context: backend
           file: backend/Dockerfile
-          platforms: linux/${{ inputs.architecture }}
+          platforms: linux/${{ env.ARCHITECTURE }}
           push: true
           provenance: false
           tags: ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ steps.meta.outputs.image_tag }}
 
-  terraform-plan:
-    name: Terraform plan (no apply)
+  deploy-backend:
+    name: Deploy ECS task definitions
     runs-on: ubuntu-latest
-    needs: build-push
+    needs: build-backend
     steps:
       - uses: actions/checkout@v7
 
@@ -77,38 +118,88 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: "720459752315"
 
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v4
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.15.8"
 
-      - name: Write backend and variables from secrets
+      - name: Write deployment inputs
+        working-directory: infrastructure/terraform
+        env:
+          TF_BACKEND_HCL: ${{ secrets.TF_BACKEND_HCL }}
+          TF_VARS: ${{ secrets.TF_VARS }}
+        run: |
+          printf '%s' "$TF_BACKEND_HCL" > backend.hcl
+          printf '%s' "$TF_VARS" > ci.auto.tfvars
+
+      # Restrict automatic Terraform to application delivery. General
+      # infrastructure changes remain explicit, reviewed Terraform applies.
+      - name: Apply ECS delivery plan
         working-directory: infrastructure/terraform
         run: |
-          printf '%s' "${{ secrets.TF_BACKEND_HCL }}" > backend.hcl
-          printf '%s' "${{ secrets.TF_VARS }}" > ci.auto.tfvars
+          terraform init -input=false -backend-config=backend.hcl
+          terraform plan -input=false -no-color -out=tfplan \
+            -target='aws_ecs_task_definition.target_backend' \
+            -target='aws_ecs_service.target_backend' \
+            -var "backend_image_tag=${{ needs.build-backend.outputs.image_tag }}" \
+            -var 'task_cpu_architecture=X86_64'
+          terraform apply -input=false -no-color tfplan
 
-      - name: Init
-        working-directory: infrastructure/terraform
-        run: terraform init -backend-config=backend.hcl
-
-      - name: Plan
-        working-directory: infrastructure/terraform
+      - name: Wait for stable services
         run: |
-          terraform plan -no-color -input=false \
-            -var "backend_image_tag=${{ needs.build-push.outputs.image_tag }}" \
-            -var "task_cpu_architecture=${{ inputs.architecture == 'arm64' && 'ARM64' || 'X86_64' }}" \
-            -out=tfplan | tee plan.txt
+          aws ecs wait services-stable \
+            --cluster livecap-cluster-dev \
+            --services livecap-target-service-dev
 
-      - name: Upload plan artifact
-        uses: actions/upload-artifact@v4
+  deploy-frontend:
+    name: Deploy frontend and invalidate CloudFront
+    runs-on: ubuntu-latest
+    needs: deploy-backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
         with:
-          name: terraform-plan
-          path: |
-            infrastructure/terraform/tfplan
-            infrastructure/terraform/plan.txt
-          retention-days: 7
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-      # Intentionally no apply step. A human applies the reviewed plan from a
-      # trusted environment.
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: "720459752315"
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          FRONTEND_ENV_PRODUCTION: ${{ secrets.FRONTEND_ENV_PRODUCTION }}
+        run: |
+          printf '%s' "$FRONTEND_ENV_PRODUCTION" > .env.production
+          npm ci
+          npm run build
+
+      # Hashed assets stay available for existing browser sessions. HTML and
+      # fixed-name files revalidate immediately to avoid stale bundle 403s.
+      - name: Upload frontend
+        working-directory: frontend
+        run: |
+          aws s3 cp dist/assets/ "s3://${{ vars.FRONTEND_BUCKET }}/assets/" \
+            --recursive --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp dist/ "s3://${{ vars.FRONTEND_BUCKET }}/" \
+            --recursive --exclude "assets/*" --exclude "*.html" \
+            --cache-control "no-cache,must-revalidate"
+          aws s3 cp dist/ "s3://${{ vars.FRONTEND_BUCKET }}/" \
+            --recursive --exclude "*" --include "*.html" \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Invalidate CloudFront
+        run: |
+          invalidation_id=$(aws cloudfront create-invalidation \
+            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/*" --query 'Invalidation.Id' --output text)
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --id "$invalidation_id"

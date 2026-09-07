@@ -7,7 +7,7 @@ for LiveCap's deployed custom-VPC target environment.
 
 - [`terraform/README.md`](terraform/README.md): current Terraform design,
   variables, cost tradeoffs, and verification workflow.
-- [`../docs/livecap-target-architecture.png`](../docs/livecap-target-architecture.png): target architecture diagram.
+- [`../docs/as-deployed-architecture.md`](../docs/as-deployed-architecture.md): current request paths, security boundaries, and runtime behavior.
 - [`../docs/as-deployed-architecture.md`](../docs/as-deployed-architecture.md):
   verified live resource placement and runtime request paths.
 
