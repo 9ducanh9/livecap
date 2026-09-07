@@ -52,8 +52,7 @@ export default function PrivacyPolicyPage() {
         <Section title="Information we collect">
           <p><strong>Account information.</strong> When you create an account, we collect your email address and, if you sign in with Google, your name and profile picture. If you sign in with email and password instead, we only collect the email address and a securely hashed password (we never see or store your password in plain text — that's handled entirely by Amazon Cognito, our authentication provider).</p>
           <p><strong>Session and caption data.</strong> While a live session is running, your microphone audio is streamed to our transcription service in real time and immediately discarded — <strong>we do not record or store raw audio</strong>. Only the finalized text captions (and their translations) are kept, and only for the duration described in "How long we keep data" below.</p>
-          <p><strong>Usage data.</strong> We track how many sessions and minutes your account has used each month, to enforce plan limits (Free/Pro/Business) and, if you subscribe, to bill correctly.</p>
-          <p><strong>Billing information.</strong> If you subscribe to a paid plan, payment is handled entirely by Stripe. We never see or store your card number — we only receive your subscription status and tier from Stripe.</p>
+          <p><strong>Usage data.</strong> We track session starts and recording duration for operational purposes. Each signed-in account can start up to five sessions per Monday-Sunday week; recording duration is not capped.</p>
           <p><strong>Technical information.</strong> Like most web apps, our infrastructure logs standard operational data (timestamps, error rates, request counts) for reliability and security monitoring. These logs are not used to build advertising profiles.</p>
         </Section>
 
@@ -73,7 +72,6 @@ export default function PrivacyPolicyPage() {
           <ul className="ml-5 list-disc space-y-1">
             <li><strong>Amazon Web Services</strong> — hosts our application and processes audio for transcription (Amazon Transcribe), translation (Amazon Translate), optional AI meeting notes (Amazon Bedrock), and stores account and caption data (DynamoDB, S3), all within our own private AWS account.</li>
             <li><strong>Amazon Cognito</strong> — manages sign-in and password security.</li>
-            <li><strong>Stripe</strong> — processes subscription payments; LiveCap never receives your full card number.</li>
           </ul>
           <p>None of these providers are permitted to use your data for their own advertising or resell it.</p>
         </Section>
@@ -82,7 +80,7 @@ export default function PrivacyPolicyPage() {
           <ul className="ml-5 list-disc space-y-1">
             <li><strong>Raw audio:</strong> never stored — processed in memory during transcription only.</li>
             <li><strong>Finalized transcripts:</strong> kept for 14 days, then automatically and permanently deleted.</li>
-            <li><strong>Monthly usage records:</strong> kept for 90 days, then automatically deleted.</li>
+            <li><strong>Weekly usage records:</strong> kept for 90 days, then automatically deleted.</li>
             <li><strong>Account information:</strong> kept until you delete your account, at which point it is permanently removed.</li>
           </ul>
         </Section>

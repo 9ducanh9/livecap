@@ -127,10 +127,9 @@ describe('DashboardPage start flow', () => {
         return {
           ok: true,
           json: async () => ({
-            tier: 'free', sessions_used: 0, minutes_used: 0, quota_error: null,
+            sessions_used: 0, quota_error: null,
             limits: {
-              max_sessions_per_month: 3, max_minutes_per_session: 30,
-              max_minutes_per_month: 90, meeting_notes_enabled: true,
+              max_sessions_per_week: 5, unlimited_session_duration: true,
             },
           }),
         };

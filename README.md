@@ -98,7 +98,7 @@ configuration, use [the local run guide](docs/run-local.md).
 | --- | --- |
 | Compute | ECS Fargate scales from 0 to 1 task; current maximum is one task |
 | Cold start | The first session after idle normally waits about 30-60 seconds for Fargate and health checks |
-| Session safety | WebSocket heartbeat, bounded reconnects, a 30-minute limit, and concurrent-session guards |
+| Session safety | WebSocket heartbeat, bounded reconnects, five sessions per signed-in user each week, and concurrent-session guards |
 | Data retention | Private transcript objects and Terraform-managed logs are retained for 14 days |
 | Storage | Finalized text exports only; no raw audio storage |
 | Cost trade-off | Scale-to-zero reduces idle Fargate cost; ALB, NAT Gateways, and WAF retain baseline cost |

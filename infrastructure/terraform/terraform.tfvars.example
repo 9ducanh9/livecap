@@ -35,7 +35,7 @@ autoscaling_target_cpu    = 70  # Scale out when CPU > 70%
 autoscaling_target_memory = 80  # Scale out when memory > 80%
 
 # Application Configuration
-session_timeout_seconds           = 1800  # 30 minutes
+session_timeout_seconds           = 0     # no recording time limit
 download_link_expiration_seconds  = 86400 # 24 hours
 max_concurrent_sessions           = 4
 max_sessions_per_ip               = 1
