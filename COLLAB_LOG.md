@@ -27,18 +27,21 @@
   committed or logged.
 - Rewrote the README around the current MVP and removed generated architecture
   image assets; real product screenshots and brand assets remain.
+- GitHub CI, OIDC smoke test, and both automatic Deploy runs passed. Production
+  is healthy on task definition revision 34 with image `6f88a2d-amd64`, Cognito
+  auth enabled, and `SESSION_TIMEOUT=0`.
+- Deleted all GitHub branches outside `main` after their relevant changes were
+  absorbed or confirmed obsolete. The repository now exposes only `main`.
 
-## Current state (2026-07-24, re-verified live against AWS)
+## Current state (2026-09-07, re-verified live against AWS)
 
-**Live image:** `3b9c4c1-amd64` (built + pushed + applied 2026-07-24 — contains
-promo codes on Checkout + the `unlimited` usage tier, on top of everything
-`945f2cf-amd64` had) — task definition `livecap-target-backend-dev:28`,
-applied via Terraform (`terraform apply`, user explicitly authorized this one
-apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
-`{"status":"healthy","version":"1.0.0"}`. Service currently idle
-(desired/running fluctuate with real usage — check live before assuming).
-**Live domain:** `https://livecap.logantai.com` (anonymous public access restored by Codex 2026-07-21)
-**Branch:** `Update` — diverged significantly from main. Many features committed, partially deployed.
+**Live image:** `6f88a2d-amd64` on task definition
+`livecap-target-backend-dev:34`, deployed automatically from GitHub Actions with
+OIDC and a targeted Terraform apply. `/api/health` returned
+`{"status":"healthy","version":"1.0.0"}`; Cognito auth is enabled and session
+timeout is disabled (`SESSION_TIMEOUT=0`).
+**Live domain:** `https://livecap.logantai.com`.
+**Branch:** `main` is the only remote branch.
 
 ### What is live on AWS (infra):
 | Resource | State |
