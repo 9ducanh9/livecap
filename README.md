@@ -1,163 +1,90 @@
 # LiveCap
 
-> Real-time Vietnamese-English captions for meetings, built on AWS.
+> Real-time Vietnamese-English captions and shared meeting transcripts on AWS.
 
 [![CI](https://github.com/9ducanh9/livecap/actions/workflows/ci.yml/badge.svg)](https://github.com/9ducanh9/livecap/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/9ducanh9/livecap)](https://github.com/9ducanh9/livecap/releases/latest)
 
-[Live demo](https://livecap.logantai.com/) | [Open workspace](https://livecap.logantai.com/app) | [Demo guide](docs/demo-guide.md) | [Architecture](docs/as-deployed-architecture.md)
-
-![LiveCap landing page](docs/livecap-landing.png)
-
-## Contents
-
-- [Problem](#problem)
-- [Solution](#solution)
-- [Architecture](#architecture)
-- [Quick Start](#quick-start)
-- [Operational Facts](#operational-facts)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Verification](#verification)
-
-## Problem
-
-Vietnamese-English meetings lose context when participants wait for manual
-translation or receive notes after the conversation. LiveCap makes the spoken
-conversation readable as it happens, while keeping the operator workflow
-small: open the app, choose a microphone, and start a session.
-
-## Solution
-
-The browser captures microphone audio and sends 16 kHz PCM through a secure
-WebSocket. A FastAPI backend running on ECS Fargate streams it to Amazon
-Transcribe, translates finalized text with Amazon Translate, and returns
-bilingual captions to the browser. Exported TXT transcripts are private S3
-objects; LiveCap does not store raw audio.
-
-## Architecture
-
-```mermaid
-flowchart LR
-    Browser[Browser] -->|HTTPS / WSS| CFWAF[CloudFront WAF]
-    CFWAF --> CF[CloudFront]
-    CF -->|Static site via OAC| Frontend[Private S3 frontend bucket]
-    CF -->|/api/wake| Wake[Wake Lambda]
-    Wake -->|UpdateService 0 to 1| ECS[ECS service]
-    CF -->|/api and /ws| ALBWAF[ALB WAF]
-    ALBWAF --> ALB[Multi-AZ ALB]
-    ALB --> Task[Fargate task in private subnet]
-    ECS --> Task
-    ECR[ECR immutable image] -.-> Task
-    Task --> Transcribe[Amazon Transcribe]
-    Task --> Translate[Amazon Translate]
-    Task --> Transcript[Private S3 transcript bucket]
-    Task -.-> CloudWatch[CloudWatch]
-```
-
-CloudFront is the browser entry point. It serves the React frontend from a
-private S3 bucket and routes API/WebSocket traffic to the ALB. The Fargate task
-has no public IP; ALB and CloudFront each have a WAF Web ACL. See the
-[as-deployed architecture](docs/as-deployed-architecture.md) for request,
-wake, idle, security, and availability flows.
+[Live demo](https://livecap.logantai.com/) | [Open app](https://livecap.logantai.com/app) | [Demo guide](docs/demo-guide.md) | [Architecture](docs/as-deployed-architecture.md)
 
 ![LiveCap caption workspace](docs/livecap-dashboard.png)
 
+## Problem
+
+Vietnamese-English meetings lose context when captions or translations arrive
+late. LiveCap turns microphone audio into bilingual text while the conversation
+is happening and keeps finalized transcripts available after the room closes.
+
+## How It Works
+
+The React client sends 16 kHz PCM through WebSocket to FastAPI on ECS Fargate.
+Amazon Transcribe produces Vietnamese captions, Amazon Translate creates the
+English text, and finalized records are stored in DynamoDB and private S3.
+Hosts can share a viewer link, join code, or QR code; viewers receive live
+captions without sending audio.
+
+```text
+Browser -> CloudFront/WAF -> S3 or ALB -> ECS Fargate
+                                      -> Transcribe -> Translate
+                                      -> DynamoDB / private S3
+```
+
+Cognito provides account access, SES sends branded account email, and a wake
+Lambda starts the scale-to-zero backend. Raw audio is never stored.
+
+## Current MVP
+
+- Live Vietnamese captions with English translation
+- Google and email sign-in through Cognito
+- Shareable rooms with viewer link, six-character code, and QR code
+- Finalized room transcript available after the host ends the meeting
+- Five session starts per account each week, with no recording time limit
+- Private TXT export and optional AI meeting notes through DeepSeek
+
 ## Quick Start
 
-Prerequisites: Python 3.11+, Node.js 20+, and AWS credentials when testing real
-Transcribe, Translate, or S3 operations. Never place AWS access keys in `.env`.
+Requirements: Python 3.11+ and Node.js 20+.
 
 ```powershell
 git clone https://github.com/9ducanh9/livecap.git
-cd livecap
-
-# Terminal 1: backend
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements-dev.txt
-Copy-Item .env.example .env
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+cd livecap\backend
+python -m venv .venv; .\.venv\Scripts\python -m pip install -r requirements-dev.txt
+Copy-Item .env.example .env; .\.venv\Scripts\python -m uvicorn app.main:app --reload
 ```
 
 ```powershell
-# Terminal 2: frontend
-cd frontend
+cd livecap\frontend
 npm ci
 Copy-Item .env.example .env
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. For local Cognito, Stripe, and feature-flag
-configuration, use [the local run guide](docs/run-local.md).
+Open `http://127.0.0.1:5173`. AWS-backed features require the variables listed
+in [the local run guide](docs/run-local.md); never put AWS access keys in `.env`.
 
-## Operational Facts
-
-| Area | Current design |
-| --- | --- |
-| Compute | ECS Fargate scales from 0 to 1 task; current maximum is one task |
-| Cold start | The first session after idle normally waits about 30-60 seconds for Fargate and health checks |
-| Session safety | WebSocket heartbeat, bounded reconnects, five sessions per signed-in user each week, and concurrent-session guards |
-| Data retention | Private transcript objects and Terraform-managed logs are retained for 14 days |
-| Storage | Finalized text exports only; no raw audio storage |
-| Cost trade-off | Scale-to-zero reduces idle Fargate cost; ALB, NAT Gateways, and WAF retain baseline cost |
-
-## Tech Stack
+## Stack
 
 | Layer | Technology |
 | --- | --- |
-| Frontend | React 18, TypeScript, Vite, Tailwind CSS, GSAP |
-| Backend | Python 3.11, FastAPI, Uvicorn, WebSocket |
-| Speech and translation | Amazon Transcribe Streaming, Amazon Translate |
-| Compute and delivery | ECS Fargate, Docker, Amazon ECR, GitHub Actions |
-| Edge and network | CloudFront, AWS WAF, ALB, custom two-AZ VPC, NAT Gateway |
-| Data and operations | Amazon S3, DynamoDB, Cognito, CloudWatch, Terraform |
+| Frontend | React, TypeScript, Vite, Tailwind CSS |
+| Backend | Python, FastAPI, WebSocket |
+| AWS | CloudFront, WAF, ALB, ECS Fargate, ECR, S3, DynamoDB, Cognito, SES, Transcribe, Translate |
+| Delivery | Terraform, Docker, GitHub Actions OIDC |
 
-## Project Structure
+Pushes to `main` run tests, publish an immutable backend image, update the ECS
+task definition, deploy the frontend to S3, and invalidate CloudFront. General
+infrastructure changes remain manual Terraform applies.
 
-```text
-livecap/
-|-- backend/                    # FastAPI application, services, and tests
-|-- frontend/                   # React application, UI, and tests
-|-- infrastructure/
-|   |-- bootstrap/              # Remote Terraform state bootstrap
-|   `-- terraform/              # AWS infrastructure source of truth
-|-- docs/                       # Demo, architecture, rollout, and run guides
-|-- .github/workflows/          # CI and deployment workflow definitions
-|-- COLLAB_LOG.md               # Shared implementation log for contributors
-`-- README.md
-```
-
-## Verification
+## Verify
 
 ```powershell
-# Backend
-cd backend
-python -m compileall app
-python -m pytest
-
-# Frontend
-cd frontend
-npm test
-npm run build
+cd backend; .\.venv\Scripts\python -m pytest
+cd ..\frontend; npm test; npm run build
+cd ..\infrastructure\terraform; terraform fmt -check -recursive; terraform validate
 ```
 
-Terraform validation instructions are in
-[infrastructure/terraform/README.md](infrastructure/terraform/README.md).
-CI never applies infrastructure or migrates Terraform state.
+See [docs](docs/README.md) for deployment evidence and operational notes.
 
-## Documentation
+## Author
 
-- [Documentation index](docs/README.md)
-- [Three-minute demo guide](docs/demo-guide.md)
-- [As-deployed architecture](docs/as-deployed-architecture.md)
-- [Upgrade roadmap](docs/upgrade-roadmap.md)
-- [Proposed LiveCap Rooms direction](docs/shared-rooms-product-direction.md)
-- [Infrastructure overview](infrastructure/README.md)
-
-## License and Author
-
-This is an academic capstone project; no open-source license has been assigned.
-
-Built by [Lam Chi Tai](https://github.com/9ducanh9).
+Academic capstone project by [Lam Chi Tai](https://github.com/9ducanh9).

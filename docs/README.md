@@ -16,9 +16,6 @@ runbooks describe feature-specific operation.
 | [`cost-optimization.md`](cost-optimization.md) | Cost controls and optional efficiency improvements |
 | [`graviton-and-cicd.md`](graviton-and-cicd.md) | Arm64 option and validation-only CI/CD plan gate |
 | [`run-local.md`](run-local.md) | Local backend, frontend, and opt-in meeting-notes testing |
-| [`frontend-runtime-environments.md`](frontend-runtime-environments.md) | Isolated Stable (`main`) / Preview (`Update`) frontend and backend runtime split |
-| [`livecap-target-architecture.png`](livecap-target-architecture.png) | Custom-VPC architecture diagram used for the deployed blue/green cutover |
-| [`livecap-shared-rooms-architecture.png`](livecap-shared-rooms-architecture.png) | Proposed shared-room architecture using official AWS Q2 2026 icons; proposed resources are marked explicitly |
 | [`livecap-landing.png`](livecap-landing.png) | Production landing-page evidence |
 | [`livecap-dashboard.png`](livecap-dashboard.png) | Current production caption-workspace UI |
 

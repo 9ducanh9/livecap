@@ -4,13 +4,29 @@
 
 ## Working agreement
 
-- Active branch: **`Update`** (off `main`). Push → PR to `main`.
-- **No auto-deploy from agents.** Agents write code/Terraform and run plan/validate; human runs apply.
+- Active release branch: **`main`**.
+- GitHub Actions may automatically deploy application releases from `main`;
+  general infrastructure changes still require a reviewed manual apply.
 - `git add <path>` only (never `git add -A`). LF line endings (`.gitattributes`).
 - Backend needs Python 3.11. Frontend: `npm test` + `npm run build`.
 - Feature work is flag-gated, defaults OFF.
 
 ---
+
+## 2026-09-07 — Codex — Consolidate release work onto main
+
+- Audited `Update`, `feature/livecap-rooms`, `main`, and three Dependabot
+  branches. The feature branch already contained Update; retained PostCSS
+  8.5.25 and absorbed React Router 7.18.2 plus selector parser 6.1.4 without
+  regressing QR support.
+- Prepared automatic application delivery from `main`: verification, immutable
+  ECR image, targeted ECS task/service apply, service stability wait, S3 upload,
+  and CloudFront invalidation. General Terraform changes remain manual.
+- Added a dedicated least-privilege deploy role and uploaded the existing local
+  configuration files as GitHub Actions Secrets. Secret values were not
+  committed or logged.
+- Rewrote the README around the current MVP and removed generated architecture
+  image assets; real product screenshots and brand assets remain.
 
 ## Current state (2026-07-24, re-verified live against AWS)
 

@@ -6,11 +6,20 @@ locals {
   github_repository = "9ducanh9/livecap"
   github_oidc_subjects = [
     "repo:${local.github_repository}:ref:refs/heads/main",
-    "repo:${local.github_repository}:ref:refs/heads/Update",
   ]
 
   terraform_state_bucket_arn = "arn:${data.aws_partition.current.partition}:s3:::livecap-terraform-state-dev-${data.aws_caller_identity.current.account_id}"
   terraform_state_key        = "livecap/main/terraform.tfstate"
+
+  github_deploy_service_arns = [
+    "arn:${data.aws_partition.current.partition}:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${var.project_name}-cluster-${var.environment}/${var.project_name}-target-service-${var.environment}",
+  ]
+  github_deploy_task_role_arns = [
+    "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-ecs-task-${var.environment}",
+    "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-ecs-task-execution-${var.environment}",
+  ]
+  github_frontend_bucket_arn       = "arn:${data.aws_partition.current.partition}:s3:::${var.project_name}-frontend-${var.environment}-${data.aws_caller_identity.current.account_id}"
+  github_frontend_distribution_arn = "arn:${data.aws_partition.current.partition}:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/E39ADG0ES17RP1"
 }
 
 resource "aws_iam_openid_connect_provider" "github_actions" {
@@ -129,12 +138,13 @@ data "aws_iam_policy_document" "github_actions_build_and_plan" {
   }
 
   statement {
-    sid     = "ReadLiveCapStripeSecretVersionsForRefresh"
+    sid     = "ReadLiveCapSecretVersionsForRefresh"
     effect  = "Allow"
     actions = ["secretsmanager:GetSecretValue"]
     resources = [
       "arn:${data.aws_partition.current.partition}:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}-stripe-secret-key-${var.environment}-*",
       "arn:${data.aws_partition.current.partition}:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}-stripe-webhook-secret-${var.environment}-*",
+      "arn:${data.aws_partition.current.partition}:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}-deepseek-api-key-${var.environment}-*",
     ]
   }
 }
@@ -143,4 +153,98 @@ resource "aws_iam_role_policy" "github_actions_build_and_plan" {
   name   = "${var.project_name}-github-actions-build-plan-${var.environment}"
   role   = aws_iam_role.github_actions_plan.id
   policy = data.aws_iam_policy_document.github_actions_build_and_plan.json
+}
+
+# Application delivery is deliberately separate from the plan role. It can
+# release an immutable image and static frontend, but cannot create, modify, or
+# delete general infrastructure resources.
+resource "aws_iam_role" "github_actions_deploy" {
+  name                 = "${var.project_name}-github-actions-deploy-${var.environment}"
+  description          = "GitHub Actions application delivery role for LiveCap"
+  assume_role_policy   = data.aws_iam_policy_document.github_actions_assume_role.json
+  max_session_duration = 3600
+
+  tags = merge(var.tags, {
+    Name        = "${var.project_name}-github-actions-deploy-${var.environment}"
+    Environment = var.environment
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "github_actions_deploy_read_only" {
+  role       = aws_iam_role.github_actions_deploy.name
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/ReadOnlyAccess"
+}
+
+data "aws_iam_policy_document" "github_actions_deploy" {
+  source_policy_documents = [data.aws_iam_policy_document.github_actions_build_and_plan.json]
+
+  statement {
+    sid       = "UpdateTerraformStateAfterDelivery"
+    effect    = "Allow"
+    actions   = ["s3:PutObject"]
+    resources = ["${local.terraform_state_bucket_arn}/${local.terraform_state_key}"]
+  }
+
+  statement {
+    sid    = "RegisterLiveCapTaskDefinitions"
+    effect = "Allow"
+    actions = [
+      "ecs:DeregisterTaskDefinition",
+      "ecs:DescribeTaskDefinition",
+      "ecs:RegisterTaskDefinition",
+      "ecs:TagResource",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "UpdateLiveCapServices"
+    effect    = "Allow"
+    actions   = ["ecs:UpdateService"]
+    resources = local.github_deploy_service_arns
+  }
+
+  statement {
+    sid       = "PassOnlyLiveCapTaskRoles"
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
+    resources = local.github_deploy_task_role_arns
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+
+  statement {
+    sid       = "DeployFrontendObjects"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [local.github_frontend_bucket_arn]
+  }
+
+  statement {
+    sid    = "DeployFrontendAssets"
+    effect = "Allow"
+    actions = [
+      "s3:DeleteObject",
+      "s3:GetObject",
+      "s3:PutObject",
+    ]
+    resources = ["${local.github_frontend_bucket_arn}/*"]
+  }
+
+  statement {
+    sid       = "InvalidateLiveCapFrontend"
+    effect    = "Allow"
+    actions   = ["cloudfront:CreateInvalidation", "cloudfront:GetInvalidation"]
+    resources = [local.github_frontend_distribution_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "github_actions_deploy" {
+  name   = "${var.project_name}-github-actions-deploy-${var.environment}"
+  role   = aws_iam_role.github_actions_deploy.id
+  policy = data.aws_iam_policy_document.github_actions_deploy.json
 }

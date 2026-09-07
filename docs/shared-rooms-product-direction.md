@@ -109,7 +109,8 @@ song ngu, khong chi cho nguoi dang cam may thu am.
 
 ## 5. Kien truc de xuat
 
-![LiveCap Rooms target architecture](livecap-shared-rooms-architecture.svg)
+The target flow is documented below in text so it stays reviewable alongside
+the implementation and does not depend on a generated architecture image.
 
 ### Tai nguyen hien co duoc giu lai
 
