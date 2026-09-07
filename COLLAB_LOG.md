@@ -13,6 +13,26 @@
 
 ---
 
+## 2026-09-07 — Codex — Reduce idle AWS spend without taking LiveCap offline
+
+- Downgraded AWS Business Support+ to Basic Support; the console confirmed the
+  change took effect immediately.
+- Applied the reviewed Terraform cost plan: removed the secondary NAT Gateway,
+  its Elastic IP and route table; both private subnets now use the primary NAT.
+- Disabled VPC Flow Logs, GuardDuty, Security Hub, Container Insights and X-Ray.
+  Kept CloudFront, WAF, ALB, Cognito, DynamoDB, S3, Secrets Manager and all user
+  data intact.
+- Scaled `livecap-target-service-dev` to zero because the custom domain does not
+  route to it. Kept `livecap-preview-service-dev` at one task because
+  `livecap.logantai.com` currently routes through the preview distribution and
+  preview ALB header rule.
+- Verified the production app and `/api/health` return HTTP 200 after the
+  changes. The stopped legacy EC2 instance and its 8 GiB volume were retained
+  to avoid deleting data.
+- Important: the automatic CD workflow currently deploys the target stack,
+  while the custom domain serves the preview stack. Do not delete preview until
+  the domain and CD destinations are consolidated.
+
 ## 2026-09-07 — Codex — Consolidate release work onto main
 
 - Audited `Update`, `feature/livecap-rooms`, `main`, and three Dependabot
