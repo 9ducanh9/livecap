@@ -32,6 +32,10 @@
   auth enabled, and `SESSION_TIMEOUT=0`.
 - Deleted all GitHub branches outside `main` after their relevant changes were
   absorbed or confirmed obsolete. The repository now exposes only `main`.
+- Stabilized the dual-stream partial test by observing the expected partial
+  before sending the stop control frame. This removes a test-only race between
+  worker output and teardown; runtime behavior is unchanged. The focused test
+  passed 10/10 runs and the full backend suite passed 411/411.
 
 ## Current state (2026-09-07, re-verified live against AWS)
 
