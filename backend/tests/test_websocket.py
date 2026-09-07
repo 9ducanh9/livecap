@@ -614,8 +614,9 @@ class TestBilingualDualStream:
                 with client.websocket_connect("/ws/transcribe") as websocket:
                     _ = websocket.receive_text()
                     websocket.send_bytes(make_valid_audio_chunk())
+                    first_partial = json.loads(websocket.receive_text())
                     websocket.send_text(make_stop_message())
-                    received_msgs = collect_until_session_end(websocket, max_messages=10)
+                    received_msgs = [first_partial, *collect_until_session_end(websocket, max_messages=10)]
 
         partial_msgs = [m for m in received_msgs if m["type"] == "partial_segment"]
         # The default source language is vi, so only the vi partial is shown.
