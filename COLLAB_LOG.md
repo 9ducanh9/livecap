@@ -75,6 +75,14 @@ apply). Verified healthy post-deploy: woke `0->1`, `/api/health` returned
 
 ## Change log (newest first)
 
+### 2026-09-07 - Codex - Replaced subscription packages with a weekly session allowance
+
+- Removed the customer-facing subscription/Stripe upgrade controls from the usage panel. The product-facing quota is now five session starts per signed-in user per Vietnam calendar week; it resets on Monday and recording duration has no wall-clock limit.
+- Enforced the weekly start allowance with an atomic DynamoDB conditional update before a WebSocket session begins, avoiding a concurrent-start race. Usage telemetry remains recorded, but minutes no longer cap or stop a session.
+- Set `SESSION_TIMEOUT` and `VITE_MAX_SESSION_SECONDS` defaults to `0` (unlimited), including Terraform and example environment configuration. The dashboard no longer displays a 30-minute limit or auto-stops a session.
+- Retained the existing Stripe backend/admin records for operational continuity, but they no longer determine the user-facing recording allowance. No infrastructure was applied, no image was built, and no frontend/backend deployment was made.
+- Verification: focused backend quota/WebSocket tests `31 passed`; frontend tests `32 passed`; TypeScript/Vite production build passed using a temporary output directory; `terraform fmt -check` and `terraform validate` passed. The existing full backend suite baseline remains `401 passed, 10 failed`: nine auth-dependent export tests without credentials and one timing-sensitive dual-stream test.
+
 ### 2026-08-27 - Codex - Applied and deployed durable Rooms preview
 
 - User explicitly authorized the deployment despite the normal human-run deploy gate. Pushed `feature/livecap-rooms` at `50000db`, built and pushed immutable x86_64 image `50000db-amd64` to ECR, then applied the reviewed saved Terraform plan.

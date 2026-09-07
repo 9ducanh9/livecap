@@ -104,8 +104,21 @@ def test_increment_session_no_longer_overrides_subscription_tier(dynamo_table):
     assert usage.sessions_used == 1
 
 
-def test_unknown_user_defaults_free_tier_limits(dynamo_table):
+def test_weekly_session_allowance_is_limited_atomically(dynamo_table):
+    for _ in range(usage_quota.WEEKLY_SESSION_LIMIT):
+        assert usage_quota.reserve_weekly_session("user-1") is None
+
+    error = usage_quota.reserve_weekly_session("user-1")
+
+    assert error == "Weekly session limit reached (5 sessions). Your allowance resets next Monday."
+    assert usage_quota.get_user_usage("user-1").sessions_used == usage_quota.WEEKLY_SESSION_LIMIT
+
+
+def test_recording_duration_is_unlimited(dynamo_table):
+    assert usage_quota.get_session_time_limit("user-1") == 0
+
+
+def test_new_user_starts_with_full_weekly_allowance(dynamo_table):
     usage = usage_quota.get_user_usage("brand-new-user")
-    assert usage.tier == usage_quota.DEFAULT_TIER
-    limits = usage_quota.TIERS[usage.tier]
-    assert limits.max_sessions_per_month == 3
+    assert usage.sessions_used == 0
+    assert usage_quota.WEEKLY_SESSION_LIMIT == 5

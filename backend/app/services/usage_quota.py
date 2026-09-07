@@ -1,14 +1,14 @@
-"""Per-user usage tracking and quota enforcement for B2C billing.
+"""Per-user usage tracking and quota enforcement.
 
-Tracks monthly session minutes per user in DynamoDB. Each tier defines limits
-that the backend checks before allowing a new session to start.
+Tracks weekly session starts per user in DynamoDB. Every account receives the
+same five-session weekly allowance; recording duration is intentionally not
+limited by this service.
 
 Table schema (livecap-usage-{env}):
   pk: "USER#{user_id}"
-  sk: "MONTH#{YYYY-MM}"
+  sk: "WEEK#{ISO_YEAR}-W{ISO_WEEK}"
   sessions_used: int
-  minutes_used: int (accumulated transcription minutes)
-  tier: str (free | pro | business)
+  minutes_used: int (operational metric only; never used as a cap)
   updated_at: int (epoch)
 
 The table is created by Terraform (usage_quota.tf). This module reads/writes
@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Optional
 
@@ -73,16 +74,19 @@ TIERS: dict[str, TierLimits] = {
 }
 
 DEFAULT_TIER = "free"
+WEEKLY_SESSION_LIMIT = 5
+_VIETNAM_TIMEZONE = timezone(timedelta(hours=7))
 
 
 def _usage_table_name() -> str:
     return os.getenv("USAGE_TABLE_NAME", "livecap-usage-dev")
 
 
-def _current_month_key() -> str:
-    """Return the sort key for the current billing month."""
-    import datetime
-    return f"MONTH#{datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m')}"
+def _current_week_key(now: datetime | None = None) -> str:
+    """Return the current Monday-Sunday usage bucket in Vietnam time."""
+    current = now.astimezone(_VIETNAM_TIMEZONE) if now else datetime.now(_VIETNAM_TIMEZONE)
+    iso_year, iso_week, _ = current.isocalendar()
+    return f"WEEK#{iso_year}-W{iso_week:02d}"
 
 
 def _dynamo():
@@ -198,17 +202,12 @@ def set_user_subscription(
 
 
 def get_user_usage(user_id: str) -> UserUsage:
-    """Fetch the current month's usage record for a user.
-
-    ``tier`` is always sourced from the persistent subscription record
-    (``get_user_subscription``), not from this month's item — a user's plan
-    doesn't reset just because a new month's usage counters do.
-    """
+    """Fetch the current week's usage record for a user."""
     subscription = get_user_subscription(user_id)
     table = _dynamo().Table(_usage_table_name())
     try:
         resp = table.get_item(
-            Key={"pk": f"USER#{user_id}", "sk": _current_month_key()},
+            Key={"pk": f"USER#{user_id}", "sk": _current_week_key()},
             ConsistentRead=True,
         )
         item = resp.get("Item")
@@ -226,56 +225,93 @@ def get_user_usage(user_id: str) -> UserUsage:
 
 
 def check_quota(user_id: str) -> Optional[str]:
-    """Check if user can start a new session. Returns error message or None if OK."""
+    """Return a display-only preflight result for the weekly allowance.
+
+    The WebSocket path uses ``reserve_weekly_session`` to make the actual
+    decision atomically. This helper is deliberately not the enforcement
+    boundary because a read followed by a write could race.
+    """
     usage = get_user_usage(user_id)
-    limits = TIERS.get(usage.tier, TIERS[DEFAULT_TIER])
-
-    if usage.sessions_used >= limits.max_sessions_per_month:
-        return f"Monthly session limit reached ({limits.max_sessions_per_month} sessions). Upgrade to continue."
-
-    if usage.minutes_used >= limits.max_minutes_per_month:
-        return f"Monthly minutes limit reached ({limits.max_minutes_per_month} min). Upgrade for more."
+    if usage.sessions_used >= WEEKLY_SESSION_LIMIT:
+        return (
+            f"Weekly session limit reached ({WEEKLY_SESSION_LIMIT} sessions). "
+            "Your allowance resets next Monday."
+        )
 
     return None
 
 
 def get_session_time_limit(user_id: str) -> int:
-    """Return max seconds allowed for this user's next session."""
-    usage = get_user_usage(user_id)
-    limits = TIERS.get(usage.tier, TIERS[DEFAULT_TIER])
-    remaining_minutes = limits.max_minutes_per_month - usage.minutes_used
-    per_session_limit = limits.max_minutes_per_session
-    effective_minutes = min(per_session_limit, remaining_minutes)
-    return max(60, effective_minutes * 60)  # at least 1 minute
+    """Return zero to represent an unlimited recording duration."""
+    del user_id
+    return 0
 
 
 def increment_session(user_id: str, tier: str = DEFAULT_TIER) -> None:
-    """Record that a user started a new session this month."""
+    """Record a session in the current weekly bucket.
+
+    Kept for compatibility with operational callers. WebSocket admission uses
+    ``reserve_weekly_session`` instead so the five-session cap is atomic.
+    """
+    del tier
     table = _dynamo().Table(_usage_table_name())
     try:
         table.update_item(
-            Key={"pk": f"USER#{user_id}", "sk": _current_month_key()},
+            Key={"pk": f"USER#{user_id}", "sk": _current_week_key()},
             UpdateExpression="SET sessions_used = if_not_exists(sessions_used, :zero) + :one, "
-                            "tier = :tier, updated_at = :now",
+                            "updated_at = :now",
             ExpressionAttributeValues={
                 ":zero": 0,
                 ":one": 1,
-                ":tier": tier,
                 ":now": int(time.time()),
             },
         )
     except (BotoCoreError, ClientError):
-        pass  # Fail open
+        logger.warning("Failed to record weekly usage", exc_info=True)
+
+
+def reserve_weekly_session(user_id: str) -> Optional[str]:
+    """Atomically reserve one of a user's five weekly session starts.
+
+    A DynamoDB conditional update prevents simultaneous WebSocket connections
+    from exceeding the allowance. On an AWS outage, preserve availability and
+    let the session proceed; the failure is logged for operators.
+    """
+    table = _dynamo().Table(_usage_table_name())
+    try:
+        table.update_item(
+            Key={"pk": f"USER#{user_id}", "sk": _current_week_key()},
+            UpdateExpression=(
+                "SET sessions_used = if_not_exists(sessions_used, :zero) + :one, "
+                "updated_at = :now"
+            ),
+            ConditionExpression="attribute_not_exists(sessions_used) OR sessions_used < :limit",
+            ExpressionAttributeValues={
+                ":zero": 0,
+                ":one": 1,
+                ":limit": WEEKLY_SESSION_LIMIT,
+                ":now": int(time.time()),
+            },
+        )
+        return None
+    except table.meta.client.exceptions.ConditionalCheckFailedException:
+        return (
+            f"Weekly session limit reached ({WEEKLY_SESSION_LIMIT} sessions). "
+            "Your allowance resets next Monday."
+        )
+    except (BotoCoreError, ClientError):
+        logger.warning("Failed to reserve weekly usage", exc_info=True)
+        return None
 
 
 def add_minutes(user_id: str, minutes: int) -> None:
-    """Add transcription minutes to the user's monthly usage."""
+    """Record transcription minutes for the current week without enforcing a cap."""
     if minutes <= 0:
         return
     table = _dynamo().Table(_usage_table_name())
     try:
         table.update_item(
-            Key={"pk": f"USER#{user_id}", "sk": _current_month_key()},
+            Key={"pk": f"USER#{user_id}", "sk": _current_week_key()},
             UpdateExpression="SET minutes_used = if_not_exists(minutes_used, :zero) + :mins, "
                             "updated_at = :now",
             ExpressionAttributeValues={
@@ -285,7 +321,7 @@ def add_minutes(user_id: str, minutes: int) -> None:
             },
         )
     except (BotoCoreError, ClientError):
-        pass  # Fail open
+        logger.warning("Failed to record weekly transcription minutes", exc_info=True)
 
 
 def can_use_meeting_notes(user_id: str) -> bool:

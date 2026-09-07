@@ -26,8 +26,8 @@ DEFAULT_AWS_REGION = "ap-southeast-1"
 DEFAULT_S3_BUCKET = "livecap-transcripts"
 # 24 hours, in seconds.
 DEFAULT_DOWNLOAD_LINK_EXPIRATION = 86_400
-# 30 minutes, in seconds.
-DEFAULT_SESSION_TIMEOUT = 1_800
+# Zero disables the wall-clock recording timeout.
+DEFAULT_SESSION_TIMEOUT = 0
 DEFAULT_TRANSCRIBE_LANGUAGE_CODE = "vi-VN"
 DEFAULT_BILINGUAL_DUAL_STREAM = True
 DEFAULT_AUDIO_PIPELINE_DEBUG = False
@@ -123,7 +123,7 @@ class Settings:
         aws_region: AWS region for Transcribe, Translate, and S3.
         s3_bucket: S3 bucket where exported transcripts are stored.
         download_link_expiration: Lifetime (seconds) of presigned download links.
-        session_timeout: Maximum session duration (seconds) before timeout.
+        session_timeout: Maximum session duration in seconds; zero disables it.
         transcribe_language_code: Fixed Transcribe Streaming language code.
         bilingual_dual_stream: Enables parallel vi-VN and en-US Transcribe streams.
         audio_pipeline_debug: Enables temporary audio flow debug logging.
@@ -205,7 +205,10 @@ class Settings:
             download_link_expiration=_get_int(
                 "DOWNLOAD_LINK_EXPIRATION", DEFAULT_DOWNLOAD_LINK_EXPIRATION
             ),
-            session_timeout=_get_int("SESSION_TIMEOUT", DEFAULT_SESSION_TIMEOUT),
+            session_timeout=max(
+                0,
+                _get_int("SESSION_TIMEOUT", DEFAULT_SESSION_TIMEOUT),
+            ),
             transcribe_language_code=_get_str(
                 "TRANSCRIBE_LANGUAGE_CODE", DEFAULT_TRANSCRIBE_LANGUAGE_CODE
             ),

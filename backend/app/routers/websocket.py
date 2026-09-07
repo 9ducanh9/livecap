@@ -803,8 +803,8 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     # Only enforced when auth is on and quota tracking is enabled.
     if auth_user is not None and settings.enable_auth:
         try:
-            from app.services.usage_quota import check_quota, increment_session, get_user_subscription  # noqa: PLC0415
-            quota_error = check_quota(auth_user.user_id)
+            from app.services.usage_quota import reserve_weekly_session  # noqa: PLC0415
+            quota_error = reserve_weekly_session(auth_user.user_id)
             if quota_error:
                 _logger.warning(
                     "Session rejected by quota limit",
@@ -815,9 +815,6 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                 await _send_error(websocket, message=quota_error, code=ErrorCode.QUOTA_EXCEEDED)
                 await websocket.close(code=1008)
                 return
-            # Record the new session against this month's quota.
-            sub = get_user_subscription(auth_user.user_id)
-            increment_session(auth_user.user_id, tier=sub.tier)
         except Exception:  # noqa: BLE001 — fail open, never block on quota errors
             pass
 
@@ -996,8 +993,8 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         log_websocket_disconnect(session_id)
 
     try:
-        # Wrap the entire session in a timeout (Requirement 2.5).
-        async with asyncio.timeout(settings.session_timeout):
+        # A zero timeout means recordings have no wall-clock cap.
+        async with asyncio.timeout(settings.session_timeout or None):
             if settings.bilingual_dual_stream:
                 _logger.info(
                     "dual_stream_started",

@@ -38,13 +38,11 @@ import {
   Shield,
 } from 'lucide-react';
 
-const DEFAULT_MAX_SESSION_SECONDS = 1_800;
-
-function configuredMaxSessionSeconds(): number {
+function configuredMaxSessionSeconds(): number | null {
   const raw = import.meta.env.VITE_MAX_SESSION_SECONDS;
-  if (typeof raw !== 'string' || raw.trim() === '') return DEFAULT_MAX_SESSION_SECONDS;
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_MAX_SESSION_SECONDS;
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return Math.floor(parsed);
 }
 
@@ -251,10 +249,12 @@ export default function DashboardPage() {
     ? Math.max(0, Math.floor((nowMs - recordingStartedAt) / 1_000))
     : 0;
 
-  const remainingSessionSeconds = Math.max(0, maxSessionSeconds - recordingDurationSeconds);
+  const remainingSessionSeconds = maxSessionSeconds === null
+    ? null
+    : Math.max(0, maxSessionSeconds - recordingDurationSeconds);
 
   useEffect(() => {
-    if (!isCapturing || recordingDurationSeconds < maxSessionSeconds) return;
+    if (maxSessionSeconds === null || !isCapturing || recordingDurationSeconds < maxSessionSeconds) return;
     handleStop();
     dispatch({ type: 'SET_ERROR', error: 'Maximum session duration reached. Please start a new session.' });
   }, [handleStop, isCapturing, maxSessionSeconds, recordingDurationSeconds]);
@@ -292,7 +292,9 @@ export default function DashboardPage() {
           {/* Right: metrics */}
           <div className="hidden items-center gap-5 sm:flex">
             <HeaderMetric icon={<Clock className="w-3 h-3 text-ink/50" />} label="TIME" value={formatDuration(recordingDurationSeconds)} />
-            <HeaderMetric icon={<Clock className="w-3 h-3 text-emerald-pro" />} label="LIMIT" value={formatDuration(remainingSessionSeconds)} accent />
+            {remainingSessionSeconds !== null && (
+              <HeaderMetric icon={<Clock className="w-3 h-3 text-emerald-pro" />} label="LIMIT" value={formatDuration(remainingSessionSeconds)} accent />
+            )}
             <HeaderMetric icon={<Layers className="w-3 h-3 text-ink/50" />} label="SEGS" value={state.segments.length.toString()} />
           </div>
         </div>

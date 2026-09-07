@@ -156,9 +156,9 @@ variable "container_port" {
 
 # Application Configuration
 variable "session_timeout_seconds" {
-  description = "Maximum duration for a transcription session in seconds"
+  description = "Maximum duration for a transcription session in seconds; 0 disables the time limit."
   type        = number
-  default     = 1800 # 30 minutes
+  default     = 0
 }
 
 variable "download_link_expiration_seconds" {
