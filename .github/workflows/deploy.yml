@@ -143,7 +143,14 @@ jobs:
             -target='aws_ecs_task_definition.target_backend' \
             -target='aws_ecs_service.target_backend' \
             -var "backend_image_tag=${{ needs.build-backend.outputs.image_tag }}" \
+            -var 'enable_container_insights=true' \
             -var 'task_cpu_architecture=X86_64'
+          terraform show -json tfplan | jq -e '
+            [.resource_changes[] |
+              select(.change.actions != ["no-op"]) |
+              select(.address != "aws_ecs_task_definition.target_backend" and
+                     .address != "aws_ecs_service.target_backend")] | length == 0
+          '
           terraform apply -input=false -no-color tfplan
 
       - name: Wait for stable services
@@ -246,7 +253,14 @@ jobs:
             -var "preview_backend_image_tag=$IMAGE_TAG" \
             -var 'preview_enable_shared_rooms=true' \
             -var 'preview_enable_room_screen_share=true' \
+            -var 'enable_container_insights=true' \
             -var 'task_cpu_architecture=X86_64'
+          terraform show -json tfplan | jq -e '
+            [.resource_changes[] |
+              select(.change.actions != ["no-op"]) |
+              select(.address != "aws_ecs_task_definition.preview_backend[0]" and
+                     .address != "aws_ecs_service.preview_backend[0]")] | length == 0
+          '
           terraform apply -input=false -no-color tfplan
 
       - name: Read preview frontend destination
