@@ -88,6 +88,51 @@ def test_room_service_notifies_viewers_when_host_closes_room() -> None:
     asyncio.run(scenario())
 
 
+def test_room_media_is_owner_only_and_notifies_viewers() -> None:
+    async def scenario() -> None:
+        service = RoomService()
+        room, token = await service.create_room(
+            title="Screen share",
+            ttl_seconds=600,
+            max_segments=20,
+            owner_user_id="owner-1",
+        )
+        viewer = _FakeWebSocket()
+        await service.subscribe(room["room_code"], viewer)  # type: ignore[arg-type]
+
+        async def create_stage(code: str) -> str:
+            return f"arn:aws:ivs:stage/{code}"
+
+        assert await service.prepare_media(
+            room["room_code"], token, "other-user", create_stage
+        ) is None
+        stage_arn = await service.prepare_media(
+            room["room_code"], token, "owner-1", create_stage
+        )
+        assert stage_arn is not None
+        assert await service.viewer_stage(room["room_code"]) is None
+        assert await service.activate_media(
+            room["room_code"], token, "owner-1", stage_arn
+        )
+        assert await service.viewer_stage(room["room_code"]) == stage_arn
+        assert viewer.messages[-1] == {
+            "type": "room_media_status",
+            "media_status": "live",
+        }
+
+        assert await service.begin_media_stop(
+            room["room_code"], token, "owner-1"
+        ) == stage_arn
+        assert await service.viewer_stage(room["room_code"]) is None
+        assert viewer.messages[-1] == {
+            "type": "room_media_status",
+            "media_status": "idle",
+        }
+        await service.complete_media_stop(room["room_code"], stage_arn)
+
+    asyncio.run(scenario())
+
+
 def test_room_api_is_hidden_when_feature_is_disabled(monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_SHARED_ROOMS", "false")
     get_settings.cache_clear()

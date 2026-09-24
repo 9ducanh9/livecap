@@ -13,13 +13,20 @@ locals {
 
   github_deploy_service_arns = [
     "arn:${data.aws_partition.current.partition}:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${var.project_name}-cluster-${var.environment}/${var.project_name}-target-service-${var.environment}",
+    "arn:${data.aws_partition.current.partition}:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${var.project_name}-cluster-${var.environment}/${var.project_name}-preview-service-${var.environment}",
   ]
   github_deploy_task_role_arns = [
     "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-ecs-task-${var.environment}",
     "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-ecs-task-execution-${var.environment}",
   ]
-  github_frontend_bucket_arn       = "arn:${data.aws_partition.current.partition}:s3:::${var.project_name}-frontend-${var.environment}-${data.aws_caller_identity.current.account_id}"
-  github_frontend_distribution_arn = "arn:${data.aws_partition.current.partition}:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/E39ADG0ES17RP1"
+  github_frontend_bucket_arns = [
+    "arn:${data.aws_partition.current.partition}:s3:::${var.project_name}-frontend-${var.environment}-${data.aws_caller_identity.current.account_id}",
+    "arn:${data.aws_partition.current.partition}:s3:::${var.project_name}-frontend-preview-${var.environment}-${data.aws_caller_identity.current.account_id}",
+  ]
+  github_frontend_distribution_arns = [
+    "arn:${data.aws_partition.current.partition}:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/E39ADG0ES17RP1",
+    "arn:${data.aws_partition.current.partition}:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/EXF7T06N8RPSP",
+  ]
 }
 
 resource "aws_iam_openid_connect_provider" "github_actions" {
@@ -221,7 +228,7 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     sid       = "DeployFrontendObjects"
     effect    = "Allow"
     actions   = ["s3:ListBucket"]
-    resources = [local.github_frontend_bucket_arn]
+    resources = local.github_frontend_bucket_arns
   }
 
   statement {
@@ -232,14 +239,14 @@ data "aws_iam_policy_document" "github_actions_deploy" {
       "s3:GetObject",
       "s3:PutObject",
     ]
-    resources = ["${local.github_frontend_bucket_arn}/*"]
+    resources = [for bucket_arn in local.github_frontend_bucket_arns : "${bucket_arn}/*"]
   }
 
   statement {
     sid       = "InvalidateLiveCapFrontend"
     effect    = "Allow"
     actions   = ["cloudfront:CreateInvalidation", "cloudfront:GetInvalidation"]
-    resources = [local.github_frontend_distribution_arn]
+    resources = local.github_frontend_distribution_arns
   }
 }
 

@@ -40,6 +40,7 @@ export interface UseWebSocketOptions {
   reconnectOnUnexpectedClose?: boolean;
   roomCode?: string;
   roomToken?: string;
+  forceSingleStream?: boolean;
   onSessionStart?: (sessionId: string, isReconnect: boolean) => void;
   onPartialSegment?: (segment: Segment) => void;
   onFinalizedSegment?: (segment: Segment) => void;
@@ -69,6 +70,7 @@ function buildWsUrl(
   resumeSessionId?: string | null,
   roomCode?: string,
   roomToken?: string,
+  forceSingleStream?: boolean,
 ): string {
   const configuredUrl = import.meta.env.VITE_WS_URL;
   const baseUrl =
@@ -91,6 +93,7 @@ function buildWsUrl(
     url.searchParams.set('room_code', roomCode);
     url.searchParams.set('room_token', roomToken);
   }
+  if (forceSingleStream) url.searchParams.set('stream_mode', 'single');
   return url.toString();
 }
 
@@ -275,6 +278,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         isRetry ? sessionIdRef.current : null,
         optionsRef.current.roomCode,
         optionsRef.current.roomToken,
+        optionsRef.current.forceSingleStream,
       );
       const token = getAccessToken();
       // JWT travels in Sec-WebSocket-Protocol instead of the URL, avoiding

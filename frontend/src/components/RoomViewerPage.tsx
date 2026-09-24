@@ -3,22 +3,68 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Languages, Radio, Users, WifiOff } from 'lucide-react';
 import { useRoomFeed } from '../hooks/useRoomFeed';
 import type { Segment } from '../types';
+import RoomScreenViewer from './RoomScreenViewer';
+import { roomExists } from '../services/roomService';
+import { wakeBackendIfConfigured } from '../services/wakeService';
 
 type CaptionLanguage = 'both' | 'vi' | 'en';
+type CaptionLayout = 'overlay' | 'below';
+const ROOM_CODE_PATTERN = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/;
 
 export default function RoomViewerPage() {
   const { roomCode } = useParams();
   if (!roomCode) return <RoomJoinForm />;
-  return <JoinedRoom roomCode={roomCode.toUpperCase()} />;
+  const normalized = roomCode.toUpperCase();
+  if (!ROOM_CODE_PATTERN.test(normalized)) {
+    return <RoomJoinForm initialError="Room codes contain exactly six valid characters." />;
+  }
+  return <ValidatedRoom roomCode={normalized} />;
 }
 
-function RoomJoinForm() {
+function ValidatedRoom({ roomCode }: { roomCode: string }) {
+  const [state, setState] = useState<'checking' | 'valid' | 'invalid' | 'error'>('checking');
+  useEffect(() => {
+    let disposed = false;
+    void (async () => {
+      try {
+        await wakeBackendIfConfigured();
+        const exists = await roomExists(roomCode);
+        if (!disposed) setState(exists ? 'valid' : 'invalid');
+      } catch {
+        if (!disposed) setState('error');
+      }
+    })();
+    return () => { disposed = true; };
+  }, [roomCode]);
+  if (state === 'valid') return <JoinedRoom roomCode={roomCode} />;
+  if (state === 'invalid') return <RoomJoinForm initialError="That room does not exist or has expired." />;
+  if (state === 'error') return <RoomJoinForm initialError="Could not verify the room right now. Please try again." />;
+  return <RoomCheckScreen />;
+}
+
+function RoomCheckScreen() {
+  return <div className="grid min-h-screen place-items-center bg-paper text-sm font-semibold text-ink-muted">Checking room...</div>;
+}
+
+function RoomJoinForm({ initialError = null }: { initialError?: string | null }) {
   const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(initialError);
+  const [isChecking, setIsChecking] = useState(false);
   const navigate = useNavigate();
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const normalized = code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 6);
-    if (normalized.length === 6) navigate(`/rooms/${normalized}`);
+    if (!ROOM_CODE_PATTERN.test(code)) return;
+    setIsChecking(true);
+    setError(null);
+    try {
+      await wakeBackendIfConfigured();
+      if (await roomExists(code)) navigate(`/rooms/${code}`);
+      else setError('That room does not exist or has expired.');
+    } catch {
+      setError('Could not verify the room right now. Please try again.');
+    } finally {
+      setIsChecking(false);
+    }
   };
 
   return (
@@ -43,17 +89,18 @@ function RoomJoinForm() {
             autoCapitalize="characters"
             maxLength={6}
             value={code}
-            onChange={(event) => setCode(event.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase())}
+            onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^ABCDEFGHJKLMNPQRSTUVWXYZ23456789]/g, '').slice(0, 6))}
             className="mt-3 h-16 w-full rounded-xl border border-[#dce5f2] px-4 text-center font-mono text-2xl font-bold uppercase tracking-[0.28em] outline-none focus:border-emerald-pro"
-            placeholder="ABC123"
+            placeholder="XXXXXX"
           />
           <button
             type="submit"
-            disabled={code.length !== 6}
+            disabled={!ROOM_CODE_PATTERN.test(code) || isChecking}
             className="mt-4 h-12 w-full rounded-xl bg-ink text-sm font-bold text-white transition hover:bg-emerald-pro disabled:cursor-not-allowed disabled:opacity-35"
           >
-            Join room
+            {isChecking ? 'Checking room...' : 'Join room'}
           </button>
+          {error && <p role="alert" className="mt-3 text-sm text-crimson">{error}</p>}
         </form>
       </div>
     </div>
@@ -61,7 +108,8 @@ function RoomJoinForm() {
 }
 
 function JoinedRoom({ roomCode }: { roomCode: string }) {
-  const [language, setLanguage] = useState<CaptionLanguage>('both');
+  const [language, setLanguage] = useState<CaptionLanguage>('vi');
+  const [layout, setLayout] = useState<CaptionLayout>('overlay');
   const feed = useRoomFeed(roomCode);
   const scrollRef = useRef<HTMLDivElement>(null);
   const latest = feed.segments[feed.segments.length - 1];
@@ -107,6 +155,16 @@ function JoinedRoom({ roomCode }: { roomCode: string }) {
           <LanguagePicker value={language} onChange={setLanguage} />
         </div>
 
+        <div className="mt-5 flex justify-end">
+          <div className="inline-flex rounded-xl border border-[#dce5f2] bg-white p-1">
+            {(['overlay', 'below'] as const).map((option) => (
+              <button key={option} type="button" onClick={() => setLayout(option)} className={`rounded-lg px-3 py-2 text-xs font-bold ${layout === option ? 'bg-ink text-white' : 'text-ink/55'}`}>
+                {option === 'overlay' ? 'Subtitles on video' : 'Transcript below'}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {feed.error && (
           <div className="mt-5 flex items-start gap-3 rounded-xl border border-crimson/25 bg-crimson/5 p-4 text-sm text-crimson">
             <WifiOff className="mt-0.5 h-4 w-4 shrink-0" /> {feed.error}
@@ -119,7 +177,19 @@ function JoinedRoom({ roomCode }: { roomCode: string }) {
           </div>
         )}
 
-        <section className="mt-5 overflow-hidden rounded-2xl border border-[#dce5f2] bg-white shadow-brutal">
+        <section className="relative mt-4">
+          <RoomScreenViewer roomCode={roomCode} active={feed.mediaStatus === 'live'} />
+          {layout === 'overlay' && latest && (
+            <div className="pointer-events-none absolute inset-x-4 bottom-5 flex justify-center">
+              <div className="max-w-3xl rounded-xl bg-black/80 px-5 py-3 text-center shadow-xl backdrop-blur-sm">
+                {(language === 'vi' || language === 'both') && <p className="text-lg font-semibold leading-snug text-white sm:text-2xl">{latest.textVi}</p>}
+                {(language === 'en' || language === 'both') && <p className="mt-1 text-sm leading-snug text-white/75 sm:text-base">{latest.textEn}</p>}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {layout === 'below' && <section className="mt-5 overflow-hidden rounded-2xl border border-[#dce5f2] bg-white shadow-brutal">
           <div className="flex items-center justify-between border-b border-[#dce5f2] px-5 py-4">
             <span className="flex items-center gap-2 text-xs font-bold text-ink/60">
               <Radio className="h-4 w-4 text-emerald-pro" />
@@ -150,7 +220,7 @@ function JoinedRoom({ roomCode }: { roomCode: string }) {
               </div>
             )}
           </div>
-        </section>
+        </section>}
         <p className="mt-4 text-center text-[11px] leading-5 text-ink/45">
           Audio stays with the host. This viewer receives finalized text only.
         </p>
@@ -186,7 +256,6 @@ function ViewerCaption({ segment, language, isLatest }: { segment: Segment; lang
     <article className={`px-5 py-5 transition-colors sm:px-7 ${isLatest ? 'bg-[#effbf8]/70' : ''}`}>
       <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.16em] text-ink/40">
         <span>{segment.speakerLabel || 'Speaker'}</span>
-        <span className="font-mono normal-case tracking-normal">{formatTimestamp(segment.timestampStart)}</span>
       </div>
       {language === 'both' ? (
         <div className="mt-3 grid gap-3 sm:grid-cols-2 sm:gap-6">
@@ -216,9 +285,4 @@ function CaptionText({ label, text, translated = false, large = false }: { label
       </p>
     </div>
   );
-}
-
-function formatTimestamp(seconds: number): string {
-  const value = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
-  return `${Math.floor(value / 60).toString().padStart(2, '0')}:${(value % 60).toString().padStart(2, '0')}`;
 }

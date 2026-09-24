@@ -79,6 +79,9 @@ DEFAULT_ROOM_TTL_SECONDS = 14_400
 DEFAULT_ROOM_RETENTION_DAYS = 14
 DEFAULT_ROOM_MAX_SEGMENTS = 500
 DEFAULT_ROOM_TABLE_NAME = ""
+DEFAULT_ENABLE_ROOM_SCREEN_SHARE = False
+DEFAULT_IVS_REALTIME_REGION = "us-east-1"
+DEFAULT_IVS_PARTICIPANT_TOKEN_SECONDS = 14_400
 
 
 def _get_int(name: str, default: int) -> int:
@@ -176,6 +179,9 @@ class Settings:
     room_retention_days: int = DEFAULT_ROOM_RETENTION_DAYS
     room_max_segments: int = DEFAULT_ROOM_MAX_SEGMENTS
     room_table_name: str = DEFAULT_ROOM_TABLE_NAME
+    enable_room_screen_share: bool = DEFAULT_ENABLE_ROOM_SCREEN_SHARE
+    ivs_realtime_region: str = DEFAULT_IVS_REALTIME_REGION
+    ivs_participant_token_seconds: int = DEFAULT_IVS_PARTICIPANT_TOKEN_SECONDS
 
     @property
     def allowed_origins(self) -> tuple[str, ...]:
@@ -311,6 +317,22 @@ class Settings:
             ),
             room_table_name=_get_str(
                 "ROOM_TABLE_NAME", DEFAULT_ROOM_TABLE_NAME
+            ),
+            enable_room_screen_share=_get_bool(
+                "ENABLE_ROOM_SCREEN_SHARE", DEFAULT_ENABLE_ROOM_SCREEN_SHARE
+            ),
+            ivs_realtime_region=_get_str(
+                "IVS_REALTIME_REGION", DEFAULT_IVS_REALTIME_REGION
+            ),
+            ivs_participant_token_seconds=max(
+                60,
+                min(
+                    14_400,
+                    _get_int(
+                        "IVS_PARTICIPANT_TOKEN_SECONDS",
+                        DEFAULT_IVS_PARTICIPANT_TOKEN_SECONDS,
+                    ),
+                ),
             ),
         )
 

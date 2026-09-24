@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   wakeBackend: vi.fn<() => Promise<void>>(),
   wakeConfigured: false,
   webSocketOptions: undefined as unknown as {
-    onSessionStart: (sessionId: string, isReconnect: boolean) => void;
+    onSessionStart?: (sessionId: string, isReconnect: boolean) => void;
     onFinalizedSegment: (segment: Record<string, unknown>) => void;
     onSessionEnd: () => void;
   },
@@ -44,6 +44,18 @@ vi.mock('../hooks/useAudioCapture', () => ({
   }),
 }));
 
+vi.mock('../hooks/useRoomScreenShare', () => ({
+  useRoomScreenShare: () => ({
+    isEnabled: false,
+    isSharing: false,
+    isConnecting: false,
+    error: null,
+    startSharing: vi.fn(),
+    stopSharing: vi.fn(),
+    dispose: vi.fn(),
+  }),
+}));
+
 vi.mock('../services/wakeService', () => ({
   isWakeBackendConfigured: () => mocks.wakeConfigured,
   isBackendWakeError: () => false,
@@ -53,6 +65,7 @@ vi.mock('../services/wakeService', () => ({
 describe('DashboardPage start flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.webSocketOptions = undefined as unknown as typeof mocks.webSocketOptions;
     mocks.wakeBackend.mockResolvedValue();
     mocks.startCapture.mockResolvedValue();
     mocks.wakeConfigured = false;
@@ -149,8 +162,9 @@ describe('DashboardPage start flow', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(<DashboardPage />);
+    await waitFor(() => expect(mocks.webSocketOptions.onSessionStart).toBeTypeOf('function'));
     act(() => {
-      mocks.webSocketOptions.onSessionStart('session-1', false);
+      mocks.webSocketOptions.onSessionStart?.('session-1', false);
       for (let index = 0; index < 3; index += 1) {
         mocks.webSocketOptions.onFinalizedSegment({
           segmentId: `segment-${index}`, speakerLabel: 'Speaker 1',

@@ -11,6 +11,7 @@ export interface RoomFeedState {
   viewerCount: number;
   segments: Segment[];
   error: string | null;
+  mediaStatus: 'idle' | 'live';
 }
 
 const RETRY_DELAYS_MS = [1_000, 2_000, 4_000] as const;
@@ -22,6 +23,7 @@ export function useRoomFeed(roomCode: string): RoomFeedState {
     viewerCount: 0,
     segments: [],
     error: null,
+    mediaStatus: 'idle',
   });
   const socketRef = useRef<WebSocket | null>(null);
 
@@ -70,6 +72,7 @@ export function useRoomFeed(roomCode: string): RoomFeedState {
             viewerCount: typeof payload['viewer_count'] === 'number' ? payload['viewer_count'] : 0,
             segments,
             error: null,
+            mediaStatus: payload['media_status'] === 'live' ? 'live' : 'idle',
           });
           if (ended) socket.close(1000, 'archived room loaded');
           return;
@@ -86,6 +89,13 @@ export function useRoomFeed(roomCode: string): RoomFeedState {
           terminalError = true;
           setState((current) => ({ ...current, status: 'ended' }));
           socket.close(1000, 'room ended');
+          return;
+        }
+        if (payload['type'] === 'room_media_status') {
+          setState((current) => ({
+            ...current,
+            mediaStatus: payload['media_status'] === 'live' ? 'live' : 'idle',
+          }));
           return;
         }
         if (payload['type'] === 'room_error') {

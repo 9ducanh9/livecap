@@ -10,6 +10,7 @@ export interface HostedRoom {
   createdAt: string;
   liveExpiresAt: string;
   expiresAt: string;
+  mediaStatus: 'idle' | 'live';
 }
 
 export interface RoomSnapshot {
@@ -45,11 +46,51 @@ export async function createSharedRoom(title: string): Promise<HostedRoom> {
     createdAt: requiredString(payload, 'created_at'),
     liveExpiresAt: requiredString(payload, 'live_expires_at'),
     expiresAt: requiredString(payload, 'expires_at'),
+    mediaStatus: payload['media_status'] === 'live' ? 'live' : 'idle',
   };
 }
 
-export async function closeSharedRoom(room: HostedRoom): Promise<void> {
+export function isRoomScreenShareEnabled(): boolean {
+  return String(import.meta.env.VITE_ENABLE_ROOM_SCREEN_SHARE ?? '').toLowerCase() === 'true';
+}
+
+export async function roomExists(roomCode: string): Promise<boolean> {
+  const response = await fetch(`${apiBaseUrl()}/api/rooms/${encodeURIComponent(roomCode)}`);
+  if (response.status === 404) return false;
+  if (!response.ok) throw new Error(await roomError(response, 'Could not verify the room code.'));
+  return true;
+}
+
+export async function createHostMediaToken(room: HostedRoom): Promise<string> {
+  const response = await authenticatedFetch(
+    `${apiBaseUrl()}/api/rooms/${encodeURIComponent(room.roomCode)}/media/host-token`,
+    { method: 'POST', headers: { 'X-LiveCap-Room-Token': room.hostToken } },
+  );
+  if (!response.ok) throw new Error(await roomError(response, 'Could not start screen sharing.'));
+  return requiredString(await response.json() as Record<string, unknown>, 'token');
+}
+
+export async function createViewerMediaToken(roomCode: string): Promise<string> {
   const response = await fetch(
+    `${apiBaseUrl()}/api/rooms/${encodeURIComponent(roomCode)}/media/viewer-token`,
+    { method: 'POST' },
+  );
+  if (!response.ok) throw new Error(await roomError(response, 'Could not join screen sharing.'));
+  return requiredString(await response.json() as Record<string, unknown>, 'token');
+}
+
+export async function stopRoomMedia(room: HostedRoom): Promise<void> {
+  const response = await authenticatedFetch(
+    `${apiBaseUrl()}/api/rooms/${encodeURIComponent(room.roomCode)}/media/stop`,
+    { method: 'POST', headers: { 'X-LiveCap-Room-Token': room.hostToken } },
+  );
+  if (!response.ok && response.status !== 404) {
+    throw new Error(await roomError(response, 'Could not stop screen sharing.'));
+  }
+}
+
+export async function closeSharedRoom(room: HostedRoom): Promise<void> {
+  const response = await authenticatedFetch(
     `${apiBaseUrl()}/api/rooms/${encodeURIComponent(room.roomCode)}/close`,
     {
       method: 'POST',
