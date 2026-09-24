@@ -418,6 +418,17 @@ variable "preview_enable_shared_rooms" {
   }
 }
 
+variable "preview_enable_room_screen_share" {
+  description = "Enable Amazon IVS Real-Time one-host screen sharing inside preview rooms."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.preview_enable_room_screen_share || var.preview_enable_shared_rooms
+    error_message = "preview_enable_room_screen_share requires preview_enable_shared_rooms=true."
+  }
+}
+
 variable "preview_enable_auth_runtime" {
   description = "Require Cognito tokens on the isolated preview backend only."
   type        = bool

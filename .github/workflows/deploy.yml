@@ -203,3 +203,122 @@ jobs:
           aws cloudfront wait invalidation-completed \
             --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
             --id "$invalidation_id"
+
+  deploy-preview-backend:
+    name: Deploy preview room backend
+    runs-on: ubuntu-latest
+    needs: [build-backend, deploy-backend]
+    outputs:
+      frontend_bucket: ${{ steps.preview.outputs.frontend_bucket }}
+      distribution_id: ${{ steps.preview.outputs.distribution_id }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: "720459752315"
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
+
+      - name: Write deployment inputs
+        working-directory: infrastructure/terraform
+        env:
+          TF_BACKEND_HCL: ${{ secrets.TF_BACKEND_HCL }}
+          TF_VARS: ${{ secrets.TF_VARS }}
+        run: |
+          printf '%s' "$TF_BACKEND_HCL" > backend.hcl
+          printf '%s' "$TF_VARS" > ci.auto.tfvars
+
+      - name: Apply preview ECS delivery plan
+        working-directory: infrastructure/terraform
+        env:
+          IMAGE_TAG: ${{ needs.build-backend.outputs.image_tag }}
+        run: |
+          terraform init -input=false -backend-config=backend.hcl
+          terraform plan -input=false -no-color -out=tfplan \
+            -target='aws_ecs_task_definition.preview_backend[0]' \
+            -target='aws_ecs_service.preview_backend[0]' \
+            -var "preview_backend_image_tag=$IMAGE_TAG" \
+            -var 'preview_enable_shared_rooms=true' \
+            -var 'preview_enable_room_screen_share=true' \
+            -var 'task_cpu_architecture=X86_64'
+          terraform apply -input=false -no-color tfplan
+
+      - name: Read preview frontend destination
+        id: preview
+        working-directory: infrastructure/terraform
+        run: |
+          printf 'frontend_bucket=%s\n' "$(terraform output -raw preview_frontend_bucket_name)" >> "$GITHUB_OUTPUT"
+          printf 'distribution_id=%s\n' "$(terraform output -raw preview_cloudfront_distribution_id)" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for preview backend
+        run: |
+          aws ecs wait services-stable \
+            --cluster livecap-cluster-dev \
+            --services livecap-preview-service-dev
+
+  deploy-preview-frontend:
+    name: Deploy preview frontend
+    runs-on: ubuntu-latest
+    needs: deploy-preview-backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: "720459752315"
+
+      - name: Build preview frontend
+        working-directory: frontend
+        env:
+          FRONTEND_ENV_PRODUCTION: ${{ secrets.FRONTEND_ENV_PRODUCTION }}
+          VITE_API_BASE_URL: ""
+          VITE_WS_URL: ""
+          VITE_ROOMS_WS_URL: ""
+          VITE_BACKEND_HEALTH_URL: ""
+          VITE_WAKE_BACKEND_URL: "/api/wake"
+          VITE_ENABLE_SHARED_ROOMS: "true"
+          VITE_ENABLE_ROOM_SCREEN_SHARE: "true"
+        run: |
+          printf '%s' "$FRONTEND_ENV_PRODUCTION" > .env.production
+          npm ci
+          npm run build
+
+      - name: Upload preview frontend
+        working-directory: frontend
+        env:
+          FRONTEND_BUCKET: ${{ needs.deploy-preview-backend.outputs.frontend_bucket }}
+        run: |
+          aws s3 cp dist/assets/ "s3://$FRONTEND_BUCKET/assets/" \
+            --recursive --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp dist/ "s3://$FRONTEND_BUCKET/" \
+            --recursive --exclude "assets/*" --exclude "*.html" \
+            --cache-control "no-cache,must-revalidate"
+          aws s3 cp dist/ "s3://$FRONTEND_BUCKET/" \
+            --recursive --exclude "*" --include "*.html" \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Invalidate preview CloudFront
+        env:
+          DISTRIBUTION_ID: ${{ needs.deploy-preview-backend.outputs.distribution_id }}
+        run: |
+          invalidation_id=$(aws cloudfront create-invalidation \
+            --distribution-id "$DISTRIBUTION_ID" \
+            --paths "/*" --query 'Invalidation.Id' --output text)
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "$DISTRIBUTION_ID" \
+            --id "$invalidation_id"

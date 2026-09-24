@@ -98,6 +98,26 @@ resource "aws_iam_role_policy" "room_events_access" {
   })
 }
 
+resource "aws_iam_role_policy" "room_ivs_realtime_access" {
+  count = var.preview_enable_room_screen_share ? 1 : 0
+
+  name = "${var.project_name}-room-ivs-realtime-${var.environment}"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ivs:CreateStage",
+        "ivs:CreateParticipantToken",
+        "ivs:DeleteStage"
+      ]
+      Resource = "*"
+    }]
+  })
+}
+
 output "room_events_table_name" {
   description = "DynamoDB table containing room metadata and finalized captions for the isolated Rooms preview."
   value       = try(aws_dynamodb_table.room_events[0].name, null)

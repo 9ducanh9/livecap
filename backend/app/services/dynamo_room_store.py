@@ -26,6 +26,9 @@ class PersistedRoom:
     max_segments: int
     sequence: int
     segments: list[dict[str, Any]]
+    owner_user_id: str | None = None
+    media_status: str = "idle"
+    media_stage_arn: str | None = None
 
 
 class DynamoRoomStore:
@@ -62,6 +65,7 @@ class DynamoRoomStore:
         archive_expires_at: str,
         archive_expires_epoch: int,
         max_segments: int,
+        owner_user_id: str | None = None,
     ) -> bool:
         """Create room metadata if the generated code is not already used."""
 
@@ -78,7 +82,10 @@ class DynamoRoomStore:
             "max_segments": max_segments,
             "sequence": 0,
             "expires_at": archive_expires_epoch,
+            "media_status": "idle",
         }
+        if owner_user_id:
+            item["owner_user_id"] = owner_user_id
         try:
             await asyncio.to_thread(
                 table.put_item,
@@ -123,6 +130,30 @@ class DynamoRoomStore:
             max_segments=max_segments,
             sequence=max(stored_sequence, max_sequence),
             segments=segments,
+            owner_user_id=(str(metadata["owner_user_id"]) if metadata.get("owner_user_id") else None),
+            media_status=str(metadata.get("media_status", "idle")),
+            media_stage_arn=(str(metadata["media_stage_arn"]) if metadata.get("media_stage_arn") else None),
+        )
+
+    async def update_media(
+        self,
+        *,
+        room_code: str,
+        media_status: str,
+        media_stage_arn: str | None,
+    ) -> None:
+        table = self._get_table()
+        if media_stage_arn:
+            expression = "SET media_status = :status, media_stage_arn = :arn"
+            values = {":status": media_status, ":arn": media_stage_arn}
+        else:
+            expression = "SET media_status = :status REMOVE media_stage_arn"
+            values = {":status": media_status}
+        await asyncio.to_thread(
+            table.update_item,
+            Key={"room_code": room_code, "record_key": _META_KEY},
+            UpdateExpression=expression,
+            ExpressionAttributeValues=values,
         )
 
     async def append_segment(

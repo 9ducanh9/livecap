@@ -7,12 +7,14 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket
 from fastapi import WebSocketDisconnect, status
 from pydantic import BaseModel, Field
+from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import get_settings
 from app.services.auth import AuthenticatedUser, require_authenticated_user
 from app.services.idle_scaler import get_idle_scale_down_scheduler
 from app.services.room_service import get_room_service
 from app.services.session_registry import get_session_registry
+from app.services.ivs_realtime import IvsRealtimeService
 
 
 router = APIRouter(tags=["shared rooms"])
@@ -31,6 +33,11 @@ class CreateRoomResponse(BaseModel):
     created_at: str
     live_expires_at: str
     expires_at: str
+    media_status: Literal["idle", "live"]
+
+
+class ParticipantTokenResponse(BaseModel):
+    token: str
 
 
 def _require_rooms_enabled() -> None:
@@ -59,6 +66,7 @@ async def create_room(
         title=request.title,
         ttl_seconds=settings.room_ttl_seconds,
         max_segments=settings.room_max_segments,
+        owner_user_id=_user.user_id if _user else None,
     )
     join_url = (
         f"{settings.frontend_base_url.rstrip('/')}/rooms/{room['room_code']}"
@@ -72,7 +80,107 @@ async def create_room(
         created_at=room["created_at"],
         live_expires_at=room["live_expires_at"],
         expires_at=room["expires_at"],
+        media_status=room["media_status"],
     )
+
+
+def _require_screen_share_enabled() -> None:
+    _require_rooms_enabled()
+    if not get_settings().enable_room_screen_share:
+        raise HTTPException(status_code=404, detail="Room screen sharing is not enabled")
+
+
+@router.post("/api/rooms/{room_code}/media/host-token", response_model=ParticipantTokenResponse)
+async def create_host_media_token(
+    room_code: str,
+    room_token: str = Header(alias="X-LiveCap-Room-Token"),
+    user: AuthenticatedUser | None = Depends(_authorize_room_host),
+) -> ParticipantTokenResponse:
+    _require_screen_share_enabled()
+    settings = get_settings()
+    ivs = IvsRealtimeService(region=settings.ivs_realtime_region)
+    try:
+        service = get_room_service()
+        stage_arn = await service.prepare_media(
+            room_code,
+            room_token,
+            user.user_id if user else None,
+            lambda code: ivs.create_stage(room_code=code),
+        )
+        if stage_arn is None:
+            raise HTTPException(status_code=403, detail="Only the room owner can share a screen")
+        token = await ivs.create_token(
+            stage_arn=stage_arn,
+            role="host",
+            duration_seconds=settings.ivs_participant_token_seconds,
+        )
+        activated = await service.activate_media(
+            room_code,
+            room_token,
+            user.user_id if user else None,
+            stage_arn,
+        )
+        if not activated:
+            try:
+                await ivs.delete_stage(stage_arn)
+                await service.complete_media_stop(room_code, stage_arn)
+            except (BotoCoreError, ClientError):
+                pass
+            raise HTTPException(status_code=409, detail="The room changed while screen sharing was starting")
+        return ParticipantTokenResponse(token=token)
+    except HTTPException:
+        raise
+    except (BotoCoreError, ClientError, KeyError) as exc:
+        pending_arn = await get_room_service().begin_media_stop(
+            room_code, room_token, user.user_id if user else None
+        )
+        if pending_arn:
+            try:
+                await ivs.delete_stage(pending_arn)
+                await get_room_service().complete_media_stop(room_code, pending_arn)
+            except (BotoCoreError, ClientError):
+                pass
+        raise HTTPException(status_code=502, detail="Could not start the screen-share service") from exc
+
+
+@router.post("/api/rooms/{room_code}/media/viewer-token", response_model=ParticipantTokenResponse)
+async def create_viewer_media_token(room_code: str) -> ParticipantTokenResponse:
+    _require_screen_share_enabled()
+    settings = get_settings()
+    stage_arn = await get_room_service().viewer_stage(room_code)
+    if not stage_arn:
+        raise HTTPException(status_code=409, detail="The host is not sharing a screen")
+    try:
+        token = await IvsRealtimeService(region=settings.ivs_realtime_region).create_token(
+            stage_arn=stage_arn,
+            role="viewer",
+            duration_seconds=settings.ivs_participant_token_seconds,
+        )
+        return ParticipantTokenResponse(token=token)
+    except (BotoCoreError, ClientError, KeyError) as exc:
+        raise HTTPException(status_code=502, detail="Could not join the screen-share service") from exc
+
+
+@router.post("/api/rooms/{room_code}/media/stop")
+async def stop_room_media(
+    room_code: str,
+    room_token: str = Header(alias="X-LiveCap-Room-Token"),
+    user: AuthenticatedUser | None = Depends(_authorize_room_host),
+) -> dict[str, str]:
+    _require_screen_share_enabled()
+    settings = get_settings()
+    service = get_room_service()
+    stage_arn = await service.begin_media_stop(
+        room_code, room_token, user.user_id if user else None
+    )
+    if not stage_arn:
+        raise HTTPException(status_code=404, detail="Active screen share was not found")
+    try:
+        await IvsRealtimeService(region=settings.ivs_realtime_region).delete_stage(stage_arn)
+    except (BotoCoreError, ClientError) as exc:
+        raise HTTPException(status_code=502, detail="Screen-share cleanup is pending; please retry") from exc
+    await service.complete_media_stop(room_code, stage_arn)
+    return {"status": "stopped"}
 
 
 @router.get("/api/rooms/{room_code}")
@@ -88,9 +196,22 @@ async def get_room(room_code: str) -> dict:
 async def close_room(
     room_code: str,
     room_token: str = Header(alias="X-LiveCap-Room-Token"),
+    user: AuthenticatedUser | None = Depends(_authorize_room_host),
 ) -> dict[str, str]:
     _require_rooms_enabled()
-    closed = await get_room_service().close_room(room_code, room_token)
+    service = get_room_service()
+    settings = get_settings()
+    if settings.enable_room_screen_share:
+        stage_arn = await service.begin_media_stop(
+            room_code, room_token, user.user_id if user else None
+        )
+        if stage_arn:
+            try:
+                await IvsRealtimeService(region=settings.ivs_realtime_region).delete_stage(stage_arn)
+                await service.complete_media_stop(room_code, stage_arn)
+            except (BotoCoreError, ClientError) as exc:
+                raise HTTPException(status_code=502, detail="Screen-share cleanup is pending; please retry") from exc
+    closed = await service.close_room(room_code, room_token)
     if not closed:
         raise HTTPException(status_code=404, detail="Room was not found")
     return {"status": "closed"}

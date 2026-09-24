@@ -719,6 +719,10 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         websocket,
         fallback_source_language_code=settings.transcribe_language_code,
     )
+    use_dual_stream = (
+        settings.bilingual_dual_stream
+        and websocket.query_params.get("stream_mode") != "single"
+    )
 
     auth_protocol = _authenticated_subprotocol(websocket, settings.enable_auth)
     await websocket.accept(subprotocol=auth_protocol)
@@ -897,7 +901,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                         error_event.set()
                         break
 
-                    if settings.bilingual_dual_stream:
+                    if use_dual_stream:
                         await vi_audio_queue.put(data)
                         await en_audio_queue.put(data)
                         _logger.info(
@@ -921,7 +925,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                                 "byte_length": len(data),
                                 "queue_size": (
                                     vi_audio_queue.qsize()
-                                    if settings.bilingual_dual_stream
+                                    if use_dual_stream
                                     else audio_queue.qsize()
                                 ),
                             },
@@ -995,7 +999,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     try:
         # A zero timeout means recordings have no wall-clock cap.
         async with asyncio.timeout(settings.session_timeout or None):
-            if settings.bilingual_dual_stream:
+            if use_dual_stream:
                 _logger.info(
                     "dual_stream_started",
                     extra={

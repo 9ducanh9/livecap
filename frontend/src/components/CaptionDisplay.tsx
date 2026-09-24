@@ -179,11 +179,7 @@ function TranscriptRow({
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-pro animate-pulse" />
             Live
           </span>
-        ) : (
-          <span className="text-[9px] tabular-nums text-ink/40">
-            {formatTimestamp(segment.timestampStart)}
-          </span>
-        )}
+        ) : null}
       </div>
       <div className="grid lg:grid-cols-2 lg:divide-x lg:divide-ink/6">
         <div className="min-w-0 px-5 py-2.5">
@@ -207,12 +203,4 @@ function TranscriptRow({
       </div>
     </section>
   );
-}
-
-function formatTimestamp(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return '00:00';
-  const totalSeconds = Math.floor(seconds);
-  const minutes = Math.floor(totalSeconds / 60);
-  const remainder = totalSeconds % 60;
-  return `${minutes.toString().padStart(2, '0')}:${remainder.toString().padStart(2, '0')}`;
 }

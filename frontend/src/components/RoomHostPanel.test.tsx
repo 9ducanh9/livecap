@@ -17,6 +17,7 @@ describe('RoomHostPanel', () => {
           createdAt: '2026-08-17T00:00:00Z',
           liveExpiresAt: '2026-08-17T04:00:00Z',
           expiresAt: '2026-08-31T00:00:00Z',
+          mediaStatus: 'idle',
         }}
         isCreating={false}
         isCapturing={false}
@@ -46,6 +47,7 @@ describe('RoomHostPanel', () => {
           createdAt: '2026-08-17T00:00:00Z',
           liveExpiresAt: '2026-08-17T04:00:00Z',
           expiresAt: '2026-08-31T00:00:00Z',
+          mediaStatus: 'idle',
         }}
         isCreating={false}
         isCapturing={false}

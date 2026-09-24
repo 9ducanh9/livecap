@@ -7,6 +7,18 @@
 
 [Live demo](https://livecap.logantai.com/) | [Open app](https://livecap.logantai.com/app) | [Demo guide](docs/demo-guide.md) | [Architecture](docs/as-deployed-architecture.md)
 
+## Test Links
+
+- [CloudFront preview workspace](https://dsxqvhsn58xk8.cloudfront.net/app)
+- [CloudFront preview room join](https://dsxqvhsn58xk8.cloudfront.net/rooms)
+- [Custom domain (same deployed frontend)](https://livecap.logantai.com/app)
+- Windows: double-click [`open-livecap.bat`](open-livecap.bat) from the repository root.
+
+`open-livecap.bat` opens the preview CloudFront distribution. The stable
+CloudFront distribution (`dpeohr327wt9l.cloudfront.net`) serves a different
+frontend build; do not use it to compare the current custom-domain UI. Local
+uncommitted changes appear only in the local dev server until deployed.
+
 ![LiveCap caption workspace](docs/livecap-dashboard.png)
 
 ## Problem

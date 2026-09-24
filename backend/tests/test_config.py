@@ -1,6 +1,10 @@
 """Tests for application configuration helpers."""
 
-from app.config import DEFAULT_ALLOWED_ORIGIN, Settings
+from app.config import DEFAULT_ALLOWED_ORIGIN, DEFAULT_IVS_REALTIME_REGION, Settings
+
+
+def test_ivs_realtime_uses_supported_control_plane_region() -> None:
+    assert DEFAULT_IVS_REALTIME_REGION == "us-east-1"
 
 
 def test_allowed_origins_supports_multiple_exact_origins() -> None:

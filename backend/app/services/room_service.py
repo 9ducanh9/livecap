@@ -33,6 +33,8 @@ class RoomArchiveStore(Protocol):
 
     async def mark_ended(self, room_code: str) -> None: ...
 
+    async def update_media(self, **kwargs: Any) -> None: ...
+
 
 @dataclass
 class _Room:
@@ -49,6 +51,9 @@ class _Room:
     segments: deque[dict[str, Any]] = field(default_factory=deque)
     subscribers: set[WebSocket] = field(default_factory=set)
     segment_ids: set[str] = field(default_factory=set)
+    owner_user_id: str | None = None
+    media_status: str = "idle"
+    media_stage_arn: str | None = None
 
     def public_payload(self) -> dict[str, Any]:
         return {
@@ -61,6 +66,7 @@ class _Room:
             "viewer_count": len(self.subscribers),
             "sequence": self.sequence,
             "segments": list(self.segments),
+            "media_status": self.media_status,
         }
 
 
@@ -84,6 +90,7 @@ class RoomService:
         title: str,
         ttl_seconds: int,
         max_segments: int,
+        owner_user_id: str | None = None,
     ) -> tuple[dict[str, Any], str]:
         now = datetime.now(timezone.utc)
         host_token = secrets.token_urlsafe(24)
@@ -105,6 +112,7 @@ class RoomService:
                     archive_expires_at=archive_expires_at,
                     max_segments=max_segments,
                     segments=deque(maxlen=max_segments),
+                    owner_user_id=owner_user_id,
                 )
                 if self._store is not None:
                     reserved = await self._store.reserve_room(
@@ -119,6 +127,7 @@ class RoomService:
                             room.archive_expires_at.timestamp()
                         ),
                         max_segments=room.max_segments,
+                        owner_user_id=room.owner_user_id,
                     )
                     if not reserved:
                         continue
@@ -139,6 +148,133 @@ class RoomService:
                 and room.status == "live"
                 and _token_matches(room, host_token)
             )
+
+    async def prepare_media(
+        self,
+        room_code: str,
+        host_token: str,
+        owner_user_id: str | None,
+        create_stage,
+    ) -> str | None:
+        """Authorize the owner and create a stage without holding the room lock."""
+
+        async with self._lock:
+            room = await self._room_locked(room_code)
+            if (
+                room is None
+                or room.status != "live"
+                or not _token_matches(room, host_token)
+                or (room.owner_user_id and room.owner_user_id != owner_user_id)
+            ):
+                return None
+            if room.media_stage_arn is not None and room.media_status == "live":
+                return room.media_stage_arn
+            if room.media_status in {"starting", "cleanup_pending"}:
+                return None
+            room.media_status = "starting"
+            room_code_value = room.code
+        try:
+            stage_arn = await create_stage(room_code_value)
+        except Exception:
+            async with self._lock:
+                room = await self._room_locked(room_code_value)
+                if room is not None and room.media_status == "starting":
+                    room.media_status = "idle"
+            raise
+        async with self._lock:
+            room = await self._room_locked(room_code_value)
+            if room is None or room.status != "live":
+                return None
+            room.media_stage_arn = stage_arn
+            if self._store is not None:
+                await self._store.update_media(
+                    room_code=room.code,
+                    media_status=room.media_status,
+                    media_stage_arn=room.media_stage_arn,
+                )
+            return stage_arn
+
+    async def activate_media(
+        self,
+        room_code: str,
+        host_token: str,
+        owner_user_id: str | None,
+        stage_arn: str,
+    ) -> bool:
+        async with self._lock:
+            room = await self._room_locked(room_code)
+            if (
+                room is None
+                or not _token_matches(room, host_token)
+                or (room.owner_user_id and room.owner_user_id != owner_user_id)
+                or room.media_stage_arn != stage_arn
+            ):
+                return False
+            room.media_status = "live"
+            if self._store is not None:
+                await self._store.update_media(
+                    room_code=room.code,
+                    media_status="live",
+                    media_stage_arn=stage_arn,
+                )
+            subscribers = tuple(room.subscribers)
+        await self._broadcast(
+            subscribers,
+            {"type": "room_media_status", "media_status": "live"},
+        )
+        return True
+
+    async def viewer_stage(self, room_code: str) -> str | None:
+        async with self._lock:
+            room = await self._room_locked(room_code)
+            if room is None or room.status != "live" or room.media_status != "live":
+                return None
+            return room.media_stage_arn
+
+    async def begin_media_stop(
+        self,
+        room_code: str,
+        host_token: str,
+        owner_user_id: str | None,
+    ) -> str | None:
+        async with self._lock:
+            room = await self._room_locked(room_code)
+            if (
+                room is None
+                or not _token_matches(room, host_token)
+                or (room.owner_user_id and room.owner_user_id != owner_user_id)
+            ):
+                return None
+            stage_arn = room.media_stage_arn
+            if stage_arn is None:
+                return None
+            room.media_status = "cleanup_pending"
+            if self._store is not None:
+                await self._store.update_media(
+                    room_code=room.code,
+                    media_status="cleanup_pending",
+                    media_stage_arn=stage_arn,
+                )
+            subscribers = tuple(room.subscribers)
+        await self._broadcast(
+            subscribers,
+            {"type": "room_media_status", "media_status": "idle"},
+        )
+        return stage_arn
+
+    async def complete_media_stop(self, room_code: str, stage_arn: str) -> None:
+        async with self._lock:
+            room = await self._room_locked(room_code)
+            if room is None or room.media_stage_arn != stage_arn:
+                return
+            room.media_stage_arn = None
+            room.media_status = "idle"
+            if self._store is not None:
+                await self._store.update_media(
+                    room_code=room.code,
+                    media_status="idle",
+                    media_stage_arn=None,
+                )
 
     async def bind_host_session(
         self,
@@ -365,6 +501,9 @@ def _room_from_persisted(room: PersistedRoom) -> _Room:
             for segment in room.segments
             if isinstance((segment_id := segment.get("segment_id")), str)
         },
+        owner_user_id=room.owner_user_id,
+        media_status=room.media_status,
+        media_stage_arn=room.media_stage_arn,
     )
 
 
