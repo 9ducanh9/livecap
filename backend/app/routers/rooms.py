@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket
@@ -18,6 +19,7 @@ from app.services.ivs_realtime import IvsRealtimeService
 
 
 router = APIRouter(tags=["shared rooms"])
+logger = logging.getLogger(__name__)
 
 
 class CreateRoomRequest(BaseModel):
@@ -131,6 +133,21 @@ async def create_host_media_token(
     except HTTPException:
         raise
     except (BotoCoreError, ClientError, KeyError) as exc:
+        if isinstance(exc, ClientError):
+            error = exc.response.get("Error", {})
+            metadata = exc.response.get("ResponseMetadata", {})
+            logger.error(
+                "Screen-share host-token creation failed (aws_code=%s, request_id=%s, message=%s)",
+                error.get("Code", "unknown"),
+                metadata.get("RequestId", "unknown"),
+                str(error.get("Message", ""))[:300],
+            )
+        else:
+            logger.error(
+                "Screen-share host-token creation failed (%s): %s",
+                type(exc).__name__,
+                str(exc)[:300],
+            )
         pending_arn = await get_room_service().begin_media_stop(
             room_code, room_token, user.user_id if user else None
         )
