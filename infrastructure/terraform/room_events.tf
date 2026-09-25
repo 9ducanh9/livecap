@@ -106,15 +106,22 @@ resource "aws_iam_role_policy" "room_ivs_realtime_access" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "ivs:CreateStage",
-        "ivs:CreateParticipantToken",
-        "ivs:DeleteStage"
-      ]
-      Resource = "*"
-    }]
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ivs:CreateStage",
+          "ivs:CreateParticipantToken",
+          "ivs:DeleteStage"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ivs:TagResource"]
+        Resource = "arn:${data.aws_partition.current.partition}:ivs:us-east-1:${data.aws_caller_identity.current.account_id}:stage/*"
+      }
+    ]
   })
 }
 

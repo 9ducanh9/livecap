@@ -69,18 +69,27 @@ export function useRoomScreenShare(room: HostedRoom | null) {
 
       const audioTrack = display.getAudioTracks()[0];
       if (audioTrack) {
-        await connect();
-        const context = new AudioContext({ sampleRate: 16_000 });
-        audioContextRef.current = context;
-        await context.audioWorklet.addModule('/audio-processor.js');
-        const source = context.createMediaStreamSource(new MediaStream([audioTrack]));
-        const worklet = new AudioWorkletNode(context, 'pcm-processor');
-        workletRef.current = worklet;
-        worklet.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
-          if (event.data instanceof ArrayBuffer) sendAudioChunk(event.data);
-        };
-        source.connect(worklet);
-        if (context.state === 'suspended') await context.resume();
+        try {
+          await connect();
+          const context = new AudioContext({ sampleRate: 16_000 });
+          audioContextRef.current = context;
+          await context.audioWorklet.addModule('/worklets/pcm-processor.js');
+          const source = context.createMediaStreamSource(new MediaStream([audioTrack]));
+          const worklet = new AudioWorkletNode(context, 'pcm-processor');
+          workletRef.current = worklet;
+          worklet.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+            if (event.data instanceof ArrayBuffer) sendAudioChunk(event.data);
+          };
+          source.connect(worklet);
+          if (context.state === 'suspended') await context.resume();
+        } catch {
+          workletRef.current?.disconnect();
+          workletRef.current = null;
+          void audioContextRef.current?.close();
+          audioContextRef.current = null;
+          disconnect();
+          setError('Screen sharing is live, but captions from shared audio are unavailable.');
+        }
       }
       display.getVideoTracks()[0].addEventListener('ended', () => void stop(), { once: true });
       setStatus('live');
