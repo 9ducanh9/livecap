@@ -10,12 +10,6 @@ import { beginSignIn, signOut } from '../services/authService';
 
 type Status = 'idle' | 'loading' | 'error-auth' | 'error-network';
 
-/** Illustrations generated in Canva (LiveCap emerald/ink palette). Drop the
- * exported PNGs at these paths under frontend/public/illustrations/ — the
- * panel degrades gracefully to an icon if a file is missing. */
-const EMPTY_ILLUSTRATION = '/illustrations/history-empty.png';
-const SESSION_EXPIRED_ILLUSTRATION = '/illustrations/history-session-expired.png';
-
 export default function TranscriptHistoryPanel() {
   const [items, setItems] = useState<TranscriptHistoryItem[]>([]);
   const [status, setStatus] = useState<Status>('idle');
@@ -75,7 +69,6 @@ export default function TranscriptHistoryPanel() {
 
         {status === 'error-auth' && (
           <EmptyState
-            illustration={SESSION_EXPIRED_ILLUSTRATION}
             fallbackIcon={<AlertTriangle className="h-6 w-6 text-crimson" />}
             title="Your session has expired"
             subtitle="Sign in again to see your saved transcripts."
@@ -86,7 +79,6 @@ export default function TranscriptHistoryPanel() {
 
         {status === 'error-network' && (
           <EmptyState
-            illustration={undefined}
             fallbackIcon={<AlertTriangle className="h-6 w-6 text-crimson" />}
             title="Couldn't load your history"
             subtitle="Check your connection and try again."
@@ -97,7 +89,6 @@ export default function TranscriptHistoryPanel() {
 
         {status === 'idle' && items.length === 0 && (
           <EmptyState
-            illustration={EMPTY_ILLUSTRATION}
             fallbackIcon={<History className="h-6 w-6 text-emerald-pro" />}
             title="No transcripts yet"
             subtitle="Exported transcripts will appear here for 14 days."
@@ -141,7 +132,6 @@ export default function TranscriptHistoryPanel() {
 }
 
 interface EmptyStateProps {
-  illustration: string | undefined;
   fallbackIcon: ReactNode;
   title: string;
   subtitle: string;
@@ -149,26 +139,13 @@ interface EmptyStateProps {
   onAction?: () => void;
 }
 
-/** Centered graphic + copy for empty/error states, with an optional retry
- * or sign-in CTA. Falls back to a plain icon if the illustration is missing
- * (e.g. before the Canva-exported PNG has been dropped into public/). */
-function EmptyState({ illustration, fallbackIcon, title, subtitle, actionLabel, onAction }: EmptyStateProps) {
-  const [imageFailed, setImageFailed] = useState(false);
-  const showImage = illustration && !imageFailed;
-
+/** Centered icon + copy for empty/error states, with an optional retry
+ * or sign-in CTA. */
+function EmptyState({ fallbackIcon, title, subtitle, actionLabel, onAction }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center rounded-xl border border-dashed border-[#dce5f2] px-4 py-6 text-center">
       <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-pro/5">
-        {showImage ? (
-          <img
-            src={illustration}
-            alt=""
-            className="h-14 w-14 object-contain"
-            onError={() => setImageFailed(true)}
-          />
-        ) : (
-          fallbackIcon
-        )}
+        {fallbackIcon}
       </div>
       <p className="mt-3 text-xs font-bold text-ink">{title}</p>
       <p className="mt-1 text-[11px] leading-relaxed text-ink-muted">{subtitle}</p>
