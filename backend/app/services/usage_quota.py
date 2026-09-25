@@ -1,8 +1,8 @@
 """Per-user usage tracking and quota enforcement.
 
-Tracks weekly session starts per user in DynamoDB. Every account receives the
-same five-session weekly allowance; recording duration is intentionally not
-limited by this service.
+Tracks weekly session starts per user in DynamoDB. Standard accounts receive
+the five-session weekly allowance; verified admins bypass product quotas.
+Recording duration is intentionally not limited by this service.
 
 Table schema (livecap-usage-{env}):
   pk: "USER#{user_id}"
@@ -224,13 +224,15 @@ def get_user_usage(user_id: str) -> UserUsage:
         return UserUsage(user_id=user_id, tier=subscription.tier, sessions_used=0, minutes_used=0)
 
 
-def check_quota(user_id: str) -> Optional[str]:
+def check_quota(user_id: str, *, is_admin: bool = False) -> Optional[str]:
     """Return a display-only preflight result for the weekly allowance.
 
     The WebSocket path uses ``reserve_weekly_session`` to make the actual
     decision atomically. This helper is deliberately not the enforcement
     boundary because a read followed by a write could race.
     """
+    if is_admin:
+        return None
     usage = get_user_usage(user_id)
     if usage.sessions_used >= WEEKLY_SESSION_LIMIT:
         return (
@@ -270,29 +272,33 @@ def increment_session(user_id: str, tier: str = DEFAULT_TIER) -> None:
         logger.warning("Failed to record weekly usage", exc_info=True)
 
 
-def reserve_weekly_session(user_id: str) -> Optional[str]:
+def reserve_weekly_session(user_id: str, *, is_admin: bool = False) -> Optional[str]:
     """Atomically reserve one of a user's five weekly session starts.
 
-    A DynamoDB conditional update prevents simultaneous WebSocket connections
-    from exceeding the allowance. On an AWS outage, preserve availability and
-    let the session proceed; the failure is logged for operators.
+    A DynamoDB conditional update prevents standard accounts from exceeding
+    the allowance. Admin usage is still recorded for analytics, without a cap.
+    On an AWS outage, preserve availability and let the session proceed.
     """
     table = _dynamo().Table(_usage_table_name())
     try:
-        table.update_item(
-            Key={"pk": f"USER#{user_id}", "sk": _current_week_key()},
-            UpdateExpression=(
+        update_args = {
+            "Key": {"pk": f"USER#{user_id}", "sk": _current_week_key()},
+            "UpdateExpression": (
                 "SET sessions_used = if_not_exists(sessions_used, :zero) + :one, "
                 "updated_at = :now"
             ),
-            ConditionExpression="attribute_not_exists(sessions_used) OR sessions_used < :limit",
-            ExpressionAttributeValues={
+            "ExpressionAttributeValues": {
                 ":zero": 0,
                 ":one": 1,
-                ":limit": WEEKLY_SESSION_LIMIT,
                 ":now": int(time.time()),
             },
-        )
+        }
+        if not is_admin:
+            update_args["ConditionExpression"] = (
+                "attribute_not_exists(sessions_used) OR sessions_used < :limit"
+            )
+            update_args["ExpressionAttributeValues"][":limit"] = WEEKLY_SESSION_LIMIT
+        table.update_item(**update_args)
         return None
     except table.meta.client.exceptions.ConditionalCheckFailedException:
         return (
@@ -324,8 +330,10 @@ def add_minutes(user_id: str, minutes: int) -> None:
         logger.warning("Failed to record weekly transcription minutes", exc_info=True)
 
 
-def can_use_meeting_notes(user_id: str) -> bool:
+def can_use_meeting_notes(user_id: str, *, is_admin: bool = False) -> bool:
     """Check if the user's tier allows AI meeting notes."""
+    if is_admin:
+        return True
     usage = get_user_usage(user_id)
     limits = TIERS.get(usage.tier, TIERS[DEFAULT_TIER])
     return limits.meeting_notes_enabled

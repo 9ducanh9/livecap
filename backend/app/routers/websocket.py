@@ -68,7 +68,7 @@ from app.services.logging_service import (
     log_websocket_disconnect,
 )
 from app.services.idle_scaler import get_idle_scale_down_scheduler
-from app.services.auth import authenticate_access_token
+from app.services.auth import authenticate_access_token, is_admin_user
 from app.services.session_registry import (
     active_session_registry,
     get_session_registry,
@@ -728,10 +728,12 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     await websocket.accept(subprotocol=auth_protocol)
 
     auth_user = None
+    auth_user_is_admin = False
     if settings.enable_auth:
         token = _access_token_from_subprotocol(websocket)
         try:
             auth_user = authenticate_access_token(token or "")
+            auth_user_is_admin = await asyncio.to_thread(is_admin_user, auth_user)
         except HTTPException:
             await _send_error(
                 websocket,
@@ -808,7 +810,9 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     if auth_user is not None and settings.enable_auth:
         try:
             from app.services.usage_quota import reserve_weekly_session  # noqa: PLC0415
-            quota_error = reserve_weekly_session(auth_user.user_id)
+            quota_error = reserve_weekly_session(
+                auth_user.user_id, is_admin=auth_user_is_admin
+            )
             if quota_error:
                 _logger.warning(
                     "Session rejected by quota limit",
