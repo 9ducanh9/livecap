@@ -1,8 +1,8 @@
-# Transcript history illustrations
+# Transcript history illustration designs
 
-`TranscriptHistoryPanel.tsx` looks for these two files here (served at
-`/illustrations/...`). If a file is missing, the panel silently falls back to
-a plain icon — nothing breaks, so this can be filled in whenever convenient.
+The transcript history panel currently uses built-in icons and does not request
+files from this directory. This avoids broken asset requests until exported
+illustrations are added and deployed with the frontend.
 
 - `history-empty.png` — "no transcripts yet" state.
 - `history-session-expired.png` — "sign in again" state.
