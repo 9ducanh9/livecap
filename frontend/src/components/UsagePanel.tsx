@@ -3,9 +3,10 @@ import { CalendarDays, LoaderCircle } from 'lucide-react';
 import { authenticatedFetch } from '../services/authService';
 
 interface UsageData {
+  is_admin?: boolean;
   sessions_used: number;
   limits: {
-    max_sessions_per_week: number;
+    max_sessions_per_week: number | null;
     unlimited_session_duration: boolean;
   };
   quota_error: string | null;
@@ -39,7 +40,7 @@ export default function UsagePanel() {
   if (!usage) return null;
 
   const sessionsMax = usage.limits.max_sessions_per_week;
-  const sessionsPercent = Math.min(100, (usage.sessions_used / sessionsMax) * 100);
+  const sessionsPercent = sessionsMax ? Math.min(100, (usage.sessions_used / sessionsMax) * 100) : 0;
 
   return (
     <div className="px-6 py-5 border-t border-[#dce5f2]">
@@ -48,23 +49,27 @@ export default function UsagePanel() {
           <CalendarDays className="h-4 w-4 text-emerald-pro" />
           <span className="text-sm font-bold text-ink">Weekly sessions</span>
         </div>
-        <span className="rounded-full bg-emerald-pro/10 px-2.5 py-1 text-[11px] font-bold text-emerald-pro">5 / week</span>
+        <span className="rounded-full bg-emerald-pro/10 px-2.5 py-1 text-[11px] font-bold text-emerald-pro">
+          {usage.is_admin ? 'Unlimited' : `${sessionsMax} / week`}
+        </span>
       </div>
 
       {/* Usage bars */}
-      <div className="mt-4 space-y-3">
-        <UsageBar label="Sessions this week" used={usage.sessions_used} max={sessionsMax} percent={sessionsPercent} />
-      </div>
+      {!usage.is_admin && sessionsMax !== null && (
+        <div className="mt-4 space-y-3">
+          <UsageBar label="Sessions this week" used={usage.sessions_used} max={sessionsMax} percent={sessionsPercent} />
+        </div>
+      )}
 
       {/* Quota warning */}
-      {usage.quota_error && (
+      {!usage.is_admin && usage.quota_error && (
         <div className="mt-3 rounded-lg bg-red-50 p-2.5 text-xs text-crimson">
           {usage.quota_error}
         </div>
       )}
 
       <p className="mt-3 text-[11px] text-ink-muted">
-        No time limit per recording. Allowance resets every Monday.
+        {usage.is_admin ? 'Admin account — product usage quotas are disabled.' : 'No time limit per recording. Allowance resets every Monday.'}
       </p>
     </div>
   );

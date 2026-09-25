@@ -185,6 +185,16 @@ def _is_admin_group_member(username: str, *, region: str, user_pool_id: str) -> 
     return any(group.get("GroupName") == "admin" for group in response.get("Groups", []))
 
 
+def is_admin_user(user: AuthenticatedUser) -> bool:
+    """Return whether an authenticated user belongs to the Cognito admin group."""
+    settings = get_settings()
+    if not settings.enable_auth or not settings.cognito_user_pool_id:
+        return False
+    return _is_admin_group_member(
+        user.username, region=settings.aws_region, user_pool_id=settings.cognito_user_pool_id
+    )
+
+
 async def require_admin_user(
     authorization: str | None = Header(default=None),
 ) -> AuthenticatedUser:
@@ -196,10 +206,7 @@ async def require_admin_user(
     """
 
     user = await require_authenticated_user(authorization)
-    settings = get_settings()
-    if not _is_admin_group_member(
-        user.username, region=settings.aws_region, user_pool_id=settings.cognito_user_pool_id
-    ):
+    if not is_admin_user(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",

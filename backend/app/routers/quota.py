@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.config import get_settings
-from app.services.auth import AuthenticatedUser, optional_authenticated_user
+from app.services.auth import AuthenticatedUser, is_admin_user, optional_authenticated_user
 from app.services.usage_quota import (
     WEEKLY_SESSION_LIMIT,
     get_user_usage,
@@ -26,6 +26,7 @@ async def get_usage(
     if not settings.enable_auth or not user:
         return {
             "sessions_used": 0,
+            "is_admin": False,
             "limits": {
                 "max_sessions_per_week": WEEKLY_SESSION_LIMIT,
                 "unlimited_session_duration": True,
@@ -33,13 +34,15 @@ async def get_usage(
             "quota_error": None,
         }
 
+    admin = is_admin_user(user)
     usage = get_user_usage(user.user_id)
-    quota_error = check_quota(user.user_id)
+    quota_error = None if admin else check_quota(user.user_id)
 
     return {
         "sessions_used": usage.sessions_used,
+        "is_admin": admin,
         "limits": {
-            "max_sessions_per_week": WEEKLY_SESSION_LIMIT,
+            "max_sessions_per_week": None if admin else WEEKLY_SESSION_LIMIT,
             "unlimited_session_duration": True,
         },
         "quota_error": quota_error,
