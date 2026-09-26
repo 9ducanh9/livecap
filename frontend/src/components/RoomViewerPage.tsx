@@ -143,19 +143,19 @@ function JoinedRoom({ roomCode }: { roomCode: string }) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-8">
+      <main className="mx-auto max-w-5xl px-4 py-3 sm:px-6 sm:py-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-pro">Audience captions</p>
-            <h1 className="mt-2 font-instrument text-3xl font-bold tracking-[-0.04em] sm:text-4xl">Follow every word.</h1>
-            <p className="mt-2 flex items-center gap-2 text-xs text-ink-muted">
+            <p className="hidden text-xs font-bold uppercase tracking-[0.18em] text-emerald-pro sm:block">Audience captions</p>
+            <h1 className="hidden font-instrument text-3xl font-bold tracking-[-0.04em] sm:mt-2 sm:block sm:text-4xl">Follow every word.</h1>
+            <p className="flex items-center gap-2 text-xs text-ink-muted sm:mt-2">
               <Users className="h-3.5 w-3.5" /> {feed.viewerCount} viewer{feed.viewerCount === 1 ? '' : 's'} connected
             </p>
           </div>
           <LanguagePicker value={language} onChange={setLanguage} />
         </div>
 
-        <div className="mt-5 flex justify-end">
+        <div className="mt-3 flex justify-end sm:mt-5">
           <div className="inline-flex rounded-xl border border-[#dce5f2] bg-white p-1">
             {(['overlay', 'below'] as const).map((option) => (
               <button key={option} type="button" onClick={() => setLayout(option)} className={`rounded-lg px-3 py-2 text-xs font-bold ${layout === option ? 'bg-ink text-white' : 'text-ink/55'}`}>
@@ -177,16 +177,17 @@ function JoinedRoom({ roomCode }: { roomCode: string }) {
           </div>
         )}
 
-        <section className="relative mt-4">
-          <RoomScreenViewer roomCode={roomCode} active={feed.mediaStatus === 'live'} />
-          {layout === 'overlay' && latest && (
-            <div className="pointer-events-none absolute inset-x-4 bottom-5 flex justify-center">
-              <div className="max-w-3xl rounded-xl bg-black/80 px-5 py-3 text-center shadow-xl backdrop-blur-sm">
-                {(language === 'vi' || language === 'both') && <p className="text-lg font-semibold leading-snug text-white sm:text-2xl">{latest.textVi}</p>}
-                {(language === 'en' || language === 'both') && <p className="mt-1 text-sm leading-snug text-white/75 sm:text-base">{latest.textEn}</p>}
-              </div>
-            </div>
-          )}
+        <section className="mt-4">
+          <RoomScreenViewer
+            roomCode={roomCode}
+            active={feed.mediaStatus === 'live'}
+            subtitle={layout === 'overlay' && latest ? {
+              id: latest.segmentId,
+              textVi: latest.textVi,
+              textEn: latest.textEn,
+              language,
+            } : undefined}
+          />
         </section>
 
         {layout === 'below' && <section className="mt-5 overflow-hidden rounded-2xl border border-[#dce5f2] bg-white shadow-brutal">
