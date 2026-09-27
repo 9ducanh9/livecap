@@ -18,6 +18,7 @@ import {
 } from '../services/exportService';
 import {
   isWakeBackendConfigured,
+  waitForBackendWakeAfterSignIn,
   wakeBackendIfConfigured,
 } from '../services/wakeService';
 import {
@@ -44,6 +45,16 @@ function configuredMaxSessionSeconds(): number | null {
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return Math.floor(parsed);
+}
+
+async function ensureBackendReadyForWorkspaceAction(): Promise<void> {
+  if (isAuthConfigured()) {
+    await waitForBackendWakeAfterSignIn();
+    return;
+  }
+  // Keep the anonymous/stable MVP behavior intact: without an auth success
+  // event there is no earlier lifecycle point that can trigger scale-from-zero.
+  await wakeBackendIfConfigured();
 }
 
 type AppAction =
@@ -147,9 +158,13 @@ export default function DashboardPage() {
     setSummaryStatus('idle');
     setSummaryError(null);
     setIsStarting(true);
-    setStartStatusLabel(isWakeBackendConfigured() ? 'Starting backend' : 'Linking');
+    setStartStatusLabel(
+      isWakeBackendConfigured()
+        ? (isAuthConfigured() ? 'Waiting for backend' : 'Starting backend')
+        : 'Linking'
+    );
     try {
-      await wakeBackendIfConfigured();
+      await ensureBackendReadyForWorkspaceAction();
       startPhase = 'socket';
       setStartStatusLabel('Connecting');
       await connect();
@@ -192,7 +207,7 @@ export default function DashboardPage() {
     setIsCreatingRoom(true);
     setRoomError(null);
     try {
-      await wakeBackendIfConfigured();
+      await ensureBackendReadyForWorkspaceAction();
       setHostedRoom(await createSharedRoom(title));
     } catch (error) {
       setRoomError(error instanceof Error ? error.message : 'Could not create a caption room.');

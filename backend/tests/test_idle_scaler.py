@@ -115,3 +115,36 @@ def test_new_session_cancels_pending_idle_scale_down() -> None:
         assert fake_client.calls == []
 
     asyncio.run(run())
+
+
+def test_startup_scale_down_waits_for_grace_before_checking_registry() -> None:
+    class DeferredRegistry:
+        def __init__(self) -> None:
+            self.reads = 0
+
+        @property
+        def active_count(self) -> int:
+            self.reads += 1
+            return 0
+
+    async def run() -> None:
+        registry = DeferredRegistry()
+        fake_client = FakeECSScaleClient()
+        scheduler = IdleScaleDownScheduler(registry=registry)  # type: ignore[arg-type]
+
+        scheduled = scheduler.schedule_after_grace(
+            settings=make_settings(),
+            ecs_client=fake_client,
+        )
+
+        assert scheduled is True
+        assert registry.reads == 0
+
+        await wait_for_pending_tasks()
+
+        assert registry.reads == 1
+        assert fake_client.calls == [
+            ("livecap-cluster-dev", "livecap-backend-service-dev")
+        ]
+
+    asyncio.run(run())
