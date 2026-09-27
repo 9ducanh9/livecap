@@ -471,6 +471,7 @@ class _SegmentHandler(TranscriptResultStreamHandler):
                 # Build timing information (only meaningful for final results,
                 # but we extract whatever is available).
                 timestamp_start, timestamp_end = _extract_timestamps(result)
+                confidence = _extract_average_confidence(alternative) if is_final else None
 
                 # Determine which text column receives the spoken text.
                 # Translation happens later (in the WebSocket handler / Translation
@@ -492,6 +493,7 @@ class _SegmentHandler(TranscriptResultStreamHandler):
                             spoken_language=spoken_language,
                             timestamp_start=timestamp_start,
                             timestamp_end=timestamp_end,
+                            confidence=confidence,
                         )
                     )
                 else:
@@ -576,3 +578,28 @@ def _extract_timestamps(result) -> tuple[float, float]:
     start = getattr(result, "start_time", None) or 0.0
     end = getattr(result, "end_time", None) or 0.0
     return float(start), float(end)
+
+
+def _extract_average_confidence(alternative) -> float | None:
+    """Return the mean confidence of pronunciation items in an alternative."""
+    values: list[float] = []
+    for item in getattr(alternative, "items", None) or []:
+        item_type = getattr(item, "item_type", None) or getattr(item, "type", None)
+        if item_type is not None:
+            normalized_type = str(getattr(item_type, "value", item_type)).casefold()
+            if "punctuation" in normalized_type:
+                continue
+
+        raw_confidence = getattr(item, "confidence", None)
+        if not isinstance(raw_confidence, (int, float, str)):
+            continue
+        try:
+            confidence = float(raw_confidence)
+        except (TypeError, ValueError):
+            continue
+        if 0.0 <= confidence <= 1.0:
+            values.append(confidence)
+
+    if not values:
+        return None
+    return sum(values) / len(values)
