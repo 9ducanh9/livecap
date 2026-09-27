@@ -1,15 +1,19 @@
 import type { AudioInputDevice } from '../hooks/useAudioCapture';
-import { Mic, RefreshCcw, Info, AlertTriangle, Square } from 'lucide-react';
+import { Mic, MicOff, RefreshCcw, Info, AlertTriangle, Square } from 'lucide-react';
 
 interface ControlPanelProps {
   isCapturing: boolean;
+  roomStatus?: 'live' | 'ended' | null;
   isConnecting: boolean;
   connectionStatusLabel?: string | null;
   permissionDenied: boolean;
   audioInputDevices: AudioInputDevice[];
   selectedDeviceId: string;
+  microphoneGain?: number;
+  inputLevel?: number;
   canClear: boolean;
   onSelectedDeviceChange: (deviceId: string) => void;
+  onMicrophoneGainChange?: (percent: number) => void;
   onRefreshAudioInputDevices: () => void;
   onStart: () => void;
   onStop: () => void;
@@ -18,28 +22,36 @@ interface ControlPanelProps {
 
 export default function ControlPanel({
   isCapturing,
+  roomStatus = null,
   isConnecting,
   connectionStatusLabel,
   permissionDenied,
   audioInputDevices,
   selectedDeviceId,
+  microphoneGain = 100,
+  inputLevel = 0,
   canClear,
   onSelectedDeviceChange,
+  onMicrophoneGainChange,
   onRefreshAudioInputDevices,
   onStart,
   onStop,
   onClear,
 }: ControlPanelProps) {
-  const deviceControlsDisabled = isCapturing || isConnecting;
+  const deviceControlsDisabled = isCapturing || isConnecting || roomStatus === 'ended';
 
   return (
     <div className="border-b border-[#dce5f2]">
       {/* Engine header */}
       <div className="px-6 pt-6 pb-4 flex items-start justify-between">
         <div>
-          <p className="text-sm font-bold text-ink">Ready to listen</p>
+          <p className="text-sm font-bold text-ink">{roomStatus === 'live' ? 'Room microphone' : roomStatus === 'ended' ? 'Room ended' : 'Ready to listen'}</p>
           <p className="mt-1.5 text-xs leading-relaxed text-ink-muted">
-            Choose an input, then start a live session.
+            {roomStatus === 'live'
+              ? 'Turn on your mic so viewers can hear you and see captions.'
+              : roomStatus === 'ended'
+                ? 'This saved room cannot receive more audio or captions.'
+                : 'Choose an input, then start a live session.'}
           </p>
         </div>
         <div className={`flex items-center gap-1.5 rounded-full text-[10px] font-bold border px-2.5 py-1 ${
@@ -48,12 +60,47 @@ export default function ControlPanel({
             : 'border-ink/20 text-ink/50 bg-ink/3'
         }`}>
           <span className={`w-1.5 h-1.5 rounded-full ${isCapturing ? 'bg-emerald-pro animate-pulse' : 'bg-ink/20'}`} />
-          {isCapturing ? 'LIVE' : 'READY'}
+          {roomStatus === 'ended' ? 'ENDED' : isCapturing ? (roomStatus ? 'MIC ON' : 'LIVE') : roomStatus ? 'MIC OFF' : 'READY'}
         </div>
       </div>
 
       {/* Buttons */}
-      <div className="px-6 pb-6 space-y-3">
+      {roomStatus === 'live' ? (
+        <div className="px-6 pb-6 space-y-4">
+          <button
+            type="button"
+            onClick={isCapturing ? onStop : onStart}
+            disabled={isConnecting}
+            aria-pressed={isCapturing}
+            className={`flex h-12 w-full items-center justify-center gap-2 rounded-xl text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-40 ${isCapturing ? 'bg-crimson hover:bg-crimson/85' : 'bg-emerald-pro hover:bg-[#087b6c]'}`}
+          >
+            {isConnecting ? (connectionStatusLabel ?? 'Connecting microphone...') : isCapturing ? <><MicOff className="h-4 w-4" />Turn microphone off</> : <><Mic className="h-4 w-4" />Turn microphone on</>}
+          </button>
+          <div>
+            <div className="flex items-center justify-between text-xs font-semibold text-ink-muted">
+              <label htmlFor="room-mic-volume">Mic volume</label>
+              <span>{microphoneGain}%</span>
+            </div>
+            <input
+              id="room-mic-volume"
+              type="range"
+              min="0"
+              max="200"
+              step="5"
+              value={microphoneGain}
+              onChange={(event) => onMicrophoneGainChange?.(Number(event.target.value))}
+              className="mt-2 w-full accent-emerald-pro"
+              aria-label="Mic volume"
+            />
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-ink/10" role="meter" aria-label="Mic input level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(inputLevel * 100)}>
+              <div className="h-full rounded-full bg-emerald-pro transition-[width] duration-100" style={{ width: `${Math.min(100, inputLevel * 240)}%` }} />
+            </div>
+            <p className="mt-1.5 text-[11px] text-ink/50">The level bar moves when your mic is receiving sound.</p>
+          </div>
+        </div>
+      ) : roomStatus === 'ended' ? (
+        <p className="px-6 pb-6 text-xs leading-relaxed text-ink-muted">Dismiss this transcript and create a new room to go live again.</p>
+      ) : <div className="px-6 pb-6 space-y-3">
         <button
           onClick={onStart}
           disabled={isCapturing || isConnecting}
@@ -84,7 +131,7 @@ export default function ControlPanel({
         >
           <Square className="h-3.5 w-3.5 fill-current" />Stop session
         </button>
-      </div>
+      </div>}
 
       {/* Audio Source */}
       <div className="px-6 pb-6 border-t border-[#dce5f2] pt-5 space-y-3">

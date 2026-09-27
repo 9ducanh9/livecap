@@ -54,12 +54,17 @@ export interface UseAudioCaptureReturn {
   audioInputDevices: AudioInputDevice[];
   /** Selected microphone deviceId. "default" lets the browser choose. */
   selectedDeviceId: string;
+  /** Input gain used for captions and the room's outgoing microphone audio. */
+  microphoneGain: number;
+  setMicrophoneGain: (percent: number) => void;
+  /** Recent microphone level, 0 to 1, after input gain. */
+  inputLevel: number;
   /** Select the microphone used by the next startCapture call. */
   setSelectedDeviceId: (deviceId: string) => void;
   /** Refresh the browser audio input device list. */
   refreshAudioInputDevices: () => Promise<void>;
   /** Start capturing audio. Resolves once the pipeline is ready (or rejects on error). */
-  startCapture: () => Promise<void>;
+  startCapture: () => Promise<MediaStream>;
   /** Stop capturing audio and release the microphone. */
   stopCapture: () => void;
 }
@@ -80,18 +85,32 @@ export function useAudioCapture(
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [audioInputDevices, setAudioInputDevices] = useState<AudioInputDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceIdState] = useState(DEFAULT_AUDIO_INPUT_ID);
+  const [microphoneGain, setMicrophoneGainState] = useState(100);
+  const [inputLevel, setInputLevel] = useState(0);
 
   // Hold live references so stopCapture() can tear everything down regardless
   // of how many times the component re-renders between start and stop.
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const silentSinkRef = useRef<GainNode | null>(null);
+  const outputStreamRef = useRef<MediaStream | null>(null);
+  const microphoneGainRef = useRef(100);
+  const lastLevelUpdateRef = useRef(0);
   const selectedDeviceIdRef = useRef(DEFAULT_AUDIO_INPUT_ID);
 
   const setSelectedDeviceId = useCallback((deviceId: string) => {
     const nextDeviceId = deviceId || DEFAULT_AUDIO_INPUT_ID;
     selectedDeviceIdRef.current = nextDeviceId;
     setSelectedDeviceIdState(nextDeviceId);
+  }, []);
+
+  const setMicrophoneGain = useCallback((percent: number) => {
+    const next = Math.max(0, Math.min(200, Math.round(percent)));
+    microphoneGainRef.current = next;
+    if (gainNodeRef.current) gainNodeRef.current.gain.value = next / 100;
+    setMicrophoneGainState(next);
   }, []);
 
   const refreshAudioInputDevices = useCallback(async () => {
@@ -146,7 +165,10 @@ export function useAudioCapture(
   // ------------------------------------------------------------------
   const startCapture = useCallback(async () => {
     // Guard against a double-start.
-    if (mediaStreamRef.current !== null) return;
+    if (mediaStreamRef.current !== null) {
+      if (outputStreamRef.current) return outputStreamRef.current;
+      throw new Error('Microphone capture is still starting.');
+    }
 
     // Reset any previous permission-denied state so the user can retry.
     setPermissionDenied(false);
@@ -230,35 +252,53 @@ export function useAudioCapture(
       throw err;
     }
 
-    // 4. Wire up: MediaStreamSource → AudioWorkletNode('pcm-processor').
-    const source = audioCtx.createMediaStreamSource(stream);
-    const workletNode = new AudioWorkletNode(audioCtx, 'pcm-processor');
-    workletNodeRef.current = workletNode;
+    // 4. Apply the same gain to ASR and the room's outgoing microphone track.
+    try {
+      const source = audioCtx.createMediaStreamSource(stream);
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = microphoneGainRef.current / 100;
+      gainNodeRef.current = gainNode;
+      const output = audioCtx.createMediaStreamDestination();
+      outputStreamRef.current = output.stream;
+      const workletNode = new AudioWorkletNode(audioCtx, 'pcm-processor');
+      workletNodeRef.current = workletNode;
+      const silentSink = audioCtx.createGain();
+      silentSink.gain.value = 0;
+      silentSinkRef.current = silentSink;
 
-    // 5. Receive PCM chunks from the worklet and forward them to the caller
-    //    (Requirement 2.3).
-    workletNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
-      if (event.data instanceof ArrayBuffer) {
-        debugLog('audio-chunk-produced', {
-          frontendSampleRate: audioCtx.sampleRate,
-          resampledChunkLength: event.data.byteLength / 2,
-          pcmByteLength: event.data.byteLength,
-          rms: computePcm16Rms(event.data),
-        });
-        onChunkRef.current(event.data);
-      }
-    };
+      // 5. Receive PCM chunks from the worklet and forward them to the caller.
+      workletNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+        if (event.data instanceof ArrayBuffer) {
+          const rms = computePcm16Rms(event.data);
+          debugLog('audio-chunk-produced', {
+            frontendSampleRate: audioCtx.sampleRate,
+            resampledChunkLength: event.data.byteLength / 2,
+            pcmByteLength: event.data.byteLength,
+            rms,
+          });
+          const now = performance.now();
+          if (now - lastLevelUpdateRef.current >= 100) {
+            lastLevelUpdateRef.current = now;
+            setInputLevel(rms);
+          }
+          onChunkRef.current(event.data);
+        }
+      };
 
-    // Connect the graph — do NOT connect to destination (no audio playback).
-    source.connect(workletNode);
+      // Keep the worklet in the rendering graph without audible local playback.
+      source.connect(gainNode);
+      gainNode.connect(workletNode);
+      gainNode.connect(output);
+      workletNode.connect(silentSink);
+      silentSink.connect(audioCtx.destination);
 
-    // If the AudioContext was created in a suspended state (autoplay policy),
-    // resume it so audio flows.
-    if (audioCtx.state === 'suspended') {
-      await audioCtx.resume();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      setIsCapturing(true);
+      return output.stream;
+    } catch (err) {
+      stopCapture();
+      throw err;
     }
-
-    setIsCapturing(true);
   }, [refreshAudioInputDevices]);
 
   // ------------------------------------------------------------------
@@ -271,6 +311,12 @@ export function useAudioCapture(
       workletNodeRef.current.disconnect();
       workletNodeRef.current = null;
     }
+    gainNodeRef.current?.disconnect();
+    gainNodeRef.current = null;
+    silentSinkRef.current?.disconnect();
+    silentSinkRef.current = null;
+    outputStreamRef.current?.getTracks().forEach((track) => track.stop());
+    outputStreamRef.current = null;
 
     // Close the AudioContext (releases all associated resources).
     if (audioContextRef.current !== null) {
@@ -287,6 +333,8 @@ export function useAudioCapture(
     }
 
     setIsCapturing(false);
+    setInputLevel(0);
+    lastLevelUpdateRef.current = 0;
   }, []);
 
   return {
@@ -294,6 +342,9 @@ export function useAudioCapture(
     permissionDenied,
     audioInputDevices,
     selectedDeviceId,
+    microphoneGain,
+    setMicrophoneGain,
+    inputLevel,
     setSelectedDeviceId,
     refreshAudioInputDevices,
     startCapture,

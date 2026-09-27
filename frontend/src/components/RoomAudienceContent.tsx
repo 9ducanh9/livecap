@@ -18,9 +18,10 @@ export default function RoomAudienceContent({
 }) {
   const [language, setLanguage] = useState<CaptionLanguage>('vi');
   const [layout, setLayout] = useState<CaptionLayout>('overlay');
+  const [hasVideo, setHasVideo] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const latest = feed.segments[feed.segments.length - 1];
-  const showTranscript = layout === 'below' || feed.mediaStatus !== 'live';
+  const showTranscript = layout === 'below' || feed.mediaStatus !== 'live' || !hasVideo;
 
   useEffect(() => {
     const element = scrollRef.current;
@@ -67,7 +68,8 @@ export default function RoomAudienceContent({
           roomCode={roomCode}
           active={feed.mediaStatus === 'live'}
           muted={muted}
-          subtitle={feed.mediaStatus === 'live' && layout === 'overlay' && latest ? {
+          onVideoStateChange={setHasVideo}
+          subtitle={feed.mediaStatus === 'live' && hasVideo && layout === 'overlay' && latest ? {
             id: latest.segmentId,
             textVi: latest.textVi,
             textEn: latest.textEn,

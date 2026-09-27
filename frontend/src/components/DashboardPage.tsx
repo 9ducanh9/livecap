@@ -121,6 +121,7 @@ export default function DashboardPage() {
   const [isClosingRoom, setIsClosingRoom] = useState(false);
   const [roomError, setRoomError] = useState<string | null>(null);
   const stopCaptureRef = useRef<(() => void) | null>(null);
+  const stopRoomMicrophoneRef = useRef<(() => Promise<void>) | null>(null);
   const maxSessionSeconds = configuredMaxSessionSeconds();
 
   const { isConnectionLost, connectionStatus, connect, disconnect, disconnectAndWait, sendAudioChunk } = useWebSocket({
@@ -136,16 +137,18 @@ export default function DashboardPage() {
     onSessionEnd() { dispatch({ type: 'SESSION_END' }); },
     onReconnectFailed() {
       stopCaptureRef.current?.();
+      void stopRoomMicrophoneRef.current?.().catch(() => undefined);
       setRecordingStartedAt(null);
       dispatch({ type: 'SET_CAPTURING', value: false });
       dispatch({ type: 'SET_ERROR', error: 'Connection lost. Please restart the session.' });
     },
   });
 
-  const { isCapturing, permissionDenied, audioInputDevices, selectedDeviceId, setSelectedDeviceId, refreshAudioInputDevices, startCapture, stopCapture } = useAudioCapture({ onChunk: sendAudioChunk });
+  const { isCapturing, permissionDenied, audioInputDevices, selectedDeviceId, setSelectedDeviceId, microphoneGain, setMicrophoneGain, inputLevel, refreshAudioInputDevices, startCapture, stopCapture } = useAudioCapture({ onChunk: sendAudioChunk });
   const screenShare = useRoomScreenShare(hostedRoom, isCapturing || isStarting);
 
   useEffect(() => { stopCaptureRef.current = stopCapture; }, [stopCapture]);
+  useEffect(() => { stopRoomMicrophoneRef.current = () => screenShare.setMicrophoneStream(null); }, [screenShare]);
 
   useEffect(() => {
     if (!isCapturing) { setRecordingStartedAt(null); return undefined; }
@@ -155,7 +158,8 @@ export default function DashboardPage() {
   }, [isCapturing]);
 
   const handleStart = useCallback(async () => {
-    let startPhase: 'wake' | 'socket' | 'audio' = 'wake';
+    if (hostedRoom?.status === 'ended') return;
+    let startPhase: 'wake' | 'socket' | 'audio' | 'media' = 'wake';
     dispatch({ type: 'CLEAR_ERROR' });
     setSummary(null);
     setSummaryStatus('idle');
@@ -173,7 +177,11 @@ export default function DashboardPage() {
       await screenShare.pauseSharedAudioCaptions();
       await connect();
       startPhase = 'audio';
-      await startCapture();
+      const microphoneStream = await startCapture();
+      if (hostedRoom) {
+        startPhase = 'media';
+        await screenShare.setMicrophoneStream(microphoneStream);
+      }
       setRecordingStartedAt(Date.now());
       dispatch({ type: 'SET_CAPTURING', value: true });
     } catch (err) {
@@ -184,10 +192,16 @@ export default function DashboardPage() {
             ? 'Backend did not become ready within 120 seconds. Please wait a moment and try again.'
             : startPhase === 'socket'
               ? 'Unable to connect to the backend stream. Please try again.'
+              : startPhase === 'media'
+                ? 'Microphone captions connected, but live voice could not start. Please try again.'
               : 'Failed to start audio capture. Please check your microphone.',
         });
       }
       setRecordingStartedAt(null);
+      stopCapture();
+      if (hostedRoom) {
+        try { await screenShare.setMicrophoneStream(null); } catch { /* Keep the startup error. */ }
+      }
       try { await disconnectAndWait(); } catch { disconnect(); }
       if (hostedRoom && screenShare.status === 'live') {
         void screenShare.resumeSharedAudioCaptions().catch(() => undefined);
@@ -196,13 +210,16 @@ export default function DashboardPage() {
       setIsStarting(false);
       setStartStatusLabel(null);
     }
-  }, [connect, disconnect, disconnectAndWait, hostedRoom, permissionDenied, screenShare, startCapture]);
+  }, [connect, disconnect, disconnectAndWait, hostedRoom, permissionDenied, screenShare, startCapture, stopCapture]);
 
   const handleStop = useCallback(async () => {
     stopCapture(); setRecordingStartedAt(null);
     dispatch({ type: 'SET_CAPTURING', value: false });
     try {
-      await disconnectAndWait();
+      await Promise.all([
+        disconnectAndWait(),
+        hostedRoom ? screenShare.setMicrophoneStream(null) : Promise.resolve(),
+      ]);
       if (hostedRoom?.status === 'live' && screenShare.status === 'live') {
         await screenShare.resumeSharedAudioCaptions();
       }
@@ -245,7 +262,7 @@ export default function DashboardPage() {
       setRecordingStartedAt(null);
       dispatch({ type: 'SET_CAPTURING', value: false });
       try { await disconnectAndWait(); } catch { disconnect(); }
-      try { await screenShare.stop(); } catch { /* Room close retries media cleanup. */ }
+      try { await screenShare.stopAll(); } catch { /* Room close retries media cleanup. */ }
       await closeSharedRoom(room);
       setHostedRoom((current) => current?.roomCode === room.roomCode
         ? { ...current, status: 'ended', mediaStatus: 'idle' }
@@ -351,13 +368,17 @@ export default function DashboardPage() {
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             <ControlPanel
               isCapturing={isCapturing}
+              roomStatus={hostedRoom?.status ?? null}
               isConnecting={wsIsConnecting || screenShare.status === 'starting'}
               connectionStatusLabel={startStatusLabel}
               permissionDenied={permissionDenied}
               audioInputDevices={audioInputDevices}
               selectedDeviceId={selectedDeviceId}
+              microphoneGain={microphoneGain}
+              inputLevel={inputLevel}
               canClear={state.segments.length > 0 || state.currentPartial !== null}
               onSelectedDeviceChange={setSelectedDeviceId}
+              onMicrophoneGainChange={setMicrophoneGain}
               onRefreshAudioInputDevices={refreshAudioInputDevices}
               onStart={handleStart}
               onStop={handleStop}
@@ -440,6 +461,7 @@ export default function DashboardPage() {
               room={hostedRoom}
               screenShare={screenShare}
               isCapturing={isCapturing}
+              isMicStarting={isStarting}
               isClosing={isClosingRoom}
               onStopLive={() => void handleCloseRoom()}
             />

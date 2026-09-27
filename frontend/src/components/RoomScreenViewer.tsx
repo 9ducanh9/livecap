@@ -6,10 +6,12 @@ import { captionChunks } from './captionChunks';
 type Subtitle = { id: string; textVi: string; textEn: string; language: 'vi' | 'en' | 'both' };
 type VideoRect = { left: number; top: number; width: number; height: number };
 
-export default function RoomScreenViewer({ roomCode, active, subtitle, muted = false }: { roomCode: string; active: boolean; subtitle?: Subtitle; muted?: boolean }) {
+export default function RoomScreenViewer({ roomCode, active, subtitle, muted = false, onVideoStateChange }: { roomCode: string; active: boolean; subtitle?: Subtitle; muted?: boolean; onVideoStateChange?: (hasVideo: boolean) => void }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [needsGesture, setNeedsGesture] = useState(false);
+  const [mediaKind, setMediaKind] = useState<'none' | 'audio' | 'video'>('none');
   const [videoRect, setVideoRect] = useState<VideoRect>({ left: 0, top: 0, width: 320, height: 180 });
 
   useEffect(() => {
@@ -46,11 +48,33 @@ export default function RoomScreenViewer({ roomCode, active, subtitle, muted = f
     if (!active) {
       if (videoRef.current) videoRef.current.srcObject = null;
       setError(null);
+      setNeedsGesture(false);
+      setMediaKind('none');
+      onVideoStateChange?.(false);
       return undefined;
     }
     setError(null);
+    setNeedsGesture(false);
     let disposed = false;
     let stage: IvsStage | null = null;
+    const tracks = new Map<string, MediaStreamTrack>();
+    const updateMedia = () => {
+      const video = videoRef.current;
+      if (!video || disposed) return;
+      const currentTracks = [...tracks.values()];
+      video.srcObject = currentTracks.length ? new MediaStream(currentTracks) : null;
+      const hasVideo = currentTracks.some((track) => track.kind === 'video');
+      setMediaKind(hasVideo ? 'video' : currentTracks.length ? 'audio' : 'none');
+      onVideoStateChange?.(hasVideo);
+      if (currentTracks.length) {
+        void video.play().catch(() => {
+          if (!muted) {
+            setNeedsGesture(true);
+            setError('Your browser paused live audio. Tap Enable sound.');
+          }
+        });
+      }
+    };
     void (async () => {
       try {
         const { Stage, StageEvents, SubscribeType } = await import('amazon-ivs-web-broadcast');
@@ -63,11 +87,12 @@ export default function RoomScreenViewer({ roomCode, active, subtitle, muted = f
         };
         stage = new Stage(token, strategy);
         stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (_participant, streams: StageStream[]) => {
-          if (!videoRef.current) return;
-          videoRef.current.srcObject = new MediaStream(streams.map((stream) => stream.mediaStreamTrack));
-          void videoRef.current.play().catch(() => {
-            if (!muted) setError('Tap the video to enable playback audio.');
-          });
+          streams.forEach((stream) => tracks.set(stream.mediaStreamTrack.id, stream.mediaStreamTrack));
+          updateMedia();
+        });
+        stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, (_participant, streams: StageStream[]) => {
+          streams.forEach((stream) => tracks.delete(stream.mediaStreamTrack.id));
+          updateMedia();
         });
         await stage.join();
       } catch (caught) {
@@ -77,8 +102,9 @@ export default function RoomScreenViewer({ roomCode, active, subtitle, muted = f
     return () => {
       disposed = true;
       stage?.leave();
+      tracks.clear();
     };
-  }, [active, muted, roomCode]);
+  }, [active, muted, onVideoStateChange, roomCode]);
 
   return (
     <div ref={frameRef} className="relative aspect-video overflow-hidden rounded-2xl bg-[#071225] shadow-brutal">
@@ -89,6 +115,15 @@ export default function RoomScreenViewer({ roomCode, active, subtitle, muted = f
         </div>
       )}
       {!active && <div className="absolute inset-0 grid place-items-center text-sm font-semibold text-white/60">Waiting for the host to share a screen</div>}
+      {active && mediaKind === 'none' && <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-semibold text-white/60">Connecting live media...</div>}
+      {active && mediaKind === 'audio' && <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-semibold text-white/60">Host microphone is live · screen not shared</div>}
+      {needsGesture && !muted && (
+        <button
+          type="button"
+          onClick={() => void videoRef.current?.play().then(() => { setNeedsGesture(false); setError(null); }).catch(() => setError('Could not start audio. Check this tab’s sound permissions.'))}
+          className="absolute bottom-12 left-1/2 z-10 -translate-x-1/2 rounded-lg bg-white px-4 py-2 text-xs font-bold text-ink shadow-lg"
+        >Enable sound</button>
+      )}
       {error && <div className="absolute bottom-3 left-3 right-3 rounded-lg bg-black/75 px-3 py-2 text-xs text-white">{error}</div>}
     </div>
   );

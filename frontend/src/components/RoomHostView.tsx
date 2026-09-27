@@ -8,18 +8,19 @@ import RoomAudienceContent from './RoomAudienceContent';
 type ScreenShare = ReturnType<typeof useRoomScreenShare>;
 
 export default function RoomHostView({
-  room, screenShare, isCapturing, isClosing, onStopLive,
+  room, screenShare, isCapturing, isMicStarting, isClosing, onStopLive,
 }: {
   room: HostedRoom;
   screenShare: ScreenShare;
   isCapturing: boolean;
+  isMicStarting: boolean;
   isClosing: boolean;
   onStopLive: () => void;
 }) {
   const feed = useRoomFeed(room.roomCode, room.hostToken);
   const ended = room.status === 'ended' || feed.status === 'ended';
   const audioSource = isCapturing
-    ? 'Audio Source selected on the left'
+    ? screenShare.microphonePublished ? 'Microphone — viewers can hear you' : 'Microphone connecting'
     : screenShare.audioCaptionsActive
       ? 'Shared screen audio'
       : 'No audio captions active';
@@ -50,7 +51,7 @@ export default function RoomHostView({
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              disabled={screenShare.status === 'starting' || isClosing}
+              disabled={screenShare.status === 'starting' || isMicStarting || isClosing}
               onClick={() => void (screenShare.status === 'live' ? screenShare.stop() : screenShare.start())}
               className={`inline-flex h-11 items-center gap-2 rounded-xl px-5 text-sm font-bold text-white transition disabled:opacity-50 ${screenShare.status === 'live' ? 'bg-crimson hover:bg-crimson/85' : 'bg-ink hover:bg-emerald-pro'}`}
             >
@@ -59,7 +60,7 @@ export default function RoomHostView({
             </button>
             <span className="inline-flex items-center gap-2 text-xs text-ink-muted"><Radio className="h-3.5 w-3.5 text-emerald-pro" />Captions: {audioSource}</span>
           </div>
-          <p className="mt-3 text-xs leading-5 text-ink-muted">Your preview is muted to prevent echo. Screen sharing works without shared audio; choose an Audio Source on the left and start a session when needed.</p>
+          <p className="mt-3 text-xs leading-5 text-ink-muted">Your preview is muted to prevent echo. Turn on the mic on the left for live voice and captions. Screen sharing still works without audio.</p>
           {screenShare.error && <p role="alert" className="mt-2 text-xs text-crimson">{screenShare.error}</p>}
         </div>
       )}
