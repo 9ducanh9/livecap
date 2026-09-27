@@ -88,6 +88,44 @@ def test_room_service_notifies_viewers_when_host_closes_room() -> None:
     asyncio.run(scenario())
 
 
+def test_host_preview_receives_room_feed_without_counting_as_viewer() -> None:
+    async def scenario() -> None:
+        service = RoomService()
+        room, token = await service.create_room(
+            title="Host preview", ttl_seconds=600, max_segments=20
+        )
+        host = _FakeWebSocket()
+        viewer = _FakeWebSocket()
+        assert await service.subscribe(
+            room["room_code"], host, host_token="wrong-token"  # type: ignore[arg-type]
+        ) is None
+        host_snapshot = await service.subscribe(
+            room["room_code"], host, host_token=token  # type: ignore[arg-type]
+        )
+        assert host_snapshot is not None
+        assert host_snapshot["viewer_count"] == 0
+        viewer_snapshot = await service.subscribe(
+            room["room_code"], viewer  # type: ignore[arg-type]
+        )
+        assert viewer_snapshot is not None
+        assert viewer_snapshot["viewer_count"] == 1
+
+        message = FinalizedSegmentMessage(
+            segment_id="host-preview-segment",
+            speaker_label="Speaker 1",
+            text_vi="Xin chao",
+            text_en="Hello",
+            spoken_language="en",
+            timestamp_start=0,
+            timestamp_end=1,
+        )
+        assert await service.publish_finalized_segment(room["room_code"], token, message)
+        assert host.messages[0]["type"] == "room_segment"
+        assert viewer.messages[0]["type"] == "room_segment"
+
+    asyncio.run(scenario())
+
+
 def test_room_media_is_owner_only_and_notifies_viewers() -> None:
     async def scenario() -> None:
         service = RoomService()

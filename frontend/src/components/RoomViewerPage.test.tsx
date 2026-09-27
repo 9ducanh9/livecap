@@ -36,10 +36,12 @@ vi.mock('../services/roomService', async (importOriginal) => ({
 afterEach(() => {
   cleanup();
   roomFeed.value.status = 'live';
+  roomFeed.value.mediaStatus = 'idle';
 });
 
 describe('RoomViewerPage', () => {
   it('shows a late-join snapshot and lets viewers choose one language', async () => {
+    roomFeed.value.mediaStatus = 'live';
     render(
       <MemoryRouter initialEntries={['/rooms/ABC234']}>
         <Routes>
@@ -59,6 +61,17 @@ describe('RoomViewerPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tiếng Việt' }));
     expect(screen.getByText('Chúng ta bắt đầu nhé.')).toBeTruthy();
     expect(screen.queryByText('Let us begin.')).toBeNull();
+  });
+
+  it('shows finalized captions below when the host has not shared video', async () => {
+    render(
+      <MemoryRouter initialEntries={['/rooms/ABC234']}>
+        <Routes><Route path="/rooms/:roomCode" element={<RoomViewerPage />} /></Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('Architecture review')).toBeTruthy();
+    expect(screen.getByText('Chúng ta bắt đầu nhé.')).toBeTruthy();
+    expect(screen.getByText('Finalized captions only')).toBeTruthy();
   });
 
   it('labels an ended room as a saved finalized transcript', async () => {

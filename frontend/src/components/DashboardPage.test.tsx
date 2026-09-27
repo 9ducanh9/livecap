@@ -6,6 +6,10 @@ import DashboardPage from './DashboardPage';
 const mocks = vi.hoisted(() => ({
   connect: vi.fn<() => Promise<void>>(),
   disconnect: vi.fn(),
+  disconnectAndWait: vi.fn<() => Promise<void>>(),
+  pauseSharedAudioCaptions: vi.fn<() => Promise<void>>(),
+  resumeSharedAudioCaptions: vi.fn<() => Promise<void>>(),
+  stopScreenShare: vi.fn<() => Promise<void>>(),
   sendAudioChunk: vi.fn(),
   startCapture: vi.fn<() => Promise<void>>(),
   stopCapture: vi.fn(),
@@ -15,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   authConfigured: false,
   capturing: false,
   roomsEnabled: false,
+  screenStatus: 'idle' as 'idle' | 'live',
   createRoom: vi.fn(),
   closeRoom: vi.fn(),
   webSocketOptions: undefined as unknown as {
@@ -32,6 +37,7 @@ vi.mock('../hooks/useWebSocket', () => ({
       connectionStatus: 'idle',
       connect: mocks.connect,
       disconnect: mocks.disconnect,
+      disconnectAndWait: mocks.disconnectAndWait,
       sendAudioChunk: mocks.sendAudioChunk,
     };
   },
@@ -52,13 +58,20 @@ vi.mock('../hooks/useAudioCapture', () => ({
 
 vi.mock('../hooks/useRoomScreenShare', () => ({
   useRoomScreenShare: () => ({
-    isEnabled: false,
-    isSharing: false,
-    isConnecting: false,
+    status: mocks.screenStatus,
+    audioCaptionsActive: false,
     error: null,
-    startSharing: vi.fn(),
-    stopSharing: vi.fn(),
-    dispose: vi.fn(),
+    start: vi.fn(),
+    stop: mocks.stopScreenShare,
+    pauseSharedAudioCaptions: mocks.pauseSharedAudioCaptions,
+    resumeSharedAudioCaptions: mocks.resumeSharedAudioCaptions,
+  }),
+}));
+
+vi.mock('../hooks/useRoomFeed', () => ({
+  useRoomFeed: () => ({
+    title: 'LiveCap room', status: 'live', viewerCount: 0,
+    segments: [], error: null, mediaStatus: 'idle',
   }),
 }));
 
@@ -90,10 +103,15 @@ describe('DashboardPage start flow', () => {
     mocks.wakeBackend.mockResolvedValue();
     mocks.waitForSignedInWake.mockResolvedValue();
     mocks.startCapture.mockResolvedValue();
+    mocks.disconnectAndWait.mockResolvedValue();
+    mocks.pauseSharedAudioCaptions.mockResolvedValue();
+    mocks.resumeSharedAudioCaptions.mockResolvedValue();
+    mocks.stopScreenShare.mockResolvedValue();
     mocks.wakeConfigured = false;
     mocks.authConfigured = false;
     mocks.capturing = false;
     mocks.roomsEnabled = false;
+    mocks.screenStatus = 'idle';
   });
 
   afterEach(() => {
@@ -135,7 +153,7 @@ describe('DashboardPage start flow', () => {
       )
     ).toBeTruthy();
     expect(mocks.startCapture).not.toHaveBeenCalled();
-    expect(mocks.disconnect).toHaveBeenCalledOnce();
+    expect(mocks.disconnectAndWait).toHaveBeenCalledOnce();
   });
 
   it('explains the expected cold start while the backend is waking', async () => {
@@ -248,10 +266,35 @@ describe('DashboardPage start flow', () => {
 
     expect(screen.getByText('Room live')).toBeTruthy();
     expect(mocks.closeRoom).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'End room and save transcript' }));
-    expect(mocks.closeRoom).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'Stop live' }));
+    await waitFor(() => expect(mocks.closeRoom).toHaveBeenCalledOnce());
+    expect(mocks.stopScreenShare).toHaveBeenCalledOnce();
     expect(await screen.findByText('Transcript saved')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss saved room' }));
     expect(screen.getByRole('button', { name: 'Create audience room' })).toBeTruthy();
+  });
+
+  it('switches captions from shared audio to the selected input and back', async () => {
+    mocks.screenStatus = 'live';
+    mocks.connect.mockResolvedValue();
+    mocks.roomsEnabled = true;
+    mocks.startCapture.mockImplementation(async () => { mocks.capturing = true; });
+    mocks.stopCapture.mockImplementation(() => { mocks.capturing = false; });
+    mocks.createRoom.mockResolvedValue({
+      roomCode: 'ABC234', hostToken: 'host-token', title: 'LiveCap room',
+      joinUrl: 'https://livecap.logantai.com/rooms/ABC234',
+      status: 'live', mediaStatus: 'idle', expiresAt: '2026-10-11T00:00:00Z',
+    });
+
+    render(<DashboardPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Create audience room' }));
+    await screen.findByText('Host preview');
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
+    await waitFor(() => expect(mocks.startCapture).toHaveBeenCalledOnce());
+    expect(mocks.pauseSharedAudioCaptions).toHaveBeenCalledOnce();
+    expect(mocks.pauseSharedAudioCaptions.mock.invocationCallOrder[0]).toBeLessThan(mocks.connect.mock.invocationCallOrder[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Stop session' }));
+    await waitFor(() => expect(mocks.resumeSharedAudioCaptions).toHaveBeenCalledOnce());
+    expect(mocks.disconnectAndWait.mock.invocationCallOrder[0]).toBeLessThan(mocks.resumeSharedAudioCaptions.mock.invocationCallOrder[0]);
   });
 });

@@ -6,7 +6,7 @@ import { captionChunks } from './captionChunks';
 type Subtitle = { id: string; textVi: string; textEn: string; language: 'vi' | 'en' | 'both' };
 type VideoRect = { left: number; top: number; width: number; height: number };
 
-export default function RoomScreenViewer({ roomCode, active, subtitle }: { roomCode: string; active: boolean; subtitle?: Subtitle }) {
+export default function RoomScreenViewer({ roomCode, active, subtitle, muted = false }: { roomCode: string; active: boolean; subtitle?: Subtitle; muted?: boolean }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,8 +45,10 @@ export default function RoomScreenViewer({ roomCode, active, subtitle }: { roomC
   useEffect(() => {
     if (!active) {
       if (videoRef.current) videoRef.current.srcObject = null;
+      setError(null);
       return undefined;
     }
+    setError(null);
     let disposed = false;
     let stage: IvsStage | null = null;
     void (async () => {
@@ -63,7 +65,9 @@ export default function RoomScreenViewer({ roomCode, active, subtitle }: { roomC
         stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (_participant, streams: StageStream[]) => {
           if (!videoRef.current) return;
           videoRef.current.srcObject = new MediaStream(streams.map((stream) => stream.mediaStreamTrack));
-          void videoRef.current.play().catch(() => setError('Tap the video to enable playback audio.'));
+          void videoRef.current.play().catch(() => {
+            if (!muted) setError('Tap the video to enable playback audio.');
+          });
         });
         await stage.join();
       } catch (caught) {
@@ -74,11 +78,11 @@ export default function RoomScreenViewer({ roomCode, active, subtitle }: { roomC
       disposed = true;
       stage?.leave();
     };
-  }, [active, roomCode]);
+  }, [active, muted, roomCode]);
 
   return (
     <div ref={frameRef} className="relative aspect-video overflow-hidden rounded-2xl bg-[#071225] shadow-brutal">
-      <video ref={videoRef} autoPlay playsInline controls className="h-full w-full object-contain" />
+      <video ref={videoRef} autoPlay playsInline controls={!muted} muted={muted} className="h-full w-full object-contain" />
       {subtitle && (
         <div className="pointer-events-none absolute" style={videoRect}>
           <VideoSubtitle key={`${subtitle.id}:${subtitle.language}`} subtitle={subtitle} videoWidth={videoRect.width} />

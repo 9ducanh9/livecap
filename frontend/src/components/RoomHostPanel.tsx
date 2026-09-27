@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { Check, Copy, Link2, LoaderCircle, MonitorUp, QrCode, Radio, Square, Users, X } from 'lucide-react';
+import { Check, Copy, Link2, LoaderCircle, QrCode, Radio, Users, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { HostedRoom } from '../services/roomService';
-import { isRoomScreenShareEnabled } from '../services/roomService';
-import { useRoomScreenShare } from '../hooks/useRoomScreenShare';
 
 interface RoomHostPanelProps {
   room: HostedRoom | null;
@@ -28,7 +26,6 @@ export default function RoomHostPanel({
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
   const [showQr, setShowQr] = useState(true);
   const isArchived = room?.status === 'ended';
-  const screenShare = useRoomScreenShare(room);
 
   const copy = async (value: string, kind: 'code' | 'link') => {
     await navigator.clipboard.writeText(value);
@@ -146,23 +143,7 @@ export default function RoomHostPanel({
               {copied === 'link' ? <Check className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
               {copied === 'link' ? 'Link copied' : 'Copy viewer link'}
             </button>
-            {isRoomScreenShareEnabled() && !isArchived && (
-              <div className="mt-3 border-t border-emerald-pro/15 pt-3">
-                <button
-                  type="button"
-                  disabled={screenShare.status === 'starting'}
-                  onClick={() => void (screenShare.status === 'live' ? screenShare.stop() : screenShare.start())}
-                  className={`flex h-11 w-full items-center justify-center gap-2 rounded-lg text-xs font-bold text-white transition disabled:opacity-50 ${screenShare.status === 'live' ? 'bg-crimson hover:bg-crimson/85' : 'bg-ink hover:bg-emerald-pro'}`}
-                >
-                  {screenShare.status === 'starting' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : screenShare.status === 'live' ? <Square className="h-3.5 w-3.5" /> : <MonitorUp className="h-4 w-4" />}
-                  {screenShare.status === 'starting' ? 'Starting share...' : screenShare.status === 'live' ? 'Stop screen share' : 'Share screen + audio'}
-                </button>
-                <p className="mt-2 text-[10px] leading-relaxed text-ink/50">
-                  Choose a browser tab and enable tab audio. English audio is captioned and translated to Vietnamese automatically.
-                </p>
-                {screenShare.error && <p className="mt-2 text-[10px] text-crimson">{screenShare.error}</p>}
-              </div>
-            )}
+            {!isArchived && <p className="mt-3 text-[10px] leading-relaxed text-ink/50">Share your screen and preview the audience experience in the panel on the right.</p>}
             {isArchived && (
               <p className="mt-3 text-[10px] leading-relaxed text-ink/55">
                 This room is saved and cannot share a screen again. Dismiss it, then create a new audience room to share.

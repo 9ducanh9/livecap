@@ -16,7 +16,7 @@ export interface RoomFeedState {
 
 const RETRY_DELAYS_MS = [1_000, 2_000, 4_000] as const;
 
-export function useRoomFeed(roomCode: string): RoomFeedState {
+export function useRoomFeed(roomCode: string, hostToken?: string): RoomFeedState {
   const [state, setState] = useState<RoomFeedState>({
     title: 'LiveCap room',
     status: 'connecting',
@@ -41,7 +41,7 @@ export function useRoomFeed(roomCode: string): RoomFeedState {
         status: retryIndex > 0 ? 'reconnecting' : 'connecting',
         error: null,
       }));
-      const socket = new WebSocket(buildRoomWebSocketUrl(roomCode));
+      const socket = new WebSocket(buildRoomWebSocketUrl(roomCode, hostToken));
       socketRef.current = socket;
 
       socket.onopen = () => {
@@ -131,7 +131,7 @@ export function useRoomFeed(roomCode: string): RoomFeedState {
 
     const start = async () => {
       try {
-        await wakeBackendIfConfigured();
+        if (!hostToken) await wakeBackendIfConfigured();
       } catch (error) {
         if (disposed) return;
         terminalError = true;
@@ -155,7 +155,7 @@ export function useRoomFeed(roomCode: string): RoomFeedState {
       socketRef.current?.close(1000, 'viewer left room');
       socketRef.current = null;
     };
-  }, [roomCode]);
+  }, [hostToken, roomCode]);
 
   return state;
 }

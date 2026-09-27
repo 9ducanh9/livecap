@@ -55,6 +55,7 @@ export interface UseWebSocketReturn {
   connectionStatus: WebSocketConnectionStatus;
   connect: () => Promise<void>;
   disconnect: () => void;
+  disconnectAndWait: () => Promise<void>;
   sendAudioChunk: (chunk: ArrayBuffer) => void;
 }
 
@@ -476,6 +477,27 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     }
   }, [clearHeartbeat, clearRetryTimer]);
 
+  const disconnectAndWait = useCallback(async () => {
+    const ws = wsRef.current;
+    if (ws === null || ws.readyState === WebSocket.CLOSED) {
+      disconnect();
+      return;
+    }
+    const closed = new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        ws.removeEventListener('close', onClose);
+        reject(new Error('The previous audio session did not close in time.'));
+      }, 5_000);
+      const onClose = () => {
+        window.clearTimeout(timeout);
+        resolve();
+      };
+      ws.addEventListener('close', onClose, { once: true });
+    });
+    disconnect();
+    await closed;
+  }, [disconnect]);
+
   const sendAudioChunk = useCallback((chunk: ArrayBuffer) => {
     const ws = wsRef.current;
     if (ws === null || ws.readyState !== WebSocket.OPEN) {
@@ -510,6 +532,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     connectionStatus,
     connect,
     disconnect,
+    disconnectAndWait,
     sendAudioChunk,
   };
 }

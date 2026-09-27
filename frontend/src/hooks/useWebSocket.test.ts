@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useWebSocket } from './useWebSocket';
 
-class MockWebSocket {
+class MockWebSocket extends EventTarget {
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
   static readonly CLOSING = 2;
@@ -20,6 +20,7 @@ class MockWebSocket {
   send = vi.fn();
 
   constructor(url: string | URL) {
+    super();
     this.url = String(url);
     MockWebSocket.instances.push(this);
   }
@@ -33,6 +34,7 @@ class MockWebSocket {
     if (this.readyState === MockWebSocket.CLOSED) return;
     this.readyState = MockWebSocket.CLOSED;
     this.onclose?.({ code, reason } as CloseEvent);
+    this.dispatchEvent(new Event('close'));
   }
 
   failBeforeOpen(): void {
@@ -117,6 +119,19 @@ describe('useWebSocket initial connection', () => {
     expect(MockWebSocket.instances[0].send).toHaveBeenCalledOnce();
     expect(MockWebSocket.instances[0].send).toHaveBeenCalledWith(audioChunk);
     unmount();
+  });
+
+  it('waits for the previous socket to close before changing audio sources', async () => {
+    const { result } = renderHook(() => useWebSocket());
+    let connection!: Promise<void>;
+    act(() => { connection = result.current.connect(); });
+    await act(async () => {
+      MockWebSocket.instances[0].open();
+      await connection;
+    });
+    await act(async () => { await result.current.disconnectAndWait(); });
+    expect(MockWebSocket.instances[0].readyState).toBe(MockWebSocket.CLOSED);
+    expect(result.current.connectionStatus).toBe('idle');
   });
 
   it('stops reconnecting after three retry attempts', async () => {
