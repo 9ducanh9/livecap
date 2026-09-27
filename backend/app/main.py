@@ -26,7 +26,9 @@ from app.routers import history as history_router
 from app.routers import rooms as rooms_router
 from app.routers import summary as summary_router
 from app.routers import websocket as websocket_router
+from app.services.idle_scaler import get_idle_scale_down_scheduler
 from app.services.logging_service import get_logger, setup_logging
+from app.services.session_registry import get_session_registry
 from app.tracing import configure_tracing
 
 
@@ -66,6 +68,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "session_timeout": settings.session_timeout,
         },
     )
+
+    # A wake can now happen immediately after sign-in, before any recording
+    # session exists. Start a grace timer so an unused cold-start does not leave
+    # the ECS task running indefinitely. A real WebSocket session cancels it.
+    if settings.enable_idle_scale_down:
+        session_registry = get_session_registry(settings)
+        get_idle_scale_down_scheduler(session_registry).schedule_after_grace(
+            settings=settings
+        )
 
     yield  # --- application is running ---
 

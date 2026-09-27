@@ -114,6 +114,30 @@ class IdleScaleDownScheduler:
         if self._registry.active_count > 0:
             return False
 
+        return self.schedule_after_grace(settings=settings, ecs_client=ecs_client)
+
+    def schedule_after_grace(
+        self,
+        *,
+        settings: Settings,
+        ecs_client: ECSScaleClient | None = None,
+    ) -> bool:
+        """Schedule a delayed idle check without blocking application startup."""
+
+        config = IdleScaleDownConfig.from_settings(settings)
+        if not config.enabled:
+            return False
+        if not config.is_complete:
+            logger.warning(
+                "idle_scale_down_missing_ecs_config",
+                extra={
+                    "event": "idle_scale_down_missing_ecs_config",
+                    "has_cluster": bool(config.cluster_name),
+                    "has_service": bool(config.service_name),
+                },
+            )
+            return False
+
         self.cancel_pending()
         client = ecs_client or self._ecs_client or Boto3ECSScaleClient(
             region_name=settings.aws_region

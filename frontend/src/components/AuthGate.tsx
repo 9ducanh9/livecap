@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type ReactNode, type FormEvent } from 'react';
 import { LoaderCircle, LogIn, UserPlus, Mail, Lock, ArrowLeft, AlertCircle, KeyRound, CheckCircle2 } from 'lucide-react';
 import {
   CognitoUserPool,
@@ -7,6 +7,7 @@ import {
   CognitoUserAttribute,
 } from 'amazon-cognito-identity-js';
 import { beginSignIn, getAuthSession, isAuthConfigured, completeSignInFromRedirect, clearAuthSession, signOut } from '../services/authService';
+import { beginBackendWakeAfterSignIn } from '../services/wakeService';
 
 // --- Cognito direct config ---
 const POOL_ID = String(import.meta.env.VITE_COGNITO_USER_POOL_ID ?? '').trim();
@@ -54,17 +55,25 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     isAuthConfigured() ? 'checking' : 'signed-in'
   );
 
+  const enterSignedInApp = useCallback(() => {
+    // Authentication is the wake trigger. Do not block rendering the workspace
+    // while ECS starts; actions that need the backend can await this same wake.
+    void beginBackendWakeAfterSignIn().catch(() => undefined);
+    setStatus('signed-in');
+  }, []);
+
   useEffect(() => {
     if (!isAuthConfigured()) return;
     void (async () => {
       try {
         await completeSignInFromRedirect();
-        setStatus(getAuthSession() ? 'signed-in' : 'anonymous');
+        if (getAuthSession()) enterSignedInApp();
+        else setStatus('anonymous');
       } catch {
         setStatus('anonymous');
       }
     })();
-  }, []);
+  }, [enterSignedInApp]);
 
   if (status === 'signed-in') return <>{children}</>;
   if (status === 'checking') {
@@ -74,7 +83,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  return <LoginScreen onSuccess={() => setStatus('signed-in')} />;
+  return <LoginScreen onSuccess={enterSignedInApp} />;
 }
 
 function LoginScreen({ onSuccess }: { onSuccess: () => void }) {

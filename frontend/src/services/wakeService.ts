@@ -3,6 +3,20 @@ const DEFAULT_HEALTH_POLL_INTERVAL_MS = 5_000;
 const EMPTY_SHA256 =
   'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 
+let signedInWakePromise: Promise<void> | null = null;
+
+function startCachedSignedInWake(): Promise<void> {
+  if (signedInWakePromise !== null) return signedInWakePromise;
+
+  const attempt = wakeBackendIfConfigured();
+  signedInWakePromise = attempt;
+  const clearAttempt = () => {
+    if (signedInWakePromise === attempt) signedInWakePromise = null;
+  };
+  void attempt.then(clearAttempt, clearAttempt);
+  return attempt;
+}
+
 export interface WakeBackendOptions {
   wakeUrl?: string;
   apiBaseUrl?: string;
@@ -31,6 +45,41 @@ export async function wakeBackendIfConfigured({
   }
 
   await waitForBackendHealth(healthUrl, timeoutMs, pollIntervalMs);
+}
+
+/**
+ * Start the scale-from-zero flow as soon as authentication succeeds.
+ *
+ * The promise is shared while the wake is in flight so concurrent authenticated
+ * entry paths do not POST /api/wake repeatedly.
+ */
+export function beginBackendWakeAfterSignIn(): Promise<void> {
+  if (!isWakeBackendConfigured()) return Promise.resolve();
+  return startCachedSignedInWake();
+}
+
+/**
+ * Await the wake that authentication already started. A normal Start session
+ * reuses the sign-in wake; if the backend has since scaled back to zero (or the
+ * sign-in wake failed), this performs a recovery wake so recording still works.
+ */
+export async function waitForBackendWakeAfterSignIn(): Promise<void> {
+  if (!isWakeBackendConfigured()) return;
+  const healthUrl = configuredHealthUrl(import.meta.env.VITE_API_BASE_URL);
+
+  if (signedInWakePromise !== null) {
+    const existingAttempt = signedInWakePromise;
+    try {
+      await existingAttempt;
+    } catch {
+      // Fall through to the health probe/recovery wake below.
+    }
+    if (await isBackendHealthy(healthUrl)) return;
+    if (signedInWakePromise === existingAttempt) signedInWakePromise = null;
+  }
+
+  if (signedInWakePromise === null && await isBackendHealthy(healthUrl)) return;
+  await startCachedSignedInWake();
 }
 
 export function isWakeBackendConfigured(): boolean {
@@ -109,6 +158,18 @@ async function waitForBackendHealth(
   throw new Error(
     `Backend did not become healthy before timeout: ${formatError(lastError)}`
   );
+}
+
+async function isBackendHealthy(healthUrl: string): Promise<boolean> {
+  try {
+    const response = await fetch(healthUrl, {
+      method: 'GET',
+      cache: 'no-store',
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 function sleep(ms: number): Promise<void> {

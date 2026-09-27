@@ -10,7 +10,9 @@ const mocks = vi.hoisted(() => ({
   startCapture: vi.fn<() => Promise<void>>(),
   stopCapture: vi.fn(),
   wakeBackend: vi.fn<() => Promise<void>>(),
+  waitForSignedInWake: vi.fn<() => Promise<void>>(),
   wakeConfigured: false,
+  authConfigured: false,
   capturing: false,
   roomsEnabled: false,
   createRoom: vi.fn(),
@@ -63,7 +65,14 @@ vi.mock('../hooks/useRoomScreenShare', () => ({
 vi.mock('../services/wakeService', () => ({
   isWakeBackendConfigured: () => mocks.wakeConfigured,
   isBackendWakeError: () => false,
+  waitForBackendWakeAfterSignIn: mocks.waitForSignedInWake,
   wakeBackendIfConfigured: mocks.wakeBackend,
+}));
+
+vi.mock('../services/authService', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../services/authService')>(),
+  isAuthConfigured: () => mocks.authConfigured,
+  isAdminUser: () => false,
 }));
 
 vi.mock('../services/roomService', async (importOriginal) => ({
@@ -79,8 +88,10 @@ describe('DashboardPage start flow', () => {
     vi.clearAllMocks();
     mocks.webSocketOptions = undefined as unknown as typeof mocks.webSocketOptions;
     mocks.wakeBackend.mockResolvedValue();
+    mocks.waitForSignedInWake.mockResolvedValue();
     mocks.startCapture.mockResolvedValue();
     mocks.wakeConfigured = false;
+    mocks.authConfigured = false;
     mocks.capturing = false;
     mocks.roomsEnabled = false;
   });
@@ -145,6 +156,20 @@ describe('DashboardPage start flow', () => {
     ).toBe(true);
     expect(mocks.connect).not.toHaveBeenCalled();
     expect(mocks.startCapture).not.toHaveBeenCalled();
+  });
+
+  it('waits for the sign-in wake instead of posting wake again in authenticated mode', async () => {
+    mocks.authConfigured = true;
+    mocks.wakeConfigured = true;
+    mocks.connect.mockResolvedValue();
+
+    render(<DashboardPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
+
+    await waitFor(() => expect(mocks.waitForSignedInWake).toHaveBeenCalledOnce());
+    expect(mocks.wakeBackend).not.toHaveBeenCalled();
+    await waitFor(() => expect(mocks.connect).toHaveBeenCalledOnce());
+    expect(mocks.startCapture).toHaveBeenCalledOnce();
   });
 
   it('requests AI meeting notes only after the user chooses to create them', async () => {
