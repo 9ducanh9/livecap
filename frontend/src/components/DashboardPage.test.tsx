@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   stopCapture: vi.fn(),
   wakeBackend: vi.fn<() => Promise<void>>(),
   wakeConfigured: false,
+  capturing: false,
+  roomsEnabled: false,
+  createRoom: vi.fn(),
+  closeRoom: vi.fn(),
   webSocketOptions: undefined as unknown as {
     onSessionStart?: (sessionId: string, isReconnect: boolean) => void;
     onFinalizedSegment: (segment: Record<string, unknown>) => void;
@@ -33,7 +37,7 @@ vi.mock('../hooks/useWebSocket', () => ({
 
 vi.mock('../hooks/useAudioCapture', () => ({
   useAudioCapture: () => ({
-    isCapturing: false,
+    isCapturing: mocks.capturing,
     permissionDenied: false,
     audioInputDevices: [],
     selectedDeviceId: '',
@@ -62,6 +66,14 @@ vi.mock('../services/wakeService', () => ({
   wakeBackendIfConfigured: mocks.wakeBackend,
 }));
 
+vi.mock('../services/roomService', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../services/roomService')>(),
+  isSharedRoomsEnabled: () => mocks.roomsEnabled,
+  isRoomScreenShareEnabled: () => false,
+  createSharedRoom: mocks.createRoom,
+  closeSharedRoom: mocks.closeRoom,
+}));
+
 describe('DashboardPage start flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,6 +81,8 @@ describe('DashboardPage start flow', () => {
     mocks.wakeBackend.mockResolvedValue();
     mocks.startCapture.mockResolvedValue();
     mocks.wakeConfigured = false;
+    mocks.capturing = false;
+    mocks.roomsEnabled = false;
   });
 
   afterEach(() => {
@@ -184,5 +198,35 @@ describe('DashboardPage start flow', () => {
       fetchMock.mock.calls.some(([input]) => String(input).includes('/api/sessions/session-1/summary'))
     ).toBe(true));
     expect(screen.getByText('AI meeting summary')).toBeTruthy();
+  });
+
+  it('keeps a room live when microphone capture stops', async () => {
+    mocks.roomsEnabled = true;
+    mocks.connect.mockResolvedValue();
+    mocks.startCapture.mockImplementation(async () => { mocks.capturing = true; });
+    mocks.stopCapture.mockImplementation(() => { mocks.capturing = false; });
+    mocks.createRoom.mockResolvedValue({
+      roomCode: 'ABC234', hostToken: 'host-token',
+      joinUrl: 'https://livecap.logantai.com/rooms/ABC234',
+      title: 'LiveCap room', status: 'live', mediaStatus: 'idle',
+      createdAt: '2026-09-27T00:00:00Z', liveExpiresAt: '2026-09-27T04:00:00Z',
+      expiresAt: '2026-10-11T00:00:00Z',
+    });
+    mocks.closeRoom.mockResolvedValue(undefined);
+
+    render(<DashboardPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Create audience room' }));
+    expect(await screen.findByText('Room live')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop session' }));
+
+    expect(screen.getByText('Room live')).toBeTruthy();
+    expect(mocks.closeRoom).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'End room and save transcript' }));
+    expect(mocks.closeRoom).toHaveBeenCalledOnce();
+    expect(await screen.findByText('Transcript saved')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss saved room' }));
+    expect(screen.getByRole('button', { name: 'Create audience room' })).toBeTruthy();
   });
 });

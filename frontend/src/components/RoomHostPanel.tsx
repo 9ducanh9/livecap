@@ -8,6 +8,7 @@ import { useRoomScreenShare } from '../hooks/useRoomScreenShare';
 interface RoomHostPanelProps {
   room: HostedRoom | null;
   isCreating: boolean;
+  isClosing: boolean;
   isCapturing: boolean;
   error: string | null;
   onCreate: (title: string) => void;
@@ -17,6 +18,7 @@ interface RoomHostPanelProps {
 export default function RoomHostPanel({
   room,
   isCreating,
+  isClosing,
   isCapturing,
   error,
   onCreate,
@@ -85,11 +87,12 @@ export default function RoomHostPanel({
             <button
               type="button"
               onClick={onClose}
+              disabled={isClosing}
               className="rounded-md p-1 text-ink/40 transition hover:bg-white hover:text-crimson"
-              aria-label={isArchived ? 'Dismiss saved room' : 'Close audience room'}
-              title={isArchived ? 'Dismiss' : 'Close room'}
+              aria-label={isArchived ? 'Dismiss saved room' : 'End room and save transcript'}
+              title={isArchived ? 'Dismiss' : 'End room and save transcript'}
             >
-              <X className="h-4 w-4" />
+              {isClosing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
             </button>
           </div>
           <div className="px-4 py-4">
@@ -159,6 +162,11 @@ export default function RoomHostPanel({
                 </p>
                 {screenShare.error && <p className="mt-2 text-[10px] text-crimson">{screenShare.error}</p>}
               </div>
+            )}
+            {isArchived && (
+              <p className="mt-3 text-[10px] leading-relaxed text-ink/55">
+                This room is saved and cannot share a screen again. Dismiss it, then create a new audience room to share.
+              </p>
             )}
             <p className="mt-3 text-[10px] leading-relaxed text-ink/50">
               The QR, viewer link, and room code open the same read-only page. Anyone with one of them can view finalized captions until {formatExpiry(room.expiresAt)}.

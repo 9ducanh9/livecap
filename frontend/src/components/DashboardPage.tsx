@@ -105,6 +105,7 @@ export default function DashboardPage() {
   const [startStatusLabel, setStartStatusLabel] = useState<string | null>(null);
   const [hostedRoom, setHostedRoom] = useState<HostedRoom | null>(null);
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [isClosingRoom, setIsClosingRoom] = useState(false);
   const [roomError, setRoomError] = useState<string | null>(null);
   const stopCaptureRef = useRef<(() => void) | null>(null);
   const maxSessionSeconds = configuredMaxSessionSeconds();
@@ -178,14 +179,7 @@ export default function DashboardPage() {
   const handleStop = useCallback(() => {
     stopCapture(); disconnect(); setRecordingStartedAt(null);
     dispatch({ type: 'SET_CAPTURING', value: false });
-    if (hostedRoom?.status === 'live') {
-      const room = hostedRoom;
-      setHostedRoom({ ...room, status: 'ended' });
-      void closeSharedRoom(room).catch((error: unknown) => {
-        setRoomError(error instanceof Error ? error.message : 'Could not archive the caption room.');
-      });
-    }
-  }, [disconnect, hostedRoom, stopCapture]);
+  }, [disconnect, stopCapture]);
 
   const handleClear = useCallback(() => {
     dispatch({ type: 'CLEAR_TRANSCRIPT' });
@@ -207,16 +201,26 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const handleCloseRoom = useCallback(() => {
-    if (!hostedRoom) return;
+  const handleCloseRoom = useCallback(async () => {
+    if (!hostedRoom || isClosingRoom) return;
     const room = hostedRoom;
-    setHostedRoom(null);
     setRoomError(null);
-    if (room.status === 'ended') return;
-    void closeSharedRoom(room).catch((error: unknown) => {
+    if (room.status === 'ended') {
+      setHostedRoom(null);
+      return;
+    }
+    setIsClosingRoom(true);
+    try {
+      await closeSharedRoom(room);
+      setHostedRoom((current) => current?.roomCode === room.roomCode
+        ? { ...current, status: 'ended', mediaStatus: 'idle' }
+        : current);
+    } catch (error) {
       setRoomError(error instanceof Error ? error.message : 'Could not close the caption room.');
-    });
-  }, [hostedRoom]);
+    } finally {
+      setIsClosingRoom(false);
+    }
+  }, [hostedRoom, isClosingRoom]);
 
   const finalizedSegmentCount = useMemo(
     () => state.segments.filter((segment) => segment.isFinal).length,
@@ -328,6 +332,7 @@ export default function DashboardPage() {
               <RoomHostPanel
                 room={hostedRoom}
                 isCreating={isCreatingRoom}
+                isClosing={isClosingRoom}
                 isCapturing={isCapturing}
                 error={roomError}
                 onCreate={handleCreateRoom}
