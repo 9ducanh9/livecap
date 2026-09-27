@@ -852,10 +852,6 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         await vi_audio_queue.put(None)
         await en_audio_queue.put(None)
 
-    # Flag shared between the frame-reader and the session main loop.
-    # Set to True when a JSON stop signal is received.
-    stop_requested: asyncio.Event = asyncio.Event()
-
     # Flag set when the session should be torn down due to an error.
     error_event: asyncio.Event = asyncio.Event()
     error_details: dict = {}  # mutable container for error info
@@ -864,7 +860,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         """Consume incoming WebSocket frames in a background task.
 
         * Binary frames are validated and pushed to *audio_queue*.
-        * JSON frames with ``{"type": "stop"}`` set *stop_requested*.
+        * JSON frames with ``{"type": "stop"}`` end this session.
         * Malformed audio triggers an error and stops the session.
         """
         try:
@@ -951,7 +947,6 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                             "Stop signal received",
                             extra={"session_id": session_id},
                         )
-                        stop_requested.set()
                         break
                     if isinstance(payload, dict) and payload.get("type") == "ping":
                         await _send(websocket, PongMessage())
@@ -966,7 +961,6 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     reader_task = asyncio.ensure_future(_read_frames())
 
     session_end_sent = False
-    session_timed_out = False
     _session_start_ts = time.monotonic()
 
     async def _teardown(send_session_end: bool = True) -> None:
@@ -1198,7 +1192,6 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
 
     except TimeoutError:
         # Session timeout (Requirement 2.5).
-        session_timed_out = True
         _logger.info(
             "Session timed out",
             extra={
@@ -1242,15 +1235,8 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         try:
             await _teardown(send_session_end=True)
         finally:
-            if (
-                room_code
-                and room_host_token
-                and (stop_requested.is_set() or session_timed_out)
-            ):
-                await get_room_service().close_room(
-                    room_code,
-                    room_host_token,
-                )
+            # A transcription session can end while the room's screen share
+            # continues. Only the explicit room-close endpoint archives it.
             if session_registered:
                 session_registry.unregister(session_id)
                 get_idle_scale_down_scheduler(

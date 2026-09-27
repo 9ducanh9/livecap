@@ -20,6 +20,7 @@ describe('RoomHostPanel', () => {
           mediaStatus: 'idle',
         }}
         isCreating={false}
+        isClosing={false}
         isCapturing={false}
         error={null}
         onCreate={vi.fn()}
@@ -50,6 +51,7 @@ describe('RoomHostPanel', () => {
           mediaStatus: 'idle',
         }}
         isCreating={false}
+        isClosing={false}
         isCapturing={false}
         error={null}
         onCreate={vi.fn()}
@@ -60,5 +62,6 @@ describe('RoomHostPanel', () => {
     expect(screen.getByText('Transcript saved')).toBeTruthy();
     expect(screen.getByText('Scan to view saved captions')).toBeTruthy();
     expect(screen.getByText('TABKNF')).toBeTruthy();
+    expect(screen.getByText(/cannot share a screen again/)).toBeTruthy();
   });
 });

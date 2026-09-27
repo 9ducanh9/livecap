@@ -792,6 +792,37 @@ class TestStopSignalHandling:
         session_end_msgs = [m for m in received_msgs if m["type"] == "session_end"]
         assert len(session_end_msgs) >= 1
 
+    def test_stopping_room_audio_does_not_archive_the_room(self, app, mock_logging):
+        """The host can keep screen sharing after stopping transcription."""
+
+        async def mock_transcribe(audio_queue):
+            while await audio_queue.get() is not None:
+                pass
+            if False:
+                yield
+
+        room_service = MagicMock()
+        room_service.bind_host_session = AsyncMock(return_value=True)
+        room_service.close_room = AsyncMock(return_value=True)
+        with patch(
+            "app.routers.websocket.get_settings",
+            return_value=make_settings(enable_shared_rooms=True),
+        ), patch(
+            "app.routers.websocket.get_room_service",
+            return_value=room_service,
+        ), patch("app.routers.websocket.TranscriptionService") as service_class:
+            service_class.return_value.transcribe = mock_transcribe
+            with TestClient(app) as client:
+                with client.websocket_connect(
+                    "/ws/transcribe?room_code=ABC234&room_token=host-token"
+                ) as websocket:
+                    assert json.loads(websocket.receive_text())["type"] == "session_start"
+                    websocket.send_text(make_stop_message())
+                    collect_until_session_end(websocket)
+
+        room_service.bind_host_session.assert_awaited_once()
+        room_service.close_room.assert_not_awaited()
+
 
 # ---------------------------------------------------------------------------
 # Segment message forwarding (Req 3.2, 3.3)
