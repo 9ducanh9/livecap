@@ -10,8 +10,10 @@ const mocks = vi.hoisted(() => ({
   pauseSharedAudioCaptions: vi.fn<() => Promise<void>>(),
   resumeSharedAudioCaptions: vi.fn<() => Promise<void>>(),
   stopScreenShare: vi.fn<() => Promise<void>>(),
+  setMicrophoneStream: vi.fn<(stream: MediaStream | null) => Promise<void>>(),
+  setMicrophoneGain: vi.fn(),
   sendAudioChunk: vi.fn(),
-  startCapture: vi.fn<() => Promise<void>>(),
+  startCapture: vi.fn<() => Promise<MediaStream>>(),
   stopCapture: vi.fn(),
   wakeBackend: vi.fn<() => Promise<void>>(),
   waitForSignedInWake: vi.fn<() => Promise<void>>(),
@@ -49,6 +51,9 @@ vi.mock('../hooks/useAudioCapture', () => ({
     permissionDenied: false,
     audioInputDevices: [],
     selectedDeviceId: '',
+    microphoneGain: 100,
+    setMicrophoneGain: mocks.setMicrophoneGain,
+    inputLevel: 0,
     setSelectedDeviceId: vi.fn(),
     refreshAudioInputDevices: vi.fn(),
     startCapture: mocks.startCapture,
@@ -60,9 +65,12 @@ vi.mock('../hooks/useRoomScreenShare', () => ({
   useRoomScreenShare: () => ({
     status: mocks.screenStatus,
     audioCaptionsActive: false,
+    microphonePublished: mocks.capturing,
     error: null,
     start: vi.fn(),
     stop: mocks.stopScreenShare,
+    stopAll: mocks.stopScreenShare,
+    setMicrophoneStream: mocks.setMicrophoneStream,
     pauseSharedAudioCaptions: mocks.pauseSharedAudioCaptions,
     resumeSharedAudioCaptions: mocks.resumeSharedAudioCaptions,
   }),
@@ -102,11 +110,12 @@ describe('DashboardPage start flow', () => {
     mocks.webSocketOptions = undefined as unknown as typeof mocks.webSocketOptions;
     mocks.wakeBackend.mockResolvedValue();
     mocks.waitForSignedInWake.mockResolvedValue();
-    mocks.startCapture.mockResolvedValue();
+    mocks.startCapture.mockResolvedValue({} as MediaStream);
     mocks.disconnectAndWait.mockResolvedValue();
     mocks.pauseSharedAudioCaptions.mockResolvedValue();
     mocks.resumeSharedAudioCaptions.mockResolvedValue();
     mocks.stopScreenShare.mockResolvedValue();
+    mocks.setMicrophoneStream.mockResolvedValue();
     mocks.wakeConfigured = false;
     mocks.authConfigured = false;
     mocks.capturing = false;
@@ -246,7 +255,7 @@ describe('DashboardPage start flow', () => {
   it('keeps a room live when microphone capture stops', async () => {
     mocks.roomsEnabled = true;
     mocks.connect.mockResolvedValue();
-    mocks.startCapture.mockImplementation(async () => { mocks.capturing = true; });
+    mocks.startCapture.mockImplementation(async () => { mocks.capturing = true; return {} as MediaStream; });
     mocks.stopCapture.mockImplementation(() => { mocks.capturing = false; });
     mocks.createRoom.mockResolvedValue({
       roomCode: 'ABC234', hostToken: 'host-token',
@@ -261,8 +270,9 @@ describe('DashboardPage start flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create audience room' }));
     expect(await screen.findByText('Room live')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Stop session' }));
+    expect(screen.queryByText('Ready to listen')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Turn microphone on' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn microphone off' }));
 
     expect(screen.getByText('Room live')).toBeTruthy();
     expect(mocks.closeRoom).not.toHaveBeenCalled();
@@ -270,6 +280,8 @@ describe('DashboardPage start flow', () => {
     await waitFor(() => expect(mocks.closeRoom).toHaveBeenCalledOnce());
     expect(mocks.stopScreenShare).toHaveBeenCalledOnce();
     expect(await screen.findByText('Transcript saved')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Turn microphone on' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Start session' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss saved room' }));
     expect(screen.getByRole('button', { name: 'Create audience room' })).toBeTruthy();
   });
@@ -278,7 +290,7 @@ describe('DashboardPage start flow', () => {
     mocks.screenStatus = 'live';
     mocks.connect.mockResolvedValue();
     mocks.roomsEnabled = true;
-    mocks.startCapture.mockImplementation(async () => { mocks.capturing = true; });
+    mocks.startCapture.mockImplementation(async () => { mocks.capturing = true; return {} as MediaStream; });
     mocks.stopCapture.mockImplementation(() => { mocks.capturing = false; });
     mocks.createRoom.mockResolvedValue({
       roomCode: 'ABC234', hostToken: 'host-token', title: 'LiveCap room',
@@ -289,11 +301,12 @@ describe('DashboardPage start flow', () => {
     render(<DashboardPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Create audience room' }));
     await screen.findByText('Host preview');
-    fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Turn microphone on' }));
     await waitFor(() => expect(mocks.startCapture).toHaveBeenCalledOnce());
     expect(mocks.pauseSharedAudioCaptions).toHaveBeenCalledOnce();
     expect(mocks.pauseSharedAudioCaptions.mock.invocationCallOrder[0]).toBeLessThan(mocks.connect.mock.invocationCallOrder[0]);
-    fireEvent.click(screen.getByRole('button', { name: 'Stop session' }));
+    expect(mocks.setMicrophoneStream).toHaveBeenCalledWith(expect.anything());
+    fireEvent.click(screen.getByRole('button', { name: 'Turn microphone off' }));
     await waitFor(() => expect(mocks.resumeSharedAudioCaptions).toHaveBeenCalledOnce());
     expect(mocks.disconnectAndWait.mock.invocationCallOrder[0]).toBeLessThan(mocks.resumeSharedAudioCaptions.mock.invocationCallOrder[0]);
   });

@@ -51,10 +51,8 @@ describe('RoomViewerPage', () => {
     );
 
     expect(await screen.findByText('Architecture review')).toBeTruthy();
-    const subtitle = screen.getByText('Chúng ta bắt đầu nhé.');
-    expect(subtitle.style.fontSize).toBe('11px');
-    expect(subtitle.style.webkitTextStroke).toBe('0.5px rgba(0, 0, 0, 0.95)');
-    expect(subtitle.parentElement?.className).not.toContain('bg-black');
+    expect(screen.getByText('Chúng ta bắt đầu nhé.')).toBeTruthy();
+    expect(screen.getByText('Finalized captions only')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'VI + EN' }));
     expect(screen.getByText('Let us begin.')).toBeTruthy();
 
