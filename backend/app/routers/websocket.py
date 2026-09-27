@@ -107,6 +107,11 @@ _ALLOWED_LANGUAGE_MODES: dict[tuple[str, str], LanguageMode] = {
 _DUAL_STREAM_WINDOW_SECONDS = 1.5
 _DUPLICATE_FINAL_SECONDS = 2.0
 _MIN_FINAL_TEXT_LENGTH = 3
+_SCREEN_SHARE_BUFFER_SECONDS = 2.4
+_SCREEN_SHARE_MAX_WORDS = 14
+_SCREEN_SHARE_MAX_FRAGMENTS = 4
+_SCREEN_SHARE_TERMINAL_MIN_WORDS = 4
+_SCREEN_SHARE_LOW_CONFIDENCE = 0.45
 _VIETNAMESE_CHARS = set(
     "ăâđêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệ"
     "íìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
@@ -202,6 +207,92 @@ class DominantLanguage:
 
     def __init__(self, value: str) -> None:
         self.value = value
+
+
+class _SingleStreamCaptionBuffer:
+    """Coalesce tiny screen-share finals before translation/publication."""
+
+    def __init__(self) -> None:
+        self._messages: list[FinalizedSegmentMessage] = []
+
+    def add(self, message: FinalizedSegmentMessage) -> list[FinalizedSegmentMessage]:
+        text = _source_text(message).strip()
+        if not text or _is_suspicious_micro_fragment(message):
+            return []
+
+        ready: list[FinalizedSegmentMessage] = []
+        if self._messages:
+            first = self._messages[0]
+            if (
+                first.speaker_label != message.speaker_label
+                or first.spoken_language != message.spoken_language
+            ):
+                flushed = self.flush()
+                if flushed is not None:
+                    ready.append(flushed)
+
+        self._messages.append(message)
+        if self._should_flush():
+            flushed = self.flush()
+            if flushed is not None:
+                ready.append(flushed)
+        return ready
+
+    def flush(self) -> FinalizedSegmentMessage | None:
+        if not self._messages:
+            return None
+
+        messages = self._messages
+        self._messages = []
+        first = messages[0]
+        last = messages[-1]
+        merged_text = " ".join(
+            text for message in messages if (text := _source_text(message).strip())
+        )
+        if not merged_text:
+            return None
+
+        confidences = [
+            message.confidence
+            for message in messages
+            if message.confidence is not None
+        ]
+        confidence = sum(confidences) / len(confidences) if confidences else None
+        return FinalizedSegmentMessage(
+            segment_id=first.segment_id,
+            speaker_label=first.speaker_label,
+            text_vi=merged_text if first.spoken_language == "vi" else "",
+            text_en=merged_text if first.spoken_language == "en" else "",
+            spoken_language=first.spoken_language,
+            timestamp_start=first.timestamp_start,
+            timestamp_end=last.timestamp_end,
+            confidence=confidence,
+        )
+
+    def _should_flush(self) -> bool:
+        if not self._messages:
+            return False
+
+        merged_text = " ".join(_source_text(message) for message in self._messages).strip()
+        word_count = len(merged_text.split())
+        if word_count >= _SCREEN_SHARE_MAX_WORDS:
+            return True
+        if len(self._messages) >= _SCREEN_SHARE_MAX_FRAGMENTS and word_count >= 2:
+            return True
+        if (
+            merged_text.endswith((".", "!", "?"))
+            and word_count >= _SCREEN_SHARE_TERMINAL_MIN_WORDS
+        ):
+            return True
+
+        first = self._messages[0]
+        last = self._messages[-1]
+        if last.timestamp_end > first.timestamp_start:
+            return (
+                last.timestamp_end - first.timestamp_start
+                >= _SCREEN_SHARE_BUFFER_SECONDS
+            )
+        return False
 
 
 # Sentinel pushed onto the unified output queue when the finalized-candidate
@@ -347,6 +438,18 @@ def _authenticated_subprotocol(websocket: WebSocket, auth_enabled: bool) -> str 
 def _final_text(message: FinalizedSegmentMessage, source_language: str) -> str:
     """Return the source transcript text from a finalized message."""
     return message.text_vi if source_language == "vi" else message.text_en
+
+
+def _source_text(message: FinalizedSegmentMessage) -> str:
+    return message.text_vi if message.spoken_language == "vi" else message.text_en
+
+
+def _is_suspicious_micro_fragment(message: FinalizedSegmentMessage) -> bool:
+    text = _source_text(message).strip()
+    if not text or message.confidence is None:
+        return False
+    tokens = [token for token in text.split() if token.strip(".,!?;:")]
+    return len(tokens) <= 1 and message.confidence < _SCREEN_SHARE_LOW_CONFIDENCE
 
 
 def _log_candidate_dropped(
@@ -1104,6 +1207,58 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                     settings=settings,
                     language_code=language_mode.source_language_code,
                 )
+                caption_buffer = (
+                    _SingleStreamCaptionBuffer()
+                    if websocket.query_params.get("stream_mode") == "single"
+                    else None
+                )
+
+                async def emit_single_finalized(
+                    finalized_msg: FinalizedSegmentMessage,
+                ) -> None:
+                    from app.models import Segment  # local import to avoid cycles
+
+                    segment = Segment(
+                        segment_id=finalized_msg.segment_id,
+                        speaker_label=finalized_msg.speaker_label,
+                        text_vi=finalized_msg.text_vi,
+                        text_en=finalized_msg.text_en,
+                        spoken_language=finalized_msg.spoken_language,
+                        is_final=True,
+                        timestamp_start=finalized_msg.timestamp_start,
+                        timestamp_end=finalized_msg.timestamp_end,
+                    )
+                    try:
+                        translated = await translate_segment(
+                            segment,
+                            session_id=session_id,
+                            source_language_code=language_mode.source_translate_code,
+                            target_language_code=language_mode.target_language_code,
+                        )
+                        outgoing = FinalizedSegmentMessage(
+                            segment_id=translated.segment_id,
+                            speaker_label=translated.speaker_label,
+                            text_vi=translated.text_vi,
+                            text_en=translated.text_en,
+                            spoken_language=translated.spoken_language,
+                            timestamp_start=translated.timestamp_start,
+                            timestamp_end=translated.timestamp_end,
+                        )
+                    except Exception as exc:
+                        log_integration_error(
+                            session_id=session_id,
+                            service_name="Amazon Translate",
+                            error=exc,
+                        )
+                        outgoing = finalized_msg
+
+                    await _send_caption(
+                        websocket,
+                        outgoing,
+                        room_code=room_code or None,
+                        room_host_token=room_host_token,
+                    )
+
                 async for msg in transcription_service.transcribe(audio_queue):
                     # Check if an audio-format error was flagged by the reader.
                     if error_event.is_set():
@@ -1114,59 +1269,11 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                         await _send(websocket, msg)
 
                     elif isinstance(msg, FinalizedSegmentMessage):
-                        # Translate the finalized segment, then forward (Req 5.2).
-                        # Build a temporary Segment to pass to translate_segment.
-                        from app.models import Segment  # local import to avoid cycles
-
-                        segment = Segment(
-                            segment_id=msg.segment_id,
-                            speaker_label=msg.speaker_label,
-                            text_vi=msg.text_vi,
-                            text_en=msg.text_en,
-                            spoken_language=msg.spoken_language,
-                            is_final=True,
-                            timestamp_start=msg.timestamp_start,
-                            timestamp_end=msg.timestamp_end,
+                        ready_messages = (
+                            caption_buffer.add(msg) if caption_buffer is not None else [msg]
                         )
-
-                        try:
-                            translated = await translate_segment(
-                                segment,
-                                session_id=session_id,
-                                source_language_code=language_mode.source_translate_code,
-                                target_language_code=language_mode.target_language_code,
-                            )
-                            # Rebuild the FinalizedSegmentMessage with translated
-                            # text so both columns are populated.
-                            translated_msg = FinalizedSegmentMessage(
-                                segment_id=translated.segment_id,
-                                speaker_label=translated.speaker_label,
-                                text_vi=translated.text_vi,
-                                text_en=translated.text_en,
-                                spoken_language=translated.spoken_language,
-                                timestamp_start=translated.timestamp_start,
-                                timestamp_end=translated.timestamp_end,
-                            )
-                            await _send_caption(
-                                websocket,
-                                translated_msg,
-                                room_code=room_code or None,
-                                room_host_token=room_host_token,
-                            )
-                        except Exception as exc:
-                            # Translation error: log and forward untranslated
-                            # segment (Requirement 5.3).
-                            log_integration_error(
-                                session_id=session_id,
-                                service_name="Amazon Translate",
-                                error=exc,
-                            )
-                            await _send_caption(
-                                websocket,
-                                msg,
-                                room_code=room_code or None,
-                                room_host_token=room_host_token,
-                            )
+                        for ready_message in ready_messages:
+                            await emit_single_finalized(ready_message)
 
                     elif isinstance(msg, Exception):
                         # Transcription error surfaced as an exception value.
@@ -1181,6 +1288,11 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                             code=ErrorCode.TRANSCRIBE_ERROR,
                         )
                         break
+
+                if caption_buffer is not None:
+                    pending = caption_buffer.flush()
+                    if pending is not None:
+                        await emit_single_finalized(pending)
 
             # If an audio-format error was flagged, surface it now.
             if error_event.is_set():

@@ -829,6 +829,90 @@ class TestStopSignalHandling:
 # ---------------------------------------------------------------------------
 
 
+class TestSingleStreamCaptionBuffer:
+    @staticmethod
+    def _final(
+        text: str,
+        *,
+        segment_id: str,
+        start: float,
+        end: float,
+        confidence: float | None = 0.9,
+        speaker: str = "Speaker 1",
+    ) -> FinalizedSegmentMessage:
+        return FinalizedSegmentMessage(
+            segment_id=segment_id,
+            speaker_label=speaker,
+            text_vi="",
+            text_en=text,
+            spoken_language="en",
+            timestamp_start=start,
+            timestamp_end=end,
+            confidence=confidence,
+        )
+
+    def test_merges_short_finals_until_audio_window(self):
+        buffer = ws_module._SingleStreamCaptionBuffer()
+
+        assert buffer.add(self._final("you", segment_id="s1", start=0.0, end=0.5)) == []
+        assert buffer.add(self._final("God.", segment_id="s2", start=0.5, end=1.2)) == []
+        ready = buffer.add(self._final("my", segment_id="s3", start=1.2, end=2.6))
+
+        assert len(ready) == 1
+        assert ready[0].text_en == "you God. my"
+        assert ready[0].timestamp_start == pytest.approx(0.0)
+        assert ready[0].timestamp_end == pytest.approx(2.6)
+
+    def test_drops_only_low_confidence_one_word_fragment(self):
+        buffer = ws_module._SingleStreamCaptionBuffer()
+
+        assert buffer.add(
+            self._final("B.", segment_id="s1", start=0.0, end=0.2, confidence=0.2)
+        ) == []
+        assert buffer.flush() is None
+
+    def test_high_confidence_short_utterance_survives_end_flush(self):
+        buffer = ws_module._SingleStreamCaptionBuffer()
+
+        assert buffer.add(
+            self._final("Yes.", segment_id="s1", start=0.0, end=0.3, confidence=0.95)
+        ) == []
+        pending = buffer.flush()
+
+        assert pending is not None
+        assert pending.text_en == "Yes."
+
+    def test_complete_sentence_flushes_without_waiting_full_window(self):
+        buffer = ws_module._SingleStreamCaptionBuffer()
+        sentence = "Oh baby, baby, how was I supposed to know?"
+
+        ready = buffer.add(
+            self._final(sentence, segment_id="s1", start=0.0, end=1.1)
+        )
+
+        assert len(ready) == 1
+        assert ready[0].text_en == sentence
+
+    def test_speaker_change_flushes_previous_speaker(self):
+        buffer = ws_module._SingleStreamCaptionBuffer()
+        buffer.add(self._final("hello", segment_id="s1", start=0.0, end=0.4))
+
+        ready = buffer.add(
+            self._final(
+                "world",
+                segment_id="s2",
+                start=0.4,
+                end=0.8,
+                speaker="Speaker 2",
+            )
+        )
+
+        assert len(ready) == 1
+        assert ready[0].speaker_label == "Speaker 1"
+        assert ready[0].text_en == "hello"
+        assert buffer.flush().text_en == "world"
+
+
 class TestSegmentForwarding:
     """Verify that partial and finalized segments are forwarded to the client."""
 
@@ -939,6 +1023,87 @@ class TestSegmentForwarding:
         assert finalized_msgs[0]["segment_id"] == "seg-1"
         assert finalized_msgs[0]["text_vi"] == "Xin chào"
         assert finalized_msgs[0]["text_en"] == "Hello"
+
+    def test_screen_share_single_stream_merges_fragments_before_translation(
+        self, app, mock_settings, mock_logging
+    ):
+        fragments = [
+            FinalizedSegmentMessage(
+                segment_id="seg-1",
+                speaker_label="Speaker 1",
+                text_en="you",
+                spoken_language="en",
+                timestamp_start=0.0,
+                timestamp_end=0.5,
+                confidence=0.9,
+            ),
+            FinalizedSegmentMessage(
+                segment_id="seg-2",
+                speaker_label="Speaker 1",
+                text_en="God.",
+                spoken_language="en",
+                timestamp_start=0.5,
+                timestamp_end=1.2,
+                confidence=0.9,
+            ),
+            FinalizedSegmentMessage(
+                segment_id="seg-3",
+                speaker_label="Speaker 1",
+                text_en="my",
+                spoken_language="en",
+                timestamp_start=1.2,
+                timestamp_end=2.6,
+                confidence=0.9,
+            ),
+        ]
+
+        async def mock_transcribe(audio_queue):
+            _ = await audio_queue.get()
+            for fragment in fragments:
+                yield fragment
+            while True:
+                item = await audio_queue.get()
+                if item is None:
+                    break
+
+        async def translate_merged(segment, session_id="", **kwargs):
+            return Segment(
+                segment_id=segment.segment_id,
+                speaker_label=segment.speaker_label,
+                text_vi="merged translation",
+                text_en=segment.text_en,
+                spoken_language="en",
+                is_final=True,
+                timestamp_start=segment.timestamp_start,
+                timestamp_end=segment.timestamp_end,
+            )
+
+        mock_translate = AsyncMock(side_effect=translate_merged)
+        with patch(
+            "app.routers.websocket.TranscriptionService"
+        ) as MockTranscriptionService, patch(
+            "app.routers.websocket.translate_segment", new=mock_translate
+        ):
+            mock_service_instance = MagicMock()
+            mock_service_instance.transcribe = mock_transcribe
+            MockTranscriptionService.return_value = mock_service_instance
+
+            with TestClient(app) as client:
+                with client.websocket_connect(
+                    "/ws/transcribe?stream_mode=single&source=en-US&target=vi"
+                ) as websocket:
+                    _ = websocket.receive_text()
+                    websocket.send_bytes(make_valid_audio_chunk())
+                    websocket.send_text(make_stop_message())
+                    received_msgs = collect_until_session_end(websocket)
+
+        assert mock_translate.await_count == 1
+        translated_input = mock_translate.await_args.args[0]
+        assert translated_input.text_en == "you God. my"
+        finalized_msgs = [m for m in received_msgs if m["type"] == "finalized_segment"]
+        assert len(finalized_msgs) == 1
+        assert finalized_msgs[0]["text_en"] == "you God. my"
+        assert finalized_msgs[0]["text_vi"] == "merged translation"
 
 
 # ---------------------------------------------------------------------------

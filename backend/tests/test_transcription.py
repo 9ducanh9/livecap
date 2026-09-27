@@ -25,6 +25,7 @@ from app.models import (
 )
 from app.services.transcription import (
     TranscriptionService,
+    _extract_average_confidence,
     _extract_language_code,
     _extract_speaker_label,
     _extract_timestamps,
@@ -205,6 +206,22 @@ class TestExtractTimestamps:
     def test_fallback_when_no_attr(self):
         result = MagicMock(spec=[])
         assert _extract_timestamps(result) == (0.0, 0.0)
+
+
+class TestExtractAverageConfidence:
+    def test_averages_pronunciation_items_and_ignores_punctuation(self):
+        word_a = MagicMock(confidence="0.80", item_type="pronunciation")
+        punctuation = MagicMock(confidence="0.00", item_type="punctuation")
+        word_b = MagicMock(confidence=0.60, item_type="pronunciation")
+        alternative = MagicMock(items=[word_a, punctuation, word_b])
+
+        assert _extract_average_confidence(alternative) == pytest.approx(0.70)
+
+    def test_returns_none_when_confidence_is_unavailable(self):
+        item = MagicMock(spec=["speaker_label"])
+        alternative = MagicMock(items=[item])
+
+        assert _extract_average_confidence(alternative) is None
 
 
 # ---------------------------------------------------------------------------

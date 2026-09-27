@@ -118,6 +118,7 @@ class FinalizedSegmentMessage(BaseModel):
     is_final: Literal[True] = True
     timestamp_start: float = 0.0
     timestamp_end: float = 0.0
+    confidence: float | None = Field(default=None, exclude=True)
 
     @classmethod
     def from_segment(cls, segment: "Segment") -> "FinalizedSegmentMessage":
