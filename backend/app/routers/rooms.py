@@ -245,7 +245,9 @@ async def room_viewer_socket(websocket: WebSocket, room_code: str) -> None:
         return
 
     service = get_room_service()
-    snapshot = await service.subscribe(room_code, websocket)
+    snapshot = await service.subscribe(
+        room_code, websocket, websocket.query_params.get("host_token")
+    )
     if snapshot is None:
         await websocket.send_json(
             {"type": "room_error", "message": "Room was not found or expired"}

@@ -10,6 +10,8 @@ import EnrichmentPanel from './EnrichmentPanel';
 import TranscriptHistoryPanel from './TranscriptHistoryPanel';
 import UsagePanel from './UsagePanel';
 import RoomHostPanel from './RoomHostPanel';
+import RoomHostView from './RoomHostView';
+import { useRoomScreenShare } from '../hooks/useRoomScreenShare';
 import { isAuthConfigured, isAdminUser } from '../services/authService';
 import {
   buildSummaryText,
@@ -121,7 +123,7 @@ export default function DashboardPage() {
   const stopCaptureRef = useRef<(() => void) | null>(null);
   const maxSessionSeconds = configuredMaxSessionSeconds();
 
-  const { isConnectionLost, connectionStatus, connect, disconnect, sendAudioChunk } = useWebSocket({
+  const { isConnectionLost, connectionStatus, connect, disconnect, disconnectAndWait, sendAudioChunk } = useWebSocket({
     reconnectOnUnexpectedClose: state.isCapturing,
     roomCode: hostedRoom?.roomCode,
     roomToken: hostedRoom?.hostToken,
@@ -141,6 +143,7 @@ export default function DashboardPage() {
   });
 
   const { isCapturing, permissionDenied, audioInputDevices, selectedDeviceId, setSelectedDeviceId, refreshAudioInputDevices, startCapture, stopCapture } = useAudioCapture({ onChunk: sendAudioChunk });
+  const screenShare = useRoomScreenShare(hostedRoom, isCapturing || isStarting);
 
   useEffect(() => { stopCaptureRef.current = stopCapture; }, [stopCapture]);
 
@@ -167,6 +170,7 @@ export default function DashboardPage() {
       await ensureBackendReadyForWorkspaceAction();
       startPhase = 'socket';
       setStartStatusLabel('Connecting');
+      await screenShare.pauseSharedAudioCaptions();
       await connect();
       startPhase = 'audio';
       await startCapture();
@@ -184,17 +188,28 @@ export default function DashboardPage() {
         });
       }
       setRecordingStartedAt(null);
-      disconnect();
+      try { await disconnectAndWait(); } catch { disconnect(); }
+      if (hostedRoom && screenShare.status === 'live') {
+        void screenShare.resumeSharedAudioCaptions().catch(() => undefined);
+      }
     } finally {
       setIsStarting(false);
       setStartStatusLabel(null);
     }
-  }, [connect, disconnect, permissionDenied, startCapture]);
+  }, [connect, disconnect, disconnectAndWait, hostedRoom, permissionDenied, screenShare, startCapture]);
 
-  const handleStop = useCallback(() => {
-    stopCapture(); disconnect(); setRecordingStartedAt(null);
+  const handleStop = useCallback(async () => {
+    stopCapture(); setRecordingStartedAt(null);
     dispatch({ type: 'SET_CAPTURING', value: false });
-  }, [disconnect, stopCapture]);
+    try {
+      await disconnectAndWait();
+      if (hostedRoom?.status === 'live' && screenShare.status === 'live') {
+        await screenShare.resumeSharedAudioCaptions();
+      }
+    } catch {
+      dispatch({ type: 'SET_ERROR', error: 'Could not switch captions back to shared screen audio. Stop and restart the screen share.' });
+    }
+  }, [disconnectAndWait, hostedRoom, screenShare, stopCapture]);
 
   const handleClear = useCallback(() => {
     dispatch({ type: 'CLEAR_TRANSCRIPT' });
@@ -226,6 +241,11 @@ export default function DashboardPage() {
     }
     setIsClosingRoom(true);
     try {
+      stopCapture();
+      setRecordingStartedAt(null);
+      dispatch({ type: 'SET_CAPTURING', value: false });
+      try { await disconnectAndWait(); } catch { disconnect(); }
+      try { await screenShare.stop(); } catch { /* Room close retries media cleanup. */ }
       await closeSharedRoom(room);
       setHostedRoom((current) => current?.roomCode === room.roomCode
         ? { ...current, status: 'ended', mediaStatus: 'idle' }
@@ -235,7 +255,7 @@ export default function DashboardPage() {
     } finally {
       setIsClosingRoom(false);
     }
-  }, [hostedRoom, isClosingRoom]);
+  }, [disconnect, disconnectAndWait, hostedRoom, isClosingRoom, screenShare, stopCapture]);
 
   const finalizedSegmentCount = useMemo(
     () => state.segments.filter((segment) => segment.isFinal).length,
@@ -274,7 +294,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (maxSessionSeconds === null || !isCapturing || recordingDurationSeconds < maxSessionSeconds) return;
-    handleStop();
+    void handleStop();
     dispatch({ type: 'SET_ERROR', error: 'Maximum session duration reached. Please start a new session.' });
   }, [handleStop, isCapturing, maxSessionSeconds, recordingDurationSeconds]);
 
@@ -331,7 +351,7 @@ export default function DashboardPage() {
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             <ControlPanel
               isCapturing={isCapturing}
-              isConnecting={wsIsConnecting}
+              isConnecting={wsIsConnecting || screenShare.status === 'starting'}
               connectionStatusLabel={startStatusLabel}
               permissionDenied={permissionDenied}
               audioInputDevices={audioInputDevices}
@@ -378,7 +398,7 @@ export default function DashboardPage() {
 
         {/* MAIN CONTENT */}
         <section className="flex flex-col min-h-[calc(100vh-57px)]">
-          <div className="px-6 py-5 border-b border-[#dce5f2] flex items-center justify-between bg-white/90">
+          {!hostedRoom && <div className="px-6 py-5 border-b border-[#dce5f2] flex items-center justify-between bg-white/90">
             <div><p className="text-sm font-bold text-ink">Live transcription</p><p className="mt-1 text-xs text-ink-muted">Captions and translation appear here in real time.</p></div>
             {isCapturing ? (
               <span className="flex items-center gap-2 text-xs font-bold text-emerald-pro">
@@ -386,7 +406,7 @@ export default function DashboardPage() {
                 Listening
               </span>
             ) : null}
-          </div>
+          </div>}
 
           {/* Alerts */}
           <div className="px-6 pt-4 space-y-3">
@@ -415,15 +435,23 @@ export default function DashboardPage() {
           )}
 
           {/* Captions */}
-          <div className="flex-1 overflow-hidden px-6 py-4">
-            <CaptionDisplay
+          {hostedRoom ? (
+            <RoomHostView
+              room={hostedRoom}
+              screenShare={screenShare}
+              isCapturing={isCapturing}
+              isClosing={isClosingRoom}
+              onStopLive={() => void handleCloseRoom()}
+            />
+          ) : (
+            <div className="flex-1 overflow-hidden px-6 py-4"><CaptionDisplay
               segments={state.segments}
               currentPartial={state.currentPartial}
               isCapturing={isCapturing}
               isConnecting={wsIsConnecting}
               permissionDenied={permissionDenied}
-            />
-          </div>
+            /></div>
+          )}
         </section>
       </main>
     </div>

@@ -102,11 +102,12 @@ export async function closeSharedRoom(room: HostedRoom): Promise<void> {
   }
 }
 
-export function buildRoomWebSocketUrl(roomCode: string): string {
+export function buildRoomWebSocketUrl(roomCode: string, hostToken?: string): string {
   const configured = String(import.meta.env.VITE_ROOMS_WS_URL ?? '').trim();
   const base = configured || `${apiBaseUrl() || window.location.origin}/ws/rooms`;
   const url = new URL(`${base.replace(/\/$/, '')}/${encodeURIComponent(roomCode)}`);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  if (hostToken) url.searchParams.set('host_token', hostToken);
   return url.toString();
 }
 

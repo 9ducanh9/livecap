@@ -50,10 +50,14 @@ class _Room:
     sequence: int = 0
     segments: deque[dict[str, Any]] = field(default_factory=deque)
     subscribers: set[WebSocket] = field(default_factory=set)
+    host_subscribers: set[WebSocket] = field(default_factory=set)
     segment_ids: set[str] = field(default_factory=set)
     owner_user_id: str | None = None
     media_status: str = "idle"
     media_stage_arn: str | None = None
+
+    def all_subscribers(self) -> tuple[WebSocket, ...]:
+        return tuple(self.subscribers | self.host_subscribers)
 
     def public_payload(self) -> dict[str, Any]:
         return {
@@ -217,7 +221,7 @@ class RoomService:
                     media_status="live",
                     media_stage_arn=stage_arn,
                 )
-            subscribers = tuple(room.subscribers)
+            subscribers = room.all_subscribers()
         await self._broadcast(
             subscribers,
             {"type": "room_media_status", "media_status": "live"},
@@ -255,7 +259,7 @@ class RoomService:
                     media_status="cleanup_pending",
                     media_stage_arn=stage_arn,
                 )
-            subscribers = tuple(room.subscribers)
+            subscribers = room.all_subscribers()
         await self._broadcast(
             subscribers,
             {"type": "room_media_status", "media_status": "idle"},
@@ -344,7 +348,7 @@ class RoomService:
                 "sequence": room.sequence,
                 "segment": segment,
             }
-            subscribers = tuple(room.subscribers)
+            subscribers = room.all_subscribers()
 
         await self._broadcast(subscribers, payload)
         return True
@@ -353,13 +357,17 @@ class RoomService:
         self,
         room_code: str,
         websocket: WebSocket,
+        host_token: str | None = None,
     ) -> dict[str, Any] | None:
         async with self._lock:
             room = await self._room_locked(room_code)
-            if room is None:
+            if room is None or (host_token is not None and not _token_matches(room, host_token)):
                 return None
             if room.status == "live":
-                room.subscribers.add(websocket)
+                if host_token is None:
+                    room.subscribers.add(websocket)
+                else:
+                    room.host_subscribers.add(websocket)
             snapshot = room.public_payload()
             return {"type": "room_snapshot", **snapshot}
 
@@ -368,6 +376,7 @@ class RoomService:
             room = self._rooms.get(self._normalize_code(room_code))
             if room is not None:
                 room.subscribers.discard(websocket)
+                room.host_subscribers.discard(websocket)
 
     async def close_room(self, room_code: str, host_token: str) -> bool:
         async with self._lock:
@@ -392,8 +401,9 @@ class RoomService:
                 "room_code": room.code,
                 "sequence": room.sequence,
             }
-            subscribers = tuple(room.subscribers)
+            subscribers = room.all_subscribers()
             room.subscribers.clear()
+            room.host_subscribers.clear()
 
         await self._broadcast(subscribers, payload)
         return True
