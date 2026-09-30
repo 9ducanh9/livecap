@@ -59,4 +59,38 @@ describe('RoomScreenViewer subtitles', () => {
     expect(screen.getByText('Ngoài ra nó nên tiếp tục.')).toBeTruthy();
     expect(screen.queryByText('Xin chào.')).toBeNull();
   });
+
+  it('shows revisable speech immediately and lets it expire', () => {
+    vi.useFakeTimers();
+    const partial = { ...first, segmentId: 'speaking', textVi: 'Tôi đang nói', isFinal: false };
+    const { rerender } = render(
+      <RoomScreenViewer roomCode="ABCDEF" active={false} subtitleSegments={[]} subtitlePartial={partial} subtitleLanguage="vi" />,
+    );
+    expect(screen.getByText('Tôi đang nói').getAttribute('style')).toContain('1.25px');
+    rerender(
+      <RoomScreenViewer roomCode="ABCDEF" active={false} subtitleSegments={[]} subtitlePartial={{ ...partial, textVi: 'Tôi đang nói tiếp' }} subtitleLanguage="vi" />,
+    );
+    expect(screen.getByText('Tôi đang nói tiếp')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(1_800));
+    expect(screen.queryByText('Tôi đang nói tiếp')).toBeNull();
+  });
+
+  it('drops stale overlay phrases while keeping the latest ones', () => {
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <RoomScreenViewer roomCode="ABCDEF" active={false} subtitleSegments={[{ ...first, textVi: 'Old phrase.' }]} subtitleLanguage="vi" />,
+    );
+    const incoming = ['First.', 'Second.', 'Third.', 'Latest.'].map((textVi, index) => ({
+      ...first, segmentId: `new-${index}`, textVi,
+    }));
+    rerender(
+      <RoomScreenViewer roomCode="ABCDEF" active={false} subtitleSegments={[{ ...first, textVi: 'Old phrase.' }, ...incoming]} subtitleLanguage="vi" />,
+    );
+    expect(screen.queryByText('Old phrase.')).toBeNull();
+    expect(screen.getByText('Second.')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(1_300));
+    expect(screen.getByText('Third.')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(1_300));
+    expect(screen.getByText('Latest.')).toBeTruthy();
+  });
 });

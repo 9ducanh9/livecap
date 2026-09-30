@@ -112,6 +112,7 @@ _SCREEN_SHARE_MAX_WORDS = 14
 _SCREEN_SHARE_MAX_FRAGMENTS = 4
 _SCREEN_SHARE_TERMINAL_MIN_WORDS = 4
 _SCREEN_SHARE_LOW_CONFIDENCE = 0.45
+_ROOM_PARTIAL_TRANSLATION_DELAY = 0.5
 _VIETNAMESE_CHARS = set(
     "ăâđêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệ"
     "íìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
@@ -1100,6 +1101,68 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     try:
         # A zero timeout means recordings have no wall-clock cap.
         async with asyncio.timeout(settings.session_timeout or None):
+            pending_room_partial: PartialSegmentMessage | None = None
+            room_partial_task: asyncio.Task[None] | None = None
+            room_partial_epoch = 0
+            last_translated_partial: tuple[str, str] | None = None
+
+            async def publish_translated_room_partials() -> None:
+                nonlocal pending_room_partial, last_translated_partial
+                while True:
+                    # Coalesce rapid ASR revisions before paying for translation.
+                    await asyncio.sleep(_ROOM_PARTIAL_TRANSLATION_DELAY)
+                    partial = pending_room_partial
+                    pending_room_partial = None
+                    if partial is None:
+                        return
+                    source_text = _source_text(partial).strip()
+                    key = (partial.segment_id, source_text)
+                    if key == last_translated_partial or len(source_text.split()) < 2:
+                        if pending_room_partial is None:
+                            return
+                        continue
+                    last_translated_partial = key
+                    epoch = room_partial_epoch
+                    from app.models import Segment
+
+                    translated = await translate_segment(
+                        Segment(
+                            segment_id=partial.segment_id,
+                            speaker_label=partial.speaker_label,
+                            text_vi=partial.text_vi,
+                            text_en=partial.text_en,
+                            spoken_language=partial.spoken_language,
+                            is_final=False,
+                        ),
+                        session_id=session_id,
+                    )
+                    if epoch == room_partial_epoch and room_code and room_host_token:
+                        await get_room_service().publish_partial_segment(
+                            room_code,
+                            room_host_token,
+                            PartialSegmentMessage.from_segment(translated),
+                        )
+                    if pending_room_partial is None:
+                        return
+
+            async def send_room_partial(msg: PartialSegmentMessage) -> None:
+                nonlocal pending_room_partial, room_partial_task
+                await _send(websocket, msg)
+                if room_code and room_host_token:
+                    await get_room_service().publish_partial_segment(
+                        room_code, room_host_token, msg
+                    )
+                    pending_room_partial = msg
+                    if room_partial_task is None or room_partial_task.done():
+                        room_partial_task = asyncio.create_task(
+                            publish_translated_room_partials()
+                        )
+
+            async def stop_room_partials() -> None:
+                if room_partial_task is not None:
+                    room_partial_task.cancel()
+                    await asyncio.gather(room_partial_task, return_exceptions=True)
+
             if use_dual_stream:
                 _logger.info(
                     "dual_stream_started",
@@ -1183,12 +1246,17 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                                 code=ErrorCode.TRANSCRIBE_ERROR,
                             )
                             break
-                        await _send_caption(
-                            websocket,
-                            msg,
-                            room_code=room_code or None,
-                            room_host_token=room_host_token,
-                        )
+                        if isinstance(msg, PartialSegmentMessage):
+                            await send_room_partial(msg)
+                        else:
+                            room_partial_epoch += 1
+                            pending_room_partial = None
+                            await _send_caption(
+                                websocket,
+                                msg,
+                                room_code=room_code or None,
+                                room_host_token=room_host_token,
+                            )
                 finally:
                     for task in (vi_task, en_task, arbiter_task, partial_task):
                         if not task.done():
@@ -1200,6 +1268,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                         partial_task,
                         return_exceptions=True,
                     )
+                    await stop_room_partials()
 
             else:
                 transcription_service = TranscriptionService(
@@ -1212,7 +1281,6 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                     if websocket.query_params.get("stream_mode") == "single"
                     else None
                 )
-
                 async def emit_single_finalized(
                     finalized_msg: FinalizedSegmentMessage,
                 ) -> None:
@@ -1259,35 +1327,39 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                         room_host_token=room_host_token,
                     )
 
-                async for msg in transcription_service.transcribe(audio_queue):
-                    # Check if an audio-format error was flagged by the reader.
-                    if error_event.is_set():
-                        break
+                try:
+                    async for msg in transcription_service.transcribe(audio_queue):
+                        # Check if an audio-format error was flagged by the reader.
+                        if error_event.is_set():
+                            break
 
-                    if isinstance(msg, PartialSegmentMessage):
-                        # Forward partial segment directly (Requirement 3.2).
-                        await _send(websocket, msg)
+                        if isinstance(msg, PartialSegmentMessage):
+                            await send_room_partial(msg)
 
-                    elif isinstance(msg, FinalizedSegmentMessage):
-                        ready_messages = (
-                            caption_buffer.add(msg) if caption_buffer is not None else [msg]
-                        )
-                        for ready_message in ready_messages:
-                            await emit_single_finalized(ready_message)
+                        elif isinstance(msg, FinalizedSegmentMessage):
+                            room_partial_epoch += 1
+                            pending_room_partial = None
+                            ready_messages = (
+                                caption_buffer.add(msg) if caption_buffer is not None else [msg]
+                            )
+                            for ready_message in ready_messages:
+                                await emit_single_finalized(ready_message)
 
-                    elif isinstance(msg, Exception):
-                        # Transcription error surfaced as an exception value.
-                        log_integration_error(
-                            session_id=session_id,
-                            service_name="Amazon Transcribe Streaming",
-                            error=msg,
-                        )
-                        await _send_error(
-                            websocket,
-                            message=f"Transcription error: {msg}",
-                            code=ErrorCode.TRANSCRIBE_ERROR,
-                        )
-                        break
+                        elif isinstance(msg, Exception):
+                            # Transcription error surfaced as an exception value.
+                            log_integration_error(
+                                session_id=session_id,
+                                service_name="Amazon Transcribe Streaming",
+                                error=msg,
+                            )
+                            await _send_error(
+                                websocket,
+                                message=f"Transcription error: {msg}",
+                                code=ErrorCode.TRANSCRIBE_ERROR,
+                            )
+                            break
+                finally:
+                    await stop_room_partials()
 
                 if caption_buffer is not None:
                     pending = caption_buffer.flush()

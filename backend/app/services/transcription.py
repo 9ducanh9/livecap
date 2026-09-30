@@ -169,6 +169,8 @@ class TranscriptionService:
                 media_sample_rate_hz=_SAMPLE_RATE_HZ,
                 media_encoding=_MEDIA_ENCODING,
                 vocabulary_name=self._vocabulary_name,
+                enable_partial_results_stabilization=True,
+                partial_results_stability="medium",
             )
         except Exception as exc:
             log_integration_error(
@@ -284,6 +286,8 @@ class TranscriptionService:
                 media_sample_rate_hz=_SAMPLE_RATE_HZ,
                 media_encoding=_MEDIA_ENCODING,
                 vocabulary_name=self._vocabulary_name,
+                enable_partial_results_stabilization=True,
+                partial_results_stability="medium",
             )
         except Exception as exc:
             log_integration_error(

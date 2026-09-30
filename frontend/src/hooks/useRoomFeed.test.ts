@@ -90,4 +90,30 @@ describe('useRoomFeed', () => {
     expect(MockWebSocket.instances).toHaveLength(1);
     unmount();
   });
+
+  it('revises a live partial and replaces it with the finalized room caption', async () => {
+    wake.mockResolvedValue(undefined);
+    const { result, unmount } = renderHook(() => useRoomFeed('TABKNF'));
+    await act(async () => { await Promise.resolve(); });
+    const socket = MockWebSocket.instances[0];
+    act(() => socket.emit({ type: 'room_snapshot', title: 'Live', status: 'live', segments: [] }));
+
+    const partial = {
+      segment_id: 'seg-1', speaker_label: 'Speaker 1', text_vi: '',
+      text_en: 'I can', spoken_language: 'en', is_final: false,
+    };
+    act(() => socket.emit({ type: 'room_partial', segment: partial }));
+    expect(result.current.partial?.textEn).toBe('I can');
+    expect(result.current.segments).toHaveLength(0);
+
+    act(() => socket.emit({ type: 'room_partial', segment: { ...partial, text_vi: 'Tôi có thể' } }));
+    expect(result.current.partial?.textVi).toBe('Tôi có thể');
+    act(() => socket.emit({ type: 'room_segment', segment: {
+      ...partial, text_vi: 'Tôi có thể', text_en: 'I can.', is_final: true,
+      timestamp_start: 0, timestamp_end: 1,
+    } }));
+    expect(result.current.partial).toBeNull();
+    expect(result.current.segments).toHaveLength(1);
+    unmount();
+  });
 });

@@ -536,6 +536,8 @@ class TestRealTimeStreaming:
             assert kwargs["language_code"] == "en-US"
             assert kwargs["media_sample_rate_hz"] == 16000
             assert kwargs["media_encoding"] == "pcm"
+            assert kwargs["enable_partial_results_stabilization"] is True
+            assert kwargs["partial_results_stability"] == "medium"
             assert "identify_multiple_languages" not in kwargs
             assert "language_options" not in kwargs
             assert "preferred_language" not in kwargs

@@ -133,6 +133,62 @@ def collect_until_session_end(websocket, max_messages: int = 20) -> list[dict]:
     return received
 
 
+def test_room_receives_source_and_translated_partials_without_archiving_them(
+    app, mock_logging
+):
+    settings = make_settings(enable_shared_rooms=True)
+    partial = PartialSegmentMessage(
+        segment_id="seg-1",
+        speaker_label="Speaker 1",
+        text_en="I am speaking",
+        spoken_language="en",
+    )
+    final = FinalizedSegmentMessage(
+        segment_id="seg-1",
+        speaker_label="Speaker 1",
+        text_en="I am speaking.",
+        spoken_language="en",
+        timestamp_start=0,
+        timestamp_end=1,
+    )
+
+    async def mock_transcribe(audio_queue):
+        await audio_queue.get()
+        yield partial
+        await asyncio.sleep(0.05)
+        yield final
+
+    async def mock_translate(segment, **kwargs):
+        return segment.model_copy(update={"text_vi": "Tôi đang nói."})
+
+    room_service = MagicMock()
+    room_service.bind_host_session = AsyncMock(return_value=True)
+    room_service.publish_partial_segment = AsyncMock(return_value=True)
+    room_service.publish_finalized_segment = AsyncMock(return_value=True)
+    transcriber = MagicMock()
+    transcriber.transcribe = mock_transcribe
+
+    with patch("app.routers.websocket.get_settings", return_value=settings), \
+         patch("app.routers.websocket.get_room_service", return_value=room_service), \
+         patch("app.routers.websocket.TranscriptionService", return_value=transcriber), \
+         patch("app.routers.websocket.translate_segment", new=mock_translate), \
+         patch("app.routers.websocket._ROOM_PARTIAL_TRANSLATION_DELAY", 0.01):
+        with TestClient(app) as client:
+            with client.websocket_connect(
+                "/ws/transcribe?source=en-US&target=vi&stream_mode=single"
+                "&room_code=ABCDEF&room_token=host-token"
+            ) as websocket:
+                assert json.loads(websocket.receive_text())["type"] == "session_start"
+                websocket.send_bytes(make_valid_audio_chunk())
+                received = collect_until_session_end(websocket)
+
+    assert any(message["type"] == "partial_segment" for message in received)
+    published = [call.args[2] for call in room_service.publish_partial_segment.await_args_list]
+    assert any(message.text_en == "I am speaking" for message in published)
+    assert any(message.text_vi == "Tôi đang nói." for message in published)
+    room_service.publish_finalized_segment.assert_awaited_once()
+
+
 # ---------------------------------------------------------------------------
 # Session ID assignment and session_start message (Req 2.2)
 # ---------------------------------------------------------------------------

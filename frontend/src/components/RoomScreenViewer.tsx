@@ -6,7 +6,7 @@ import { captionChunks } from './captionChunks';
 
 type VideoRect = { left: number; top: number; width: number; height: number };
 
-export default function RoomScreenViewer({ roomCode, active, subtitleSegments, subtitleLanguage = 'vi', muted = false, onVideoStateChange }: { roomCode: string; active: boolean; subtitleSegments?: Segment[]; subtitleLanguage?: 'vi' | 'en'; muted?: boolean; onVideoStateChange?: (hasVideo: boolean) => void }) {
+export default function RoomScreenViewer({ roomCode, active, subtitleSegments, subtitlePartial, subtitleLanguage = 'vi', muted = false, onVideoStateChange }: { roomCode: string; active: boolean; subtitleSegments?: Segment[]; subtitlePartial?: Segment | null; subtitleLanguage?: 'vi' | 'en'; muted?: boolean; onVideoStateChange?: (hasVideo: boolean) => void }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -111,7 +111,7 @@ export default function RoomScreenViewer({ roomCode, active, subtitleSegments, s
       <video ref={videoRef} autoPlay playsInline controls={!muted} muted={muted} className="h-full w-full object-contain" />
       {subtitleSegments && (
         <div className="pointer-events-none absolute" style={videoRect}>
-          <VideoSubtitle key={`${roomCode}:${subtitleLanguage}`} segments={subtitleSegments} language={subtitleLanguage} videoWidth={videoRect.width} />
+          <VideoSubtitle key={`${roomCode}:${subtitleLanguage}`} segments={subtitleSegments} partial={subtitlePartial} language={subtitleLanguage} videoWidth={videoRect.width} />
         </div>
       )}
       {!active && <div className="absolute inset-0 grid place-items-center text-sm font-semibold text-white/60">Waiting for the host to share a screen</div>}
@@ -129,8 +129,9 @@ export default function RoomScreenViewer({ roomCode, active, subtitleSegments, s
   );
 }
 
-function VideoSubtitle({ segments, language, videoWidth }: { segments: Segment[]; language: 'vi' | 'en'; videoWidth: number }) {
+function VideoSubtitle({ segments, partial, language, videoWidth }: { segments: Segment[]; partial?: Segment | null; language: 'vi' | 'en'; videoWidth: number }) {
   const [queue, setQueue] = useState<Array<{ id: string; text: string }>>([]);
+  const [visiblePartial, setVisiblePartial] = useState<Segment | null>(null);
   const seenCountRef = useRef(Math.max(0, segments.length - 1));
   const initializedRef = useRef(segments.length > 0);
   const baseFontSize = Math.min(22, Math.max(11, videoWidth * 0.028));
@@ -147,8 +148,16 @@ function VideoSubtitle({ segments, language, videoWidth }: { segments: Segment[]
     );
     seenCountRef.current = segments.length;
     if (segments.length > 0) initializedRef.current = true;
-    if (incoming.length) setQueue((current) => [...current, ...incoming]);
+    // The archive keeps every phrase; the live overlay must not fall behind.
+    if (incoming.length) setQueue((current) => [...current, ...incoming].slice(-3));
   }, [language, maxChars, segments]);
+
+  useEffect(() => {
+    setVisiblePartial(partial ?? null);
+    if (!partial) return undefined;
+    const timer = window.setTimeout(() => setVisiblePartial(null), 1_800);
+    return () => window.clearTimeout(timer);
+  }, [partial?.segmentId, partial?.textVi, partial?.textEn]);
 
   const current = queue[0];
   useEffect(() => {
@@ -158,19 +167,22 @@ function VideoSubtitle({ segments, language, videoWidth }: { segments: Segment[]
     return () => window.clearTimeout(timer);
   }, [current?.id]);
 
-  if (!current) return null;
+  const partialText = visiblePartial && (language === 'vi' ? visiblePartial.textVi : visiblePartial.textEn);
+  const partialChunks = partialText ? captionChunks(partialText, maxChars) : [];
+  const currentText = partialChunks.length ? partialChunks[partialChunks.length - 1] : current?.text;
+  if (!currentText) return null;
 
-  const fontSize = Math.min(baseFontSize, videoWidth * 0.82 / (current.text.length * 0.7));
+  const fontSize = Math.min(baseFontSize, videoWidth * 0.82 / (currentText.length * 0.7));
 
   const captionStyle = {
     fontSize,
-    WebkitTextStroke: '0.5px rgba(0, 0, 0, 0.95)',
+    WebkitTextStroke: '1.25px rgba(0, 0, 0, 0.95)',
     paintOrder: 'stroke fill' as const,
   };
 
   return (
     <div className="absolute inset-x-0 bottom-[9%] flex justify-center text-center font-semibold leading-[1.15] text-white">
-      <p className="max-w-[82%] whitespace-nowrap" style={captionStyle}>{current.text}</p>
+      <p className="max-w-[82%] whitespace-nowrap" style={captionStyle}>{currentText}</p>
     </div>
   );
 }
