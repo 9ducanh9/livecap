@@ -14,4 +14,17 @@ describe('captionChunks', () => {
     expect(captionChunks('  ', 50)).toEqual([]);
     expect(captionChunks('Hello', 2)).toEqual(['Hello']);
   });
+
+  it('never joins completed sentences, even when ASR omits the space', () => {
+    expect(captionChunks('Xin chào, hôm nay tôi đang làm việc.Ngoài ra nó nên blabla', 100))
+      .toEqual(['Xin chào, hôm nay tôi đang làm việc.', 'Ngoài ra nó nên blabla']);
+  });
+
+  it('shows an overlong sentence in consecutive one-line pieces', () => {
+    const text = 'Xin chào, hôm nay tôi đang làm việc rất hăng say nên tôi cảm thấy hơi mệt';
+    const chunks = captionChunks(text, 34);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.join(' ')).toBe(text);
+    expect(chunks.every((chunk) => chunk.length <= 34)).toBe(true);
+  });
 });

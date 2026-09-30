@@ -4,7 +4,7 @@ import type { RoomFeedState } from '../hooks/useRoomFeed';
 import type { Segment } from '../types';
 import RoomScreenViewer from './RoomScreenViewer';
 
-type CaptionLanguage = 'both' | 'vi' | 'en';
+type CaptionLanguage = 'vi' | 'en';
 type CaptionLayout = 'overlay' | 'below';
 
 export default function RoomAudienceContent({
@@ -33,7 +33,6 @@ export default function RoomAudienceContent({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex rounded-xl border border-[#dce5f2] bg-white p-1">
           {([
-            { value: 'both', label: 'VI + EN' },
             { value: 'vi', label: 'Tiếng Việt' },
             { value: 'en', label: 'English' },
           ] as const).map((option) => (
@@ -69,12 +68,8 @@ export default function RoomAudienceContent({
           active={feed.mediaStatus === 'live'}
           muted={muted}
           onVideoStateChange={setHasVideo}
-          subtitle={feed.mediaStatus === 'live' && hasVideo && layout === 'overlay' && latest ? {
-            id: latest.segmentId,
-            textVi: latest.textVi,
-            textEn: latest.textEn,
-            language,
-          } : undefined}
+          subtitleSegments={feed.mediaStatus === 'live' && hasVideo && layout === 'overlay' ? feed.segments : undefined}
+          subtitleLanguage={language}
         />
       </section>
 
@@ -122,21 +117,14 @@ function ViewerCaption({ segment, language, isLatest }: { segment: Segment; lang
       <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-ink/40">
         {segment.speakerLabel || 'Speaker'}
       </div>
-      {language === 'both' ? (
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 sm:gap-6">
-          <CaptionText label="Vietnamese" text={segment.textVi} />
-          <CaptionText label="English" text={segment.textEn} translated />
-        </div>
-      ) : (
-        <div className="mt-3">
-          <CaptionText
-            label={language === 'vi' ? 'Vietnamese' : 'English'}
-            text={language === 'vi' ? segment.textVi : segment.textEn}
-            translated={language === 'en'}
-            large
-          />
-        </div>
-      )}
+      <div className="mt-3">
+        <CaptionText
+          label={language === 'vi' ? 'Vietnamese' : 'English'}
+          text={language === 'vi' ? segment.textVi : segment.textEn}
+          translated={language !== segment.spokenLanguage}
+          large
+        />
+      </div>
     </article>
   );
 }
