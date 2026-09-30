@@ -1,5 +1,7 @@
 import type { Segment } from '../types';
-import { authenticatedFetch } from './authService';
+import { authenticatedFetch, getAuthSession } from './authService';
+
+export const HOSTED_ROOM_STORAGE_KEY = 'livecap.hosted-room.v1';
 
 export interface HostedRoom {
   roomCode: string;
@@ -20,6 +22,56 @@ export interface RoomSnapshot {
   viewerCount: number;
   sequence: number;
   segments: Segment[];
+}
+
+function currentOwner(): string | null {
+  const token = getAuthSession()?.idToken;
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) as { sub?: unknown };
+    return typeof payload.sub === 'string' ? payload.sub : null;
+  } catch { return null; }
+}
+
+export function rememberHostedRoom(room: HostedRoom): void {
+  try {
+    localStorage.setItem(HOSTED_ROOM_STORAGE_KEY, JSON.stringify({ owner: currentOwner(), room }));
+  } catch { /* Private browsing may block persistent storage. */ }
+}
+
+export function forgetHostedRoom(): void {
+  try { localStorage.removeItem(HOSTED_ROOM_STORAGE_KEY); } catch { /* Storage unavailable. */ }
+}
+
+export function hasSavedHostedRoom(): boolean {
+  try { return localStorage.getItem(HOSTED_ROOM_STORAGE_KEY) !== null; } catch { return false; }
+}
+
+export async function restoreHostedRoom(): Promise<HostedRoom | null> {
+  let saved: { owner: string | null; room: HostedRoom };
+  try {
+    const raw = localStorage.getItem(HOSTED_ROOM_STORAGE_KEY);
+    if (!raw) return null;
+    saved = JSON.parse(raw) as typeof saved;
+    const room = saved.room;
+    if (saved.owner !== currentOwner()
+      || !room || !/^[A-Z]{6}$/.test(room.roomCode)
+      || typeof room.hostToken !== 'string' || !room.hostToken
+      || !Number.isFinite(Date.parse(room.liveExpiresAt))
+      || Date.parse(room.liveExpiresAt) <= Date.now()) {
+      forgetHostedRoom();
+      return null;
+    }
+  } catch {
+    forgetHostedRoom();
+    return null;
+  }
+  const response = await authenticatedFetch(`${apiBaseUrl()}/api/rooms/${saved.room.roomCode}`);
+  if (response.status === 404) { forgetHostedRoom(); return null; }
+  if (!response.ok) throw new Error('Could not check the saved room.');
+  const snapshot = await response.json() as Record<string, unknown>;
+  if (snapshot['status'] !== 'live') { forgetHostedRoom(); return null; }
+  return { ...saved.room, mediaStatus: snapshot['media_status'] === 'live' ? 'live' : 'idle' };
 }
 
 export function isSharedRoomsEnabled(): boolean {

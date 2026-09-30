@@ -6,6 +6,7 @@ import type { HostedRoom } from '../services/roomService';
 interface RoomHostPanelProps {
   room: HostedRoom | null;
   isCreating: boolean;
+  isRestoring?: boolean;
   isClosing: boolean;
   isCapturing: boolean;
   error: string | null;
@@ -16,6 +17,7 @@ interface RoomHostPanelProps {
 export default function RoomHostPanel({
   room,
   isCreating,
+  isRestoring = false,
   isClosing,
   isCapturing,
   error,
@@ -61,12 +63,12 @@ export default function RoomHostPanel({
           </label>
           <button
             type="button"
-            disabled={isCreating || isCapturing || title.trim() === ''}
+            disabled={isCreating || isRestoring || isCapturing || title.trim() === ''}
             onClick={() => onCreate(title.trim())}
             className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-ink text-sm font-bold text-white transition-colors hover:bg-emerald-pro disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isCreating ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
-            {isCreating ? 'Creating room...' : 'Create audience room'}
+            {isRestoring ? 'Restoring room...' : isCreating ? 'Creating room...' : 'Create audience room'}
           </button>
           {isCapturing && (
             <p className="text-[11px] leading-relaxed text-ink-muted">

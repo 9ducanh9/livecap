@@ -372,6 +372,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     };
 
     ws.onclose = (event: CloseEvent) => {
+      // A prior socket can finish closing after a replacement has connected
+      // (for example when switching room captions from mic back to screen).
+      // Its close event must not clear the new socket or mark it idle.
+      if (wsRef.current !== ws) return;
       clearHeartbeat();
       setIsConnected(false);
       wsRef.current = null;

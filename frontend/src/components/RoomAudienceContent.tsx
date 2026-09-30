@@ -26,7 +26,7 @@ export default function RoomAudienceContent({
   useEffect(() => {
     const element = scrollRef.current;
     if (element) element.scrollTop = element.scrollHeight;
-  }, [feed.segments.length, layout]);
+  }, [feed.segments.length, feed.partial?.textVi, feed.partial?.textEn, layout, language, showTranscript]);
 
   return (
     <>
@@ -79,12 +79,12 @@ export default function RoomAudienceContent({
           <div className="flex items-center justify-between border-b border-[#dce5f2] px-5 py-4">
             <span className="flex items-center gap-2 text-xs font-bold text-ink/60">
               <Radio className="h-4 w-4 text-emerald-pro" />
-              {feed.status === 'ended' ? 'Finalized transcript' : 'Finalized captions only'}
+              {feed.status === 'ended' ? 'Finalized transcript' : 'Live transcript'}
             </span>
             <span className="font-mono text-[10px] text-ink/40">{feed.segments.length} lines</span>
           </div>
           <div ref={scrollRef} className="h-[min(65vh,680px)] overflow-y-auto custom-scrollbar">
-            {feed.segments.length === 0 ? (
+            {feed.segments.length === 0 && !feed.partial ? (
               <div className="grid h-full min-h-[360px] place-items-center p-8 text-center">
                 <div>
                   <Languages className="mx-auto h-9 w-9 text-emerald-pro/60" />
@@ -94,7 +94,7 @@ export default function RoomAudienceContent({
                   <p className="mt-2 text-sm text-ink-muted">
                     {feed.status === 'ended'
                       ? 'The meeting ended before a caption was finalized.'
-                      : 'Captions appear here after each phrase is finalized.'}
+                      : 'Captions appear here as the host speaks.'}
                   </p>
                 </div>
               </div>
@@ -103,6 +103,9 @@ export default function RoomAudienceContent({
                 {feed.segments.map((segment) => (
                   <ViewerCaption key={segment.segmentId} segment={segment} language={language} isLatest={segment === latest} />
                 ))}
+                {feed.status !== 'ended' && feed.partial && (
+                  <ViewerCaption key={`partial-${feed.partial.segmentId}`} segment={feed.partial} language={language} isLatest />
+                )}
               </div>
             )}
           </div>

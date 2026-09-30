@@ -27,6 +27,10 @@ import {
   closeSharedRoom,
   createSharedRoom,
   isSharedRoomsEnabled,
+  rememberHostedRoom,
+  restoreHostedRoom,
+  forgetHostedRoom,
+  hasSavedHostedRoom,
   type HostedRoom,
 } from '../services/roomService';
 import {
@@ -120,9 +124,29 @@ export default function DashboardPage() {
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [isClosingRoom, setIsClosingRoom] = useState(false);
   const [roomError, setRoomError] = useState<string | null>(null);
+  const [isRestoringRoom, setIsRestoringRoom] = useState(() => isSharedRoomsEnabled() && hasSavedHostedRoom());
   const stopCaptureRef = useRef<(() => void) | null>(null);
   const stopRoomMicrophoneRef = useRef<(() => Promise<void>) | null>(null);
   const maxSessionSeconds = configuredMaxSessionSeconds();
+
+  useEffect(() => {
+    if (!isSharedRoomsEnabled()) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (!hasSavedHostedRoom()) return;
+        await ensureBackendReadyForWorkspaceAction();
+        const room = await restoreHostedRoom();
+        if (!cancelled && room) setHostedRoom(room);
+      } catch {
+        // Keep the saved host credential for a later refresh if the backend is waking.
+        if (!cancelled) setRoomError('Could not restore the live room yet. Refresh when the backend is ready.');
+      } finally {
+        if (!cancelled) setIsRestoringRoom(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const { isConnectionLost, connectionStatus, connect, disconnect, disconnectAndWait, sendAudioChunk } = useWebSocket({
     reconnectOnUnexpectedClose: state.isCapturing,
@@ -215,14 +239,12 @@ export default function DashboardPage() {
   const handleStop = useCallback(async () => {
     stopCapture(); setRecordingStartedAt(null);
     dispatch({ type: 'SET_CAPTURING', value: false });
+    await Promise.allSettled([
+      disconnectAndWait(),
+      hostedRoom ? screenShare.setMicrophoneStream(null) : Promise.resolve(),
+    ]);
     try {
-      await Promise.all([
-        disconnectAndWait(),
-        hostedRoom ? screenShare.setMicrophoneStream(null) : Promise.resolve(),
-      ]);
-      if (hostedRoom?.status === 'live' && screenShare.status === 'live') {
-        await screenShare.resumeSharedAudioCaptions();
-      }
+      if (hostedRoom?.status === 'live') await screenShare.resumeSharedAudioCaptions();
     } catch {
       dispatch({ type: 'SET_ERROR', error: 'Could not switch captions back to shared screen audio. Stop and restart the screen share.' });
     }
@@ -240,7 +262,9 @@ export default function DashboardPage() {
     setRoomError(null);
     try {
       await ensureBackendReadyForWorkspaceAction();
-      setHostedRoom(await createSharedRoom(title));
+      const room = await createSharedRoom(title);
+      rememberHostedRoom(room);
+      setHostedRoom(room);
     } catch (error) {
       setRoomError(error instanceof Error ? error.message : 'Could not create a caption room.');
     } finally {
@@ -253,6 +277,7 @@ export default function DashboardPage() {
     const room = hostedRoom;
     setRoomError(null);
     if (room.status === 'ended') {
+      forgetHostedRoom();
       setHostedRoom(null);
       return;
     }
@@ -264,6 +289,7 @@ export default function DashboardPage() {
       try { await disconnectAndWait(); } catch { disconnect(); }
       try { await screenShare.stopAll(); } catch { /* Room close retries media cleanup. */ }
       await closeSharedRoom(room);
+      forgetHostedRoom();
       setHostedRoom((current) => current?.roomCode === room.roomCode
         ? { ...current, status: 'ended', mediaStatus: 'idle' }
         : current);
@@ -388,6 +414,7 @@ export default function DashboardPage() {
               <RoomHostPanel
                 room={hostedRoom}
                 isCreating={isCreatingRoom}
+                isRestoring={isRestoringRoom}
                 isClosing={isClosingRoom}
                 isCapturing={isCapturing}
                 error={roomError}
