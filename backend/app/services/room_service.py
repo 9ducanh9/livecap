@@ -13,7 +13,7 @@ from typing import Any, Protocol
 
 from fastapi import WebSocket
 
-from app.models import FinalizedSegmentMessage
+from app.models import FinalizedSegmentMessage, PartialSegmentMessage
 from app.services.dynamo_room_store import PersistedRoom
 
 
@@ -349,6 +349,31 @@ class RoomService:
                 "segment": segment,
             }
             subscribers = room.all_subscribers()
+
+        await self._broadcast(subscribers, payload)
+        return True
+
+    async def publish_partial_segment(
+        self,
+        room_code: str,
+        host_token: str,
+        message: PartialSegmentMessage,
+    ) -> bool:
+        """Broadcast a revisable caption without adding it to the room archive."""
+        async with self._lock:
+            room = await self._room_locked(room_code)
+            if (
+                room is None
+                or room.status != "live"
+                or not _token_matches(room, host_token)
+            ):
+                return False
+            subscribers = room.all_subscribers()
+            payload = {
+                "type": "room_partial",
+                "room_code": room.code,
+                "segment": message.model_dump(mode="json"),
+            }
 
         await self._broadcast(subscribers, payload)
         return True

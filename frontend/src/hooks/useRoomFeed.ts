@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Segment } from '../types';
-import { buildRoomWebSocketUrl, segmentFromWire } from '../services/roomService';
+import { buildRoomWebSocketUrl, partialFromWire, segmentFromWire } from '../services/roomService';
 import { wakeBackendIfConfigured } from '../services/wakeService';
 
 export type RoomFeedStatus = 'connecting' | 'live' | 'reconnecting' | 'ended' | 'error';
@@ -10,6 +10,7 @@ export interface RoomFeedState {
   status: RoomFeedStatus;
   viewerCount: number;
   segments: Segment[];
+  partial: Segment | null;
   error: string | null;
   mediaStatus: 'idle' | 'live';
 }
@@ -22,6 +23,7 @@ export function useRoomFeed(roomCode: string, hostToken?: string): RoomFeedState
     status: 'connecting',
     viewerCount: 0,
     segments: [],
+    partial: null,
     error: null,
     mediaStatus: 'idle',
   });
@@ -71,6 +73,7 @@ export function useRoomFeed(roomCode: string, hostToken?: string): RoomFeedState
             status: ended ? 'ended' : 'live',
             viewerCount: typeof payload['viewer_count'] === 'number' ? payload['viewer_count'] : 0,
             segments,
+            partial: null,
             error: null,
             mediaStatus: payload['media_status'] === 'live' ? 'live' : 'idle',
           });
@@ -82,12 +85,34 @@ export function useRoomFeed(roomCode: string, hostToken?: string): RoomFeedState
           if (!segment) return;
           setState((current) => current.segments.some((item) => item.segmentId === segment.segmentId)
             ? current
-            : { ...current, status: 'live', segments: [...current.segments, segment] });
+            : {
+              ...current,
+              status: 'live',
+              segments: [...current.segments, segment],
+              partial: current.partial?.segmentId === segment.segmentId ? null : current.partial,
+            });
+          return;
+        }
+        if (payload['type'] === 'room_partial') {
+          const partial = partialFromWire(payload['segment']);
+          if (!partial) return;
+          setState((current) => {
+            if (current.status === 'ended' || current.segments.some((item) => item.segmentId === partial.segmentId)) return current;
+            const previous = current.partial?.segmentId === partial.segmentId ? current.partial : null;
+            return {
+              ...current,
+              partial: {
+                ...partial,
+                textVi: partial.textVi || previous?.textVi || '',
+                textEn: partial.textEn || previous?.textEn || '',
+              },
+            };
+          });
           return;
         }
         if (payload['type'] === 'room_closed') {
           terminalError = true;
-          setState((current) => ({ ...current, status: 'ended' }));
+          setState((current) => ({ ...current, status: 'ended', partial: null }));
           socket.close(1000, 'room ended');
           return;
         }

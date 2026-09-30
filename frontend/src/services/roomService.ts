@@ -135,6 +135,29 @@ export function segmentFromWire(value: unknown): Segment | null {
   };
 }
 
+export function partialFromWire(value: unknown): Segment | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const item = value as Record<string, unknown>;
+  if (
+    typeof item['segment_id'] !== 'string'
+    || typeof item['speaker_label'] !== 'string'
+    || typeof item['text_vi'] !== 'string'
+    || typeof item['text_en'] !== 'string'
+    || (item['spoken_language'] !== 'vi' && item['spoken_language'] !== 'en')
+    || item['is_final'] !== false
+  ) return null;
+  return {
+    segmentId: item['segment_id'],
+    speakerLabel: item['speaker_label'],
+    textVi: item['text_vi'],
+    textEn: item['text_en'],
+    spokenLanguage: item['spoken_language'],
+    isFinal: false,
+    timestampStart: 0,
+    timestampEnd: 0,
+  };
+}
+
 function apiBaseUrl(): string {
   return String(import.meta.env.VITE_API_BASE_URL ?? '').trim().replace(/\/$/, '');
 }

@@ -69,6 +69,7 @@ export default function RoomAudienceContent({
           muted={muted}
           onVideoStateChange={setHasVideo}
           subtitleSegments={feed.mediaStatus === 'live' && hasVideo && layout === 'overlay' ? feed.segments : undefined}
+          subtitlePartial={feed.mediaStatus === 'live' && hasVideo && layout === 'overlay' ? feed.partial : null}
           subtitleLanguage={language}
         />
       </section>

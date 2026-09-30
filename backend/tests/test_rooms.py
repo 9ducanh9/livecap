@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.main import app
-from app.models import FinalizedSegmentMessage
+from app.models import FinalizedSegmentMessage, PartialSegmentMessage
 from app.services.room_service import RoomService, get_room_service
 
 
@@ -60,6 +60,38 @@ def test_room_service_requires_host_token_and_deduplicates_segments() -> None:
         assert [item["segment_id"] for item in late_snapshot["segments"]] == [
             "segment-1"
         ]
+
+    asyncio.run(scenario())
+
+
+def test_room_partial_is_live_only_and_not_archived() -> None:
+    async def scenario() -> None:
+        service = RoomService()
+        room, token = await service.create_room(
+            title="Live subtitles", ttl_seconds=600, max_segments=20
+        )
+        viewer = _FakeWebSocket()
+        await service.subscribe(room["room_code"], viewer)  # type: ignore[arg-type]
+        partial = PartialSegmentMessage(
+            segment_id="segment-1",
+            speaker_label="Speaker 1",
+            text_en="This is still being spoken",
+            spoken_language="en",
+        )
+
+        assert not await service.publish_partial_segment(
+            room["room_code"], "wrong-token", partial
+        )
+        assert await service.publish_partial_segment(room["room_code"], token, partial)
+        assert viewer.messages[0]["type"] == "room_partial"
+        assert viewer.messages[0]["segment"]["is_final"] is False
+        snapshot = await service.get_snapshot(room["room_code"])
+        assert snapshot is not None
+        assert snapshot["segments"] == []
+        assert snapshot["sequence"] == 0
+
+        assert await service.close_room(room["room_code"], token)
+        assert not await service.publish_partial_segment(room["room_code"], token, partial)
 
     asyncio.run(scenario())
 
