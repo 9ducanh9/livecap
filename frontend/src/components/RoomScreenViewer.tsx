@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Stage as IvsStage, StageStrategy, StageStream } from 'amazon-ivs-web-broadcast';
 import { createViewerMediaToken } from '../services/roomService';
+import type { Segment } from '../types';
 import { captionChunks } from './captionChunks';
 
-type Subtitle = { id: string; textVi: string; textEn: string; language: 'vi' | 'en' | 'both' };
 type VideoRect = { left: number; top: number; width: number; height: number };
 
-export default function RoomScreenViewer({ roomCode, active, subtitle, muted = false, onVideoStateChange }: { roomCode: string; active: boolean; subtitle?: Subtitle; muted?: boolean; onVideoStateChange?: (hasVideo: boolean) => void }) {
+export default function RoomScreenViewer({ roomCode, active, subtitleSegments, subtitleLanguage = 'vi', muted = false, onVideoStateChange }: { roomCode: string; active: boolean; subtitleSegments?: Segment[]; subtitleLanguage?: 'vi' | 'en'; muted?: boolean; onVideoStateChange?: (hasVideo: boolean) => void }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,9 +109,9 @@ export default function RoomScreenViewer({ roomCode, active, subtitle, muted = f
   return (
     <div ref={frameRef} className="relative aspect-video overflow-hidden rounded-2xl bg-[#071225] shadow-brutal">
       <video ref={videoRef} autoPlay playsInline controls={!muted} muted={muted} className="h-full w-full object-contain" />
-      {subtitle && (
+      {subtitleSegments && (
         <div className="pointer-events-none absolute" style={videoRect}>
-          <VideoSubtitle key={`${subtitle.id}:${subtitle.language}`} subtitle={subtitle} videoWidth={videoRect.width} />
+          <VideoSubtitle key={`${roomCode}:${subtitleLanguage}`} segments={subtitleSegments} language={subtitleLanguage} videoWidth={videoRect.width} />
         </div>
       )}
       {!active && <div className="absolute inset-0 grid place-items-center text-sm font-semibold text-white/60">Waiting for the host to share a screen</div>}
@@ -129,22 +129,38 @@ export default function RoomScreenViewer({ roomCode, active, subtitle, muted = f
   );
 }
 
-function VideoSubtitle({ subtitle, videoWidth }: { subtitle: Subtitle; videoWidth: number }) {
-  const [chunkIndex, setChunkIndex] = useState(0);
-  const fontSize = Math.min(22, Math.max(11, videoWidth * 0.028));
-  const lineCount = subtitle.language === 'both' ? 1 : 2;
-  const maxChars = Math.max(20, Math.floor((videoWidth * 0.84 / (fontSize * 0.58)) * lineCount * 0.72));
-  const viChunks = captionChunks(subtitle.textVi, maxChars);
-  const enChunks = captionChunks(subtitle.textEn, maxChars);
-  const totalChunks = subtitle.language === 'both'
-    ? Math.max(viChunks.length, enChunks.length)
-    : subtitle.language === 'vi' ? viChunks.length : enChunks.length;
+function VideoSubtitle({ segments, language, videoWidth }: { segments: Segment[]; language: 'vi' | 'en'; videoWidth: number }) {
+  const [queue, setQueue] = useState<Array<{ id: string; text: string }>>([]);
+  const seenCountRef = useRef(Math.max(0, segments.length - 1));
+  const initializedRef = useRef(segments.length > 0);
+  const baseFontSize = Math.min(22, Math.max(11, videoWidth * 0.028));
+  const maxChars = Math.max(12, Math.floor(videoWidth * 0.82 / (baseFontSize * 0.7)));
 
   useEffect(() => {
-    if (totalChunks <= 1) return;
-    const timer = window.setInterval(() => setChunkIndex((index) => (index + 1) % totalChunks), 3500);
-    return () => window.clearInterval(timer);
-  }, [totalChunks]);
+    // A late joiner starts with the newest caption, not the whole archive.
+    const start = !initializedRef.current && segments.length > 0
+      ? segments.length - 1
+      : Math.min(seenCountRef.current, segments.length);
+    const incoming = segments.slice(start).flatMap((segment) =>
+      captionChunks(language === 'vi' ? segment.textVi : segment.textEn, maxChars)
+        .map((text, index) => ({ id: `${segment.segmentId}:${index}`, text })),
+    );
+    seenCountRef.current = segments.length;
+    if (segments.length > 0) initializedRef.current = true;
+    if (incoming.length) setQueue((current) => [...current, ...incoming]);
+  }, [language, maxChars, segments]);
+
+  const current = queue[0];
+  useEffect(() => {
+    if (!current) return undefined;
+    const duration = Math.max(1_300, Math.min(2_600, current.text.length * 55));
+    const timer = window.setTimeout(() => setQueue((pending) => pending.slice(1)), duration);
+    return () => window.clearTimeout(timer);
+  }, [current?.id]);
+
+  if (!current) return null;
+
+  const fontSize = Math.min(baseFontSize, videoWidth * 0.82 / (current.text.length * 0.7));
 
   const captionStyle = {
     fontSize,
@@ -153,17 +169,8 @@ function VideoSubtitle({ subtitle, videoWidth }: { subtitle: Subtitle; videoWidt
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-[9%] flex flex-col items-center gap-0.5 text-center font-semibold leading-[1.15] text-white">
-      {(subtitle.language === 'vi' || subtitle.language === 'both') && (
-        <p className="w-[84%] overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" style={{ ...captionStyle, WebkitLineClamp: lineCount }}>
-          {viChunks[Math.min(chunkIndex, viChunks.length - 1)]}
-        </p>
-      )}
-      {(subtitle.language === 'en' || subtitle.language === 'both') && (
-        <p className="w-[84%] overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" style={{ ...captionStyle, WebkitLineClamp: lineCount }}>
-          {enChunks[Math.min(chunkIndex, enChunks.length - 1)]}
-        </p>
-      )}
+    <div className="absolute inset-x-0 bottom-[9%] flex justify-center text-center font-semibold leading-[1.15] text-white">
+      <p className="max-w-[82%] whitespace-nowrap" style={captionStyle}>{current.text}</p>
     </div>
   );
 }

@@ -53,8 +53,10 @@ describe('RoomViewerPage', () => {
     expect(await screen.findByText('Architecture review')).toBeTruthy();
     expect(screen.getByText('Chúng ta bắt đầu nhé.')).toBeTruthy();
     expect(screen.getByText('Finalized captions only')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'VI + EN' }));
+    expect(screen.queryByRole('button', { name: 'VI + EN' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'English' }));
     expect(screen.getByText('Let us begin.')).toBeTruthy();
+    expect(screen.queryByText('Chúng ta bắt đầu nhé.')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Tiếng Việt' }));
     expect(screen.getByText('Chúng ta bắt đầu nhé.')).toBeTruthy();
@@ -83,7 +85,7 @@ describe('RoomViewerPage', () => {
     );
 
     expect(await screen.findByText('Saved transcript')).toBeTruthy();
-    expect(screen.getByText('This meeting has ended. You are viewing its finalized bilingual transcript.')).toBeTruthy();
+    expect(screen.getByText('This meeting has ended. Choose a language to read its finalized transcript.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Transcript below' }));
     expect(screen.getByText('Finalized transcript')).toBeTruthy();
   });

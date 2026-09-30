@@ -150,7 +150,7 @@ function JoinedRoom({ roomCode }: { roomCode: string }) {
 
         {feed.status === 'ended' && !feed.error && (
           <div className="mt-5 rounded-xl border border-emerald-pro/20 bg-[#effbf8] p-4 text-sm text-ink">
-            This meeting has ended. You are viewing its finalized bilingual transcript.
+            This meeting has ended. Choose a language to read its finalized transcript.
           </div>
         )}
 
