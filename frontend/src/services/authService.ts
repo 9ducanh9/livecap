@@ -134,6 +134,7 @@ export function isAdminUser(): boolean {
 
 export function signOut(): void {
   const current = config(); clearAuthSession();
+  try { localStorage.removeItem('livecap.hosted-room.v1'); } catch { /* Storage unavailable. */ }
   if (!current.enabled) return;
   const params = new URLSearchParams({ client_id: current.clientId, logout_uri: current.redirectUri });
   window.location.assign(`${current.domain}/logout?${params.toString()}`);

@@ -52,7 +52,7 @@ describe('RoomViewerPage', () => {
 
     expect(await screen.findByText('Architecture review')).toBeTruthy();
     expect(screen.getByText('Chúng ta bắt đầu nhé.')).toBeTruthy();
-    expect(screen.getByText('Finalized captions only')).toBeTruthy();
+    expect(screen.getByText('Live transcript')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'VI + EN' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'English' }));
     expect(screen.getByText('Let us begin.')).toBeTruthy();
@@ -71,7 +71,7 @@ describe('RoomViewerPage', () => {
     );
     expect(await screen.findByText('Architecture review')).toBeTruthy();
     expect(screen.getByText('Chúng ta bắt đầu nhé.')).toBeTruthy();
-    expect(screen.getByText('Finalized captions only')).toBeTruthy();
+    expect(screen.getByText('Live transcript')).toBeTruthy();
   });
 
   it('labels an ended room as a saved finalized transcript', async () => {

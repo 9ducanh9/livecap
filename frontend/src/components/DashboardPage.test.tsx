@@ -107,6 +107,8 @@ vi.mock('../services/roomService', async (importOriginal) => ({
 describe('DashboardPage start flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    localStorage.clear();
     mocks.webSocketOptions = undefined as unknown as typeof mocks.webSocketOptions;
     mocks.wakeBackend.mockResolvedValue();
     mocks.waitForSignedInWake.mockResolvedValue();
@@ -309,5 +311,45 @@ describe('DashboardPage start flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Turn microphone off' }));
     await waitFor(() => expect(mocks.resumeSharedAudioCaptions).toHaveBeenCalledOnce());
     expect(mocks.disconnectAndWait.mock.invocationCallOrder[0]).toBeLessThan(mocks.resumeSharedAudioCaptions.mock.invocationCallOrder[0]);
+  });
+
+  it('resumes shared-audio captions even if microphone socket cleanup fails', async () => {
+    mocks.screenStatus = 'live';
+    mocks.roomsEnabled = true;
+    mocks.startCapture.mockImplementation(async () => { mocks.capturing = true; return {} as MediaStream; });
+    mocks.stopCapture.mockImplementation(() => { mocks.capturing = false; });
+    mocks.createRoom.mockResolvedValue({
+      roomCode: 'ABC234', hostToken: 'host-token', title: 'LiveCap room',
+      joinUrl: 'https://livecap.logantai.com/rooms/ABC234', status: 'live',
+      mediaStatus: 'idle', liveExpiresAt: '2099-01-01T00:00:00Z', expiresAt: '2099-01-15T00:00:00Z',
+    });
+    render(<DashboardPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Create audience room' }));
+    await screen.findByText('Host preview');
+    fireEvent.click(screen.getByRole('button', { name: 'Turn microphone on' }));
+    await waitFor(() => expect(mocks.startCapture).toHaveBeenCalledOnce());
+    mocks.disconnectAndWait.mockRejectedValueOnce(new Error('Close timed out'));
+    fireEvent.click(screen.getByRole('button', { name: 'Turn microphone off' }));
+    await waitFor(() => expect(mocks.resumeSharedAudioCaptions).toHaveBeenCalledOnce());
+  });
+
+  it('restores the live host room after a page reload without starting capture automatically', async () => {
+    mocks.roomsEnabled = true;
+    localStorage.setItem('livecap.hosted-room.v1', JSON.stringify({
+      owner: null,
+      room: {
+        roomCode: 'ABCDEF', hostToken: 'saved-host-token', title: 'Recovered room',
+        joinUrl: 'https://livecap.logantai.com/rooms/ABCDEF', status: 'live',
+        mediaStatus: 'live', createdAt: '2026-09-30T00:00:00Z',
+        liveExpiresAt: '2099-01-01T00:00:00Z', expiresAt: '2099-01-15T00:00:00Z',
+      },
+    }));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, status: 200, json: async () => ({ status: 'live', media_status: 'idle' }),
+    }));
+    render(<DashboardPage />);
+    expect(await screen.findByText('Recovered room')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Turn microphone on' })).toBeTruthy();
+    expect(mocks.startCapture).not.toHaveBeenCalled();
   });
 });

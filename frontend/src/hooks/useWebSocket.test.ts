@@ -134,6 +134,22 @@ describe('useWebSocket initial connection', () => {
     expect(result.current.connectionStatus).toBe('idle');
   });
 
+  it('ignores a late close from the old audio source after replacement connects', async () => {
+    const { result } = renderHook(() => useWebSocket());
+    let first!: Promise<void>;
+    act(() => { first = result.current.connect(); });
+    await act(async () => { MockWebSocket.instances[0].open(); await first; });
+    MockWebSocket.instances[0].readyState = MockWebSocket.CLOSING;
+    let second!: Promise<void>;
+    act(() => { second = result.current.connect(); });
+    await act(async () => { MockWebSocket.instances[1].open(); await second; });
+    act(() => { MockWebSocket.instances[0].onclose?.({ code: 1000, reason: 'old source' } as CloseEvent); });
+    expect(result.current.connectionStatus).toBe('connected');
+    expect(result.current.isConnected).toBe(true);
+    act(() => { result.current.sendAudioChunk(new ArrayBuffer(4)); });
+    expect(MockWebSocket.instances[1].send).toHaveBeenCalledOnce();
+  });
+
   it('stops reconnecting after three retry attempts', async () => {
     vi.useFakeTimers();
     const onReconnectFailed = vi.fn();
