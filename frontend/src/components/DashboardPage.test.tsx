@@ -195,10 +195,48 @@ describe('DashboardPage start flow', () => {
     render(<DashboardPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
 
-    await waitFor(() => expect(mocks.waitForSignedInWake).toHaveBeenCalledOnce());
+    await waitFor(() => expect(mocks.waitForSignedInWake).toHaveBeenCalledTimes(2));
     expect(mocks.wakeBackend).not.toHaveBeenCalled();
     await waitFor(() => expect(mocks.connect).toHaveBeenCalledOnce());
     expect(mocks.startCapture).toHaveBeenCalledOnce();
+  });
+
+  it('holds usage and history requests until the signed-in wake completes', async () => {
+    mocks.authConfigured = true;
+    mocks.wakeConfigured = true;
+    let finishWake!: () => void;
+    mocks.waitForSignedInWake.mockImplementation(() => new Promise<void>((resolve) => { finishWake = resolve; }));
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [], sessions_used: 0, limits: { max_sessions_per_week: 5, unlimited_session_duration: true }, quota_error: null }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DashboardPage />);
+    expect(screen.getByText('Starting backend for usage and history...')).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(mocks.waitForSignedInWake).toHaveBeenCalledOnce());
+    finishWake();
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/usage'))).toBe(true));
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/transcripts'))).toBe(true);
+  });
+
+  it('offers a retry without mounting backend panels when wake fails', async () => {
+    mocks.authConfigured = true;
+    mocks.wakeConfigured = true;
+    mocks.waitForSignedInWake.mockRejectedValueOnce(new Error('Backend unavailable'));
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [], sessions_used: 0,
+        limits: { max_sessions_per_week: 5, unlimited_session_duration: true },
+        quota_error: null,
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<DashboardPage />);
+    expect(await screen.findByText('Could not load usage and history while the backend is unavailable.')).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(mocks.waitForSignedInWake).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
   });
 
   it('requests AI meeting notes only after the user chooses to create them', async () => {

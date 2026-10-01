@@ -125,9 +125,22 @@ export default function DashboardPage() {
   const [isClosingRoom, setIsClosingRoom] = useState(false);
   const [roomError, setRoomError] = useState<string | null>(null);
   const [isRestoringRoom, setIsRestoringRoom] = useState(() => isSharedRoomsEnabled() && hasSavedHostedRoom());
+  const [backendDataStatus, setBackendDataStatus] = useState<'ready' | 'waking' | 'error'>(() =>
+    isAuthConfigured() && isWakeBackendConfigured() ? 'waking' : 'ready');
+  const [wakeRetry, setWakeRetry] = useState(0);
   const stopCaptureRef = useRef<(() => void) | null>(null);
   const stopRoomMicrophoneRef = useRef<(() => Promise<void>) | null>(null);
   const maxSessionSeconds = configuredMaxSessionSeconds();
+
+  useEffect(() => {
+    if (!isAuthConfigured() || !isWakeBackendConfigured()) return;
+    let cancelled = false;
+    void waitForBackendWakeAfterSignIn().then(
+      () => { if (!cancelled) setBackendDataStatus('ready'); },
+      () => { if (!cancelled) setBackendDataStatus('error'); },
+    );
+    return () => { cancelled = true; };
+  }, [wakeRetry]);
 
   useEffect(() => {
     if (!isSharedRoomsEnabled()) return;
@@ -439,8 +452,20 @@ export default function DashboardPage() {
             <EnrichmentPanel
               englishText={state.segments.map((s) => s.textEn.trim()).filter(Boolean).join(' ')}
             />
-            {isAuthConfigured() && <UsagePanel />}
-            {isAuthConfigured() && <TranscriptHistoryPanel />}
+            {isAuthConfigured() && backendDataStatus === 'ready' && <UsagePanel />}
+            {isAuthConfigured() && backendDataStatus === 'ready' && <TranscriptHistoryPanel />}
+            {isAuthConfigured() && backendDataStatus !== 'ready' && (
+              <div className="border-t border-[#dce5f2] px-6 py-5 text-xs text-ink-muted" role="status">
+                {backendDataStatus === 'waking' ? (
+                  <span className="flex items-center gap-2"><LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Starting backend for usage and history...</span>
+                ) : (
+                  <div className="space-y-2">
+                    <p>Could not load usage and history while the backend is unavailable.</p>
+                    <button type="button" onClick={() => { setBackendDataStatus('waking'); setWakeRetry((value) => value + 1); }} className="font-bold text-emerald-pro hover:underline">Try again</button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </aside>
 
