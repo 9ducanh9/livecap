@@ -129,9 +129,16 @@ jobs:
         env:
           TF_BACKEND_HCL: ${{ secrets.TF_BACKEND_HCL }}
           TF_VARS: ${{ secrets.TF_VARS }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
+          umask 077
           printf '%s' "$TF_BACKEND_HCL" > backend.hcl
           printf '%s' "$TF_VARS" > ci.auto.tfvars
+          if [ -z "$DEEPSEEK_API_KEY" ]; then
+            echo "DEEPSEEK_API_KEY repository secret is missing" >&2
+            exit 1
+          fi
+          python3 -c 'import json, os, pathlib; pathlib.Path("zz-deepseek.auto.tfvars.json").write_text(json.dumps({"deepseek_api_key": os.environ["DEEPSEEK_API_KEY"]}), encoding="utf-8")'
 
       # Restrict automatic Terraform to application delivery. General
       # infrastructure changes remain explicit, reviewed Terraform applies.
@@ -237,9 +244,16 @@ jobs:
         env:
           TF_BACKEND_HCL: ${{ secrets.TF_BACKEND_HCL }}
           TF_VARS: ${{ secrets.TF_VARS }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
+          umask 077
           printf '%s' "$TF_BACKEND_HCL" > backend.hcl
           printf '%s' "$TF_VARS" > ci.auto.tfvars
+          if [ -z "$DEEPSEEK_API_KEY" ]; then
+            echo "DEEPSEEK_API_KEY repository secret is missing" >&2
+            exit 1
+          fi
+          python3 -c 'import json, os, pathlib; pathlib.Path("zz-deepseek.auto.tfvars.json").write_text(json.dumps({"deepseek_api_key": os.environ["DEEPSEEK_API_KEY"]}), encoding="utf-8")'
 
       - name: Apply preview ECS delivery plan
         working-directory: infrastructure/terraform
