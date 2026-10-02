@@ -1,0 +1,133 @@
+{
+  "evidence_type": "public-price-lookup-and-model-not-bill-or-performance",
+  "lookup_method": "aws pricing get-products --region us-east-1 --profile camgiacntn; exact usage filters",
+  "region": "ap-southeast-1",
+  "currency": "USD",
+  "prices": [
+    {
+      "key": "fargate_vcpu_hour",
+      "service": "AmazonECS",
+      "sku": "YQWFZ9WNR4X9DUPX",
+      "usage_type": "APS1-Fargate-vCPU-Hours:perCPU",
+      "usd": "0.05056",
+      "effective_date": "2026-07-01T00:00:00Z"
+    },
+    {
+      "key": "fargate_gib_hour",
+      "service": "AmazonECS",
+      "sku": "QS3CZ6GMHQ9NKE65",
+      "usage_type": "APS1-Fargate-GB-Hours",
+      "usd": "0.00553",
+      "effective_date": "2026-07-01T00:00:00Z"
+    },
+    {
+      "key": "alb_hour",
+      "service": "AWSELB",
+      "sku": "UXD3JNG6UAM79CW6",
+      "usage_type": "APS1-LoadBalancerUsage",
+      "usd": "0.0252",
+      "effective_date": "2026-08-01T00:00:00Z"
+    },
+    {
+      "key": "alb_lcu_hour",
+      "service": "AWSELB",
+      "sku": "45KY3J5YX2QM6KS7",
+      "usage_type": "APS1-LCUUsage",
+      "usd": "0.008",
+      "effective_date": "2026-08-01T00:00:00Z"
+    },
+    {
+      "key": "public_ipv4_hour",
+      "service": "AmazonVPC",
+      "sku": "C8D8VMQRDHMB9KRU",
+      "usage_type": "APS1-PublicIPv4:InUseAddress",
+      "usd": "0.005",
+      "effective_date": "2026-09-01T00:00:00Z"
+    },
+    {
+      "key": "nat_gb",
+      "service": "AmazonEC2",
+      "sku": "E9U985ZGMWKXKT47",
+      "usage_type": "APS1-NatGateway-Bytes",
+      "usd": "0.059",
+      "effective_date": "2026-09-01T00:00:00Z"
+    },
+    {
+      "key": "regional_waf_acl_month",
+      "service": "awswaf",
+      "sku": "662KTAGFABFH9R5Q",
+      "usage_type": "APS1-WebACLV2",
+      "usd": "5",
+      "effective_date": "2025-12-01T00:00:00Z"
+    },
+    {
+      "key": "regional_waf_rule_month",
+      "service": "awswaf",
+      "sku": "3YTWKVGN4GJDXWEM",
+      "usage_type": "APS1-RuleV2",
+      "usd": "1",
+      "effective_date": "2025-12-01T00:00:00Z"
+    },
+    {
+      "key": "edge_waf_acl_month",
+      "service": "awswaf",
+      "sku": "DYTQ8YBXB7SEXYTZ",
+      "usage_type": "Global-WebACLV2",
+      "usd": "5",
+      "effective_date": "2025-12-01T00:00:00Z"
+    },
+    {
+      "key": "edge_waf_rule_month",
+      "service": "awswaf",
+      "sku": "VRM2EPFJG75YBY5A",
+      "usage_type": "Global-RuleV2",
+      "usd": "1",
+      "effective_date": "2025-12-01T00:00:00Z"
+    }
+  ],
+  "assumptions": {
+    "hours": 730,
+    "linux_x86_on_demand_tasks": 1,
+    "vcpus_per_task": "0.5",
+    "gib_per_task": 1,
+    "albs": 1,
+    "assumed_minimum_public_ipv4_addresses": 2,
+    "waf_acls": 2,
+    "rules_per_acl": 4
+  },
+  "computed": {
+    "task_hour": "0.030810",
+    "task_730_hours": "22.491300",
+    "alb_730_hours": "18.3960",
+    "ipv4_730_hours": "7.300",
+    "waf_full_month": "18",
+    "modeled_base_730_hours_plus_waf_month": "66.187300",
+    "modeled_base_8_hours_plus_waf_8_over_730": "0.7253402739726027397260273973"
+  },
+  "excluded": [
+    "LCU usage",
+    "NAT bytes and shared fixed costs",
+    "CloudFront requests/transfer",
+    "Transcribe/Translate/Cognito",
+    "DynamoDB/S3/ECR",
+    "logs/queries/SNS/SSM/DNS and applicable charges",
+    "tax/credits/discounts",
+    "second task during rollout",
+    "extra ALB public IPs"
+  ],
+  "limitations": [
+    "730 hours is a comparison convention, not the actual month length.",
+    "WAF fees prorate hourly; use actual AWS billing terms for exact month.",
+    "Two ALB public IPs is a modeled minimum, not a verified count of deployed addresses.",
+    "No Free Tier or discounts assumed.",
+    "No AWS application resource created and no performance run."
+  ],
+  "sources": [
+    "https://aws.amazon.com/fargate/pricing/",
+    "https://aws.amazon.com/elasticloadbalancing/pricing/",
+    "https://aws.amazon.com/vpc/pricing/",
+    "https://aws.amazon.com/waf/pricing/",
+    "https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/price-changes.html"
+  ],
+  "lookup_recorded_utc": "2026-10-02 17:59:56 UTC"
+}

@@ -1,0 +1,24 @@
+{
+  "environment": "benchmark",
+  "aws_region": "ap-southeast-1",
+  "expected_account_id": "720459752315",
+  "owner": "camgiacntn",
+  "benchmark_origin_hostname": "benchmark-origin.livecap.logantai.com",
+  "shared_vpc_id": "vpc-0d3a769b408f44be5",
+  "shared_public_subnet_ids": [
+    "subnet-0e7ac68941f5f6dbc",
+    "subnet-05b93952bdbc666fb"
+  ],
+  "shared_private_subnet_ids": [
+    "subnet-0e6c54e39c800f12f",
+    "subnet-0260e958f366bdfb5"
+  ],
+  "image_git_sha": "f5de16716e2ba4834972db44e770c9c25bcee032",
+  "benchmark_client_ipv4_cidrs": [
+    "127.0.0.1/32"
+  ],
+  "monthly_budget_limit_usd": 20,
+  "log_retention_days": 3,
+  "max_sessions_per_ip": 4,
+  "benchmark_alert_email": ""
+}

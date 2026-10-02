@@ -1,0 +1,7 @@
+bucket = "livecap-terraform-state-dev-720459752315"
+key = "livecap/benchmark/terraform.tfstate"
+region = "ap-southeast-1"
+encrypt = true
+use_lockfile = true
+allowed_account_ids = ["720459752315"]
+# Credentials stay in the process environment. Never copy the main backend file.

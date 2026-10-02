@@ -1,0 +1,426 @@
+{
+  "phase": "4A",
+  "evidence_type": "terraform-design-plan-not-performance",
+  "plan_timestamp_utc": "2026-10-02T18:23:05Z",
+  "source_checkpoint": "f5de16716e2ba4834972db44e770c9c25bcee032",
+  "account": "720459752315",
+  "region": "ap-southeast-1",
+  "backend_type": "s3",
+  "backend_bucket": "livecap-terraform-state-dev-720459752315",
+  "backend_key": "livecap/benchmark/terraform.tfstate",
+  "terraform_version": "1.15.8",
+  "provider": "hashicorp/aws 5.100.0",
+  "plan_sha256": "fe523746a92ae7b679b4941738da64368d3bbd39786a99837af0512a7c0de6aa",
+  "plan_json_sha256": "49be69f33fbfd3d063bb48ff6935642c4d8ea6b3d025f462e3aec581f4cb8190",
+  "var_file_sha256": "cdd69504c6dabaefd11429772bdf41cf0785d34baf503789e8cb794e700593cc",
+  "counts": {
+    "create": 40,
+    "update": 0,
+    "delete": 0,
+    "production_create": 0,
+    "production_update": 0,
+    "production_delete": 0
+  },
+  "resources": [
+    {
+      "address": "aws_acm_certificate.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_acm_certificate_validation.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_appautoscaling_target.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_budgets_budget.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_cloudfront_distribution.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_cloudwatch_log_group.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_cognito_user_pool.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_cognito_user_pool_client.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_cognito_user_pool_domain.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_dynamodb_table.benchmark[\"admin-audit\"]",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_dynamodb_table.benchmark[\"room-events\"]",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_dynamodb_table.benchmark[\"sessions\"]",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_dynamodb_table.benchmark[\"transcript-history\"]",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_dynamodb_table.benchmark[\"usage\"]",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_ecr_repository.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_ecs_cluster.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_ecs_service.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_ecs_task_definition.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_iam_role.benchmark[\"execution\"]",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_iam_role.benchmark[\"task\"]",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_iam_role_policy.benchmark_execution",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_iam_role_policy.benchmark_task",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_lb.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_lb_listener.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_lb_target_group.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_s3_bucket.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_s3_bucket_lifecycle_configuration.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_s3_bucket_public_access_block.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_s3_bucket_server_side_encryption_configuration.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_security_group.benchmark_alb",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_security_group.benchmark_tasks",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_sns_topic.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_sns_topic_policy.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_ssm_parameter.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_wafv2_ip_set.benchmark_alb",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_wafv2_ip_set.benchmark_edge",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_wafv2_web_acl.benchmark_alb",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_wafv2_web_acl.benchmark_edge",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "aws_wafv2_web_acl_association.benchmark",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "terraform_data.benchmark_guard",
+      "actions": [
+        "create"
+      ]
+    }
+  ],
+  "source_sha256": {
+    "infrastructure/benchmark/.terraform.lock.hcl": "6c4d28a195e36fd3194ec9a9b4c1b7366e42aee81a05aa01e296f34b2cac9792",
+    "infrastructure/benchmark/backend.hcl.example": "cdbc25a0b8020b3f88a6c533250825bd0526dfb216d38cf20e211f674e86f7a9",
+    "infrastructure/benchmark/benchmark.tfvars.json.example": "feb872a6ef64d3916a3d86efed8fd110e47c448e556e20a7ffcc82882647b5ed",
+    "infrastructure/benchmark/cost.tf": "a5134241580d51e7cb11045975e60ebf04473419b7a220fc2fdd2db91c727e98",
+    "infrastructure/benchmark/main.tf": "27ce2bf7aab32e970acc6c9beca960c533289e3f5b9b3ee85e2491c718a1928b",
+    "infrastructure/benchmark/network.tf": "fe4b0cfdb7bba619dfb11c10a498e34287fd6676b7d5578e7d74faada821bb05",
+    "infrastructure/benchmark/outputs.tf": "f9e5ca440bf4607e86b0a19b2a8d4881cffc26d2a55d1a504363223a43b0f54b",
+    "infrastructure/benchmark/runtime.tf": "9bbcb2e397e60722f076d3c3c9686a407d466b39b81a6b5b7d3cef76c5778c4d",
+    "infrastructure/benchmark/storage.tf": "d0f9447c1db4f710f0a0f6e6a2df5c955b330e62b693f47ad96bc1c859858731",
+    "infrastructure/benchmark/variables.tf": "28fa0cfd93889e93d135b04e120b57e76b157e0ac27e7c43d2d714e2e2c79475",
+    "infrastructure/benchmark/waf.tf": "60d401b7e8afea83ab852605aa683905ffc9d1242081b9a12b0504acfc85c560",
+    "tools/benchmark_preflight.py": "d107bb25accfca82f19d1a5bb2b7c1c332e4e15230e02c81d37a92fc5d41977b",
+    "tools/plan_benchmark.ps1": "d45a562782f95f93195e7b058fe6f09dcd1cfb2794bf79e77e592c080a07ccb9",
+    "tools/build_benchmark_image.ps1": "1653f7d1d16b066b74335bedd6a9f1c35a84d223ea9845ac3401590eb3503c83",
+    "tools/tests/test_benchmark_preflight.py": "cbedcc6f21bf290ab5c3b6d36729de6929102298b9ecfbf65316b524d13a9497",
+    "docs/benchmark-environment.md": "63245feec0c5530d97a3e35a4afbee409427e38c27f6a2416be850ceb2bcc754",
+    "docs/benchmark-phase4b-entry.md": "d72dcdc2a95ff3a96069c9187b55e1e7eab6afe6e7b3247abc6b2d6c6f303685",
+    "docs/benchmark-environment-pricing.json": "c552f85bc6d44f87e09174cf9c4c9b81fc9e32e8936981cf9bc1da901c7b8100"
+  },
+  "secret_pattern_counts": {
+    "infrastructure/benchmark/.terraform.lock.hcl": 0,
+    "infrastructure/benchmark/backend.hcl.example": 0,
+    "infrastructure/benchmark/benchmark.tfvars.json.example": 0,
+    "infrastructure/benchmark/cost.tf": 0,
+    "infrastructure/benchmark/main.tf": 0,
+    "infrastructure/benchmark/network.tf": 0,
+    "infrastructure/benchmark/outputs.tf": 0,
+    "infrastructure/benchmark/runtime.tf": 0,
+    "infrastructure/benchmark/storage.tf": 0,
+    "infrastructure/benchmark/variables.tf": 0,
+    "infrastructure/benchmark/waf.tf": 0,
+    "tools/benchmark_preflight.py": 0,
+    "tools/plan_benchmark.ps1": 0,
+    "tools/build_benchmark_image.ps1": 0,
+    "tools/tests/test_benchmark_preflight.py": 0,
+    "docs/benchmark-environment.md": 0,
+    "docs/benchmark-phase4b-entry.md": 0,
+    "docs/benchmark-environment-pricing.json": 0,
+    "local-plan/benchmark-plan.json": 0,
+    "local-plan/benchmark-bootstrap-plan.json": 0
+  },
+  "validation": {
+    "fmt_check_recursive": "passed",
+    "terraform_validate": "passed",
+    "safety_tests": 17,
+    "git_diff_check": "passed",
+    "powershell_tf_cli_args_destroy_injection": "rejected before init",
+    "release_preflight_current_tree": "rejected with clean_worktree=false",
+    "plan_isolation_full": "passed",
+    "plan_isolation_bootstrap": "passed",
+    "local_image_validation": {
+      "source_sha": "f5de16716e2ba4834972db44e770c9c25bcee032",
+      "linux_amd64": true,
+      "python": "3.11.15",
+      "compileall": "passed",
+      "dependency_imports": "passed",
+      "pip_check": "passed",
+      "phase3_event_names_present": 7,
+      "network": "none",
+      "local_image_id": "sha256:8a1bfeaf1d0dacbea622b7083ae2fc88b4e86db3273331071e3605927df4cb27",
+      "remote_digest_verified": false
+    },
+    "powershell_image_script_syntax": "passed",
+    "staged_diff_check": "passed after EOF normalization, including all newly staged benchmark files"
+  },
+  "clean_worktree": false,
+  "collab_log_sha256": "f1529dd297787110a802d89e4f419f7076dbb616f75e612c80f0c430312df5b5",
+  "p4b_recommendation": "ENTRY NO-GO pending recipient and clean checkpoint; bootstrap outputs are later P4B gates",
+  "blocked_on": [
+    "cost alert recipient in private local configuration",
+    "clean P4A execution checkpoint and fresh plans from that checkout",
+    "explicit apply authorization after bootstrap plan review"
+  ],
+  "application_resources_created": 0,
+  "applied": false,
+  "deployed_image": false,
+  "created_cognito_user": false,
+  "called_wake": false,
+  "ran_benchmark": false,
+  "staged": false,
+  "committed": false,
+  "bootstrap_plan": {
+    "timestamp_utc": "2026-10-02T18:23:48Z",
+    "complete_graph": false,
+    "scope": "targeted ECR and ACM only; omitted graph not certified",
+    "counts": {
+      "create": 2,
+      "update": 0,
+      "delete": 0,
+      "production_create": 0,
+      "production_update": 0,
+      "production_delete": 0
+    },
+    "resources": [
+      {
+        "address": "aws_acm_certificate.benchmark",
+        "actions": [
+          "create"
+        ]
+      },
+      {
+        "address": "aws_ecr_repository.benchmark",
+        "actions": [
+          "create"
+        ]
+      }
+    ],
+    "plan_sha256": "eef3c919f37e725a8ac48efdc21a7e7854a7b639440324dbff699dd99b84a002",
+    "plan_json_sha256": "a88996582b315fea258bf3efcc3e4f7460d67542de026668e2e1314660895e5b"
+  },
+  "dns_read_only": {
+    "origin_a_lookup": "NXDOMAIN",
+    "authoritative_nameservers": [
+      "launch1.spaceship.net",
+      "launch2.spaceship.net"
+    ],
+    "route53_zones_in_verified_account": 0,
+    "ownership_verified": false,
+    "dns_admin_user_confirmed": true
+  },
+  "budget": {
+    "monthly_alert_threshold_usd": 20,
+    "user_selected": true,
+    "enforced_cap": false,
+    "recipient_configured": false,
+    "delivery_verified": false
+  },
+  "validated_at_utc": "2026-10-02T18:24:23.321815+00:00",
+  "read_only_aws_audit": {
+    "benchmark_state_prefix_object_count": 0,
+    "transcribe_concurrent_streams_quota": 25,
+    "transcribe_http2_start_tps_quota": 25,
+    "transcribe_websocket_start_tps_quota": 25,
+    "fargate_on_demand_vcpu_quota": 30,
+    "other_account_consumers_verified": false,
+    "environment_cost_allocation_tag_status": "Inactive",
+    "custom_cloudtrail_trails_found": 0,
+    "ecs_event_history_observed": {
+      "event_id": "ad4e0efa-c8e4-4b56-bf22-50b82c39623f",
+      "event_time": "2026-10-03T00:28:43+07:00",
+      "event_name": "DescribeTaskDefinition"
+    },
+    "sampled_iam_create_action_simulation": "allowed; not all permissions/context/SCP verified"
+  },
+  "client_allowlist": {
+    "actual_machine_egress_detected": true,
+    "stored_only_in_ignored_local_tfvars": true,
+    "live_waf_boundary_verified": false
+  },
+  "checkpoint_commit_authorized_by_user": true,
+  "later_p4b_gates": [
+    "bootstrap ECR/ACM, certificate validation and image push/provenance",
+    "billing-tag activation and propagation before full service provisioning",
+    "full service cost/plan authorization and teardown deadline",
+    "exact new origin CNAME after new ALB creation",
+    "confirmed alerts and isolated Cognito identities before smoke",
+    "separately authorized real warm/load/cold scenarios"
+  ],
+  "source_hash_normalization": "UTF-8 text with CRLF normalized to LF; SHA256 of resulting UTF-8 bytes"
+}
