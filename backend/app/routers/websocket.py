@@ -39,9 +39,8 @@ Error handling
 from __future__ import annotations
 
 import asyncio
-import time
 import json
-import logging
+import time
 import uuid
 from dataclasses import dataclass
 from typing import AsyncIterator, NamedTuple
@@ -60,7 +59,7 @@ from app.models import (
     StopMessage,
 )
 from app.services.logging_service import (
-    get_logger,
+    get_safe_logger,
     log_integration_error,
     log_session_end,
     log_session_start,
@@ -77,10 +76,14 @@ from app.services.room_service import get_room_service
 from app.services.transcription import TranscriptionService
 from app.services.translation import translate_segment
 from app.utils.audio import validate_audio_chunk
+from app.services.pipeline_instrumentation import (
+    CURRENT, PipelineTelemetry, context, duration_ms, error_type,
+    segment_id as safe_segment_id, validate_benchmark_run_id,
+)
 
 router = APIRouter()
 
-_logger: logging.Logger = get_logger()
+_logger = get_safe_logger()
 
 
 class LanguageMode(NamedTuple):
@@ -185,6 +188,7 @@ class TranscriptCandidate:
     message: FinalizedSegmentMessage
     mode: LanguageMode
     created_at: float
+    instrumentation_started_at: float | None = None
 
 
 @dataclass(frozen=True)
@@ -215,10 +219,15 @@ class _SingleStreamCaptionBuffer:
 
     def __init__(self) -> None:
         self._messages: list[FinalizedSegmentMessage] = []
+        self._instrumentation_starts: list[float] = []
 
     def add(self, message: FinalizedSegmentMessage) -> list[FinalizedSegmentMessage]:
+        started = time.perf_counter()
         text = _source_text(message).strip()
         if not text or _is_suspicious_micro_fragment(message):
+            context().emit("arbitration_or_buffer_completed", kind="single_buffer", outcome="dropped",
+                           segment_id=message.segment_id, duration_ms=duration_ms(started),
+                           reason="empty_or_suspicious")
             return []
 
         ready: list[FinalizedSegmentMessage] = []
@@ -233,6 +242,7 @@ class _SingleStreamCaptionBuffer:
                     ready.append(flushed)
 
         self._messages.append(message)
+        self._instrumentation_starts.append(started)
         if self._should_flush():
             flushed = self.flush()
             if flushed is not None:
@@ -245,6 +255,11 @@ class _SingleStreamCaptionBuffer:
 
         messages = self._messages
         self._messages = []
+        starts = self._instrumentation_starts
+        self._instrumentation_starts = []
+        for message, started in zip(messages, starts):
+            context().emit("arbitration_or_buffer_completed", kind="single_buffer", outcome="emitted",
+                           segment_id=message.segment_id, duration_ms=duration_ms(started))
         first = messages[0]
         last = messages[-1]
         merged_text = " ".join(
@@ -309,16 +324,50 @@ _DUAL_OUTPUT_QUEUE_SIZE = 64
 # ---------------------------------------------------------------------------
 
 
-async def _send(websocket: WebSocket, message) -> None:
+async def _send(websocket: WebSocket, message) -> bool:
     """Serialize *message* to JSON and send it to *websocket*.
 
     Silently ignores send errors that occur after a disconnect has already
     been initiated, so teardown code can call this unconditionally.
     """
+    telemetry = CURRENT.get()
+    is_partial = isinstance(message, PartialSegmentMessage)
+    is_final = isinstance(message, FinalizedSegmentMessage)
+    started = time.perf_counter()
+    failure = None
+    success = False
+    if telemetry is not None and telemetry.admitted:
+        telemetry.partial_count += int(is_partial)
+        telemetry.final_count += int(is_final)
     try:
         await websocket.send_text(message.model_dump_json())
-    except Exception:  # noqa: BLE001
-        pass
+        success = True
+    except asyncio.CancelledError as exc:
+        failure = exc
+        if telemetry is not None and telemetry.admitted:
+            telemetry.fail("send_failed", exc)
+        raise
+    except Exception as exc:  # noqa: BLE001
+        failure = exc
+        if telemetry is not None and telemetry.admitted:
+            telemetry.fail("send_failed", exc)
+    finally:
+        elapsed = duration_ms(started)
+        if telemetry is not None and telemetry.admitted:
+            if isinstance(message, SessionEndMessage):
+                telemetry.session_end_send_success = success
+            if is_partial:
+                telemetry.partial_send_success_count += int(success)
+                telemetry.partial_send_failure_count += int(not success)
+                telemetry.partial_send_duration_sum_ms += elapsed
+                telemetry.partial_send_duration_max_ms = max(telemetry.partial_send_duration_max_ms or 0, elapsed)
+                if failure:
+                    telemetry.partial_send_error_type = error_type(failure)
+            elif is_final:
+                telemetry.emit("websocket_caption_send_completed", kind="final", aggregate=False,
+                               segment_id=message.segment_id, success=success, error=failure,
+                               duration_ms=elapsed, send_duration_ms=elapsed)
+    return success
 
 
 async def _send_caption(
@@ -458,16 +507,12 @@ def _log_candidate_dropped(
     candidate: TranscriptCandidate,
     reason: str,
 ) -> None:
-    _logger.info(
-        "transcript_candidate_dropped",
-        extra={
-            "event": "transcript_candidate_dropped",
-            "session_id": session_id,
-            "source_language": candidate.source_language,
-            "reason": reason,
-            "transcript_text": candidate.transcript_text,
-        },
-    )
+    telemetry = context(session_id)
+    telemetry.emit("arbitration_or_buffer_completed", kind="dual_arbitration", outcome="dropped",
+                   reason=reason, segment_id=safe_segment_id(candidate.message.segment_id,
+                                                            telemetry.stream_mode, candidate.source_language),
+                   duration_ms=duration_ms(candidate.instrumentation_started_at)
+                   if candidate.instrumentation_started_at is not None else None)
 
 
 def _tokenize_for_language_score(text: str) -> list[str]:
@@ -517,7 +562,7 @@ async def _translate_finalized_candidate(
     )
 
     try:
-        translated = await translate_segment(
+        translated = await _translate_observed(
             segment,
             session_id=session_id,
             source_language_code=mode.source_translate_code,
@@ -576,18 +621,6 @@ async def _run_dual_transcription_worker(
                 continue
             if isinstance(msg, FinalizedSegmentMessage):
                 transcript_text = _final_text(msg, source_language).strip()
-                _logger.info(
-                    f"{source_language}_transcript_candidate",
-                    extra={
-                        "event": f"{source_language}_transcript_candidate",
-                        "session_id": session_id,
-                        "source_language": source_language,
-                        "transcript_text": transcript_text,
-                        "is_final": True,
-                        "timestamp_start": msg.timestamp_start,
-                        "timestamp_end": msg.timestamp_end,
-                    },
-                )
                 await candidate_queue.put(
                     TranscriptCandidate(
                         source_language=source_language,
@@ -595,9 +628,11 @@ async def _run_dual_transcription_worker(
                         message=msg,
                         mode=mode,
                         created_at=time.monotonic(),
+                        instrumentation_started_at=time.perf_counter(),
                     )
                 )
     except Exception as exc:
+        context(session_id).fail("transcribe_failed", exc)
         await candidate_queue.put(exc)
     finally:
         await candidate_queue.put(None)
@@ -725,16 +760,12 @@ async def _arbitrate_dual_candidates(
         # so subsequent partials are shown from the matching Transcribe stream.
         if dominant_language is not None:
             dominant_language.value = selected.source_language
-        _logger.info(
-            "transcript_candidate_emitted",
-            extra={
-                "event": "transcript_candidate_emitted",
-                "session_id": session_id,
-                "source_language": selected.source_language,
-                "transcript_text": selected.transcript_text,
-                "language_score": _language_score(selected),
-            },
-        )
+        telemetry = context(session_id)
+        telemetry.emit("arbitration_or_buffer_completed", kind="dual_arbitration", outcome="emitted",
+                       segment_id=safe_segment_id(selected.message.segment_id, telemetry.stream_mode,
+                                                  selected.source_language),
+                       duration_ms=duration_ms(selected.instrumentation_started_at)
+                       if selected.instrumentation_started_at is not None else None)
         yield await _translate_finalized_candidate(
             msg=selected.message,
             session_id=session_id,
@@ -804,6 +835,50 @@ async def _drive_dual_arbiter(
 
 @router.websocket("/ws/transcribe")
 async def websocket_transcribe(websocket: WebSocket) -> None:
+    telemetry = PipelineTelemetry(benchmark_run_id=validate_benchmark_run_id(
+        websocket.query_params.get("benchmark_run_id")))
+    admission_started = telemetry.started_at
+    token = CURRENT.set(telemetry)
+    try:
+        await _websocket_transcribe(websocket, telemetry, admission_started)
+    except BaseException as exc:
+        if telemetry.admitted:
+            telemetry.fail("internal_error", exc)
+        else:
+            telemetry.admission("store_error", admission_started, exc)
+        raise
+    finally:
+        try:
+            telemetry.finish()
+        finally:
+            CURRENT.reset(token)
+
+
+async def _translate_observed(segment, **kwargs):
+    """Count translation outcomes without changing or logging the payload."""
+    telemetry = CURRENT.get()
+    source = segment.text_vi if segment.spoken_language == "vi" else segment.text_en
+    try:
+        translated = await translate_segment(segment, **kwargs)
+    except Exception as exc:
+        if telemetry is not None:
+            telemetry.translation_failure_count += 1
+            telemetry.fail("translation_degraded", exc)
+        raise
+    if telemetry is not None:
+        target = translated.text_en if segment.spoken_language == "vi" else translated.text_vi
+        if not source.strip():
+            telemetry.translation_skipped_count += 1
+        elif target.strip():
+            telemetry.translation_success_count += 1
+        else:
+            telemetry.translation_failure_count += 1
+            telemetry.fail("translation_degraded")
+    return translated
+
+
+async def _websocket_transcribe(websocket: WebSocket, telemetry: PipelineTelemetry,
+                                admission_started: float) -> None:
     """Accept a WebSocket upgrade and manage the full transcription session.
 
     This is the primary entry point for the Streaming_Channel.  It:
@@ -827,6 +902,11 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         settings.bilingual_dual_stream
         and websocket.query_params.get("stream_mode") != "single"
     )
+    telemetry.session_id = session_id
+    telemetry.stream_mode = "dual" if use_dual_stream else "single"
+    if language_mode is not None:
+        telemetry.source_language = language_mode.source_language_code
+        telemetry.target_language = language_mode.target_language_code
 
     auth_protocol = _authenticated_subprotocol(websocket, settings.enable_auth)
     await websocket.accept(subprotocol=auth_protocol)
@@ -836,9 +916,18 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     if settings.enable_auth:
         token = _access_token_from_subprotocol(websocket)
         try:
-            auth_user = authenticate_access_token(token or "")
-            auth_user_is_admin = await asyncio.to_thread(is_admin_user, auth_user)
-        except HTTPException:
+            started = time.perf_counter()
+            try:
+                auth_user = authenticate_access_token(token or "")
+            finally:
+                telemetry.auth_duration_ms = duration_ms(started)
+            started = time.perf_counter()
+            try:
+                auth_user_is_admin = await asyncio.to_thread(is_admin_user, auth_user)
+            finally:
+                telemetry.admin_check_duration_ms = duration_ms(started)
+        except HTTPException as exc:
+            telemetry.admission("auth_rejected", admission_started, exc)
             await _send_error(
                 websocket,
                 message="Sign in is required to start a LiveCap session.",
@@ -879,21 +968,25 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
             return
 
     client_ip = _resolve_client_ip(websocket)
-    session_registry = get_session_registry(settings)
-    session_registered = False
-    limit_result = session_registry.try_register(
-        session_id=session_id,
-        client_ip=client_ip,
-        max_total=settings.max_concurrent_sessions,
-        max_per_ip=settings.max_sessions_per_ip,
-    )
+    started = time.perf_counter()
+    try:
+        session_registry = get_session_registry(settings)
+        session_registered = False
+        limit_result = session_registry.try_register(
+            session_id=session_id,
+            client_ip=client_ip,
+            max_total=settings.max_concurrent_sessions,
+            max_per_ip=settings.max_sessions_per_ip,
+        )
+    finally:
+        telemetry.registry_duration_ms = duration_ms(started)
     if not limit_result.allowed:
+        telemetry.admission("limit_rejected", admission_started)
         _logger.warning(
             "Session rejected by active-session limit",
             extra={
                 "event": "session_rejected",
                 "session_id": session_id,
-                "client_ip": client_ip,
                 "reason": limit_result.reason,
                 "max_concurrent_sessions": settings.max_concurrent_sessions,
                 "max_sessions_per_ip": settings.max_sessions_per_ip,
@@ -912,23 +1005,32 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
     # --- Usage quota check (B2C tier enforcement) ---
     # Only enforced when auth is on and quota tracking is enabled.
     if auth_user is not None and settings.enable_auth:
+        started = time.perf_counter()
         try:
             from app.services.usage_quota import reserve_weekly_session  # noqa: PLC0415
             quota_error = reserve_weekly_session(
                 auth_user.user_id, is_admin=auth_user_is_admin
             )
             if quota_error:
+                telemetry.quota_duration_ms = duration_ms(started)
+                telemetry.admission("quota_rejected", admission_started)
                 _logger.warning(
                     "Session rejected by quota limit",
-                    extra={"event": "quota_exceeded", "session_id": session_id, "user_id": auth_user.user_id},
+                    extra={"event": "quota_exceeded", "session_id": session_id},
                 )
                 session_registry.unregister(session_id)
                 session_registered = False
                 await _send_error(websocket, message=quota_error, code=ErrorCode.QUOTA_EXCEEDED)
                 await websocket.close(code=1008)
                 return
-        except Exception:  # noqa: BLE001 — fail open, never block on quota errors
-            pass
+        except Exception as exc:  # noqa: BLE001 — preserve quota fail-open behavior
+            telemetry.quota_error_type = error_type(exc)
+        finally:
+            telemetry.quota_duration_ms = duration_ms(started)
+
+    telemetry.admitted = True
+    telemetry.admission("store_error" if telemetry.quota_error_type else "admitted", admission_started)
+    telemetry.started_at = time.perf_counter()
 
     log_websocket_connect(session_id)
 
@@ -971,27 +1073,25 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
             while True:
                 try:
                     raw = await websocket.receive()
-                except WebSocketDisconnect:
+                except WebSocketDisconnect as exc:
+                    telemetry.fail("client_disconnect", exc)
+                    telemetry.close_code = exc.code if isinstance(exc.code, int) else None
                     break
 
                 # Client disconnect.
                 if raw.get("type") == "websocket.disconnect":
+                    telemetry.fail("client_disconnect")
+                    telemetry.close_code = raw.get("code") if isinstance(raw.get("code"), int) else None
                     break
 
                 if "bytes" in raw and raw["bytes"] is not None:
                     # Binary frame — audio chunk.
                     data: bytes = raw["bytes"]
-                    if settings.audio_pipeline_debug:
-                        _logger.info(
-                            "audio_pipeline_websocket_received",
-                            extra={
-                                "event": "audio_pipeline_websocket_received",
-                                "session_id": session_id,
-                                "byte_length": len(data),
-                            },
-                        )
+                    telemetry.audio_bytes_received += len(data)
+                    telemetry.audio_frames_received += 1
                     valid, reason = validate_audio_chunk(data)
                     if not valid:
+                        telemetry.fail("internal_error")
                         # Reject malformed audio (Requirement 2.8).
                         _logger.warning(
                             "Invalid audio chunk received",
@@ -1008,32 +1108,8 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                     if use_dual_stream:
                         await vi_audio_queue.put(data)
                         await en_audio_queue.put(data)
-                        _logger.info(
-                            "dual_stream_audio_fanned_out",
-                            extra={
-                                "event": "dual_stream_audio_fanned_out",
-                                "session_id": session_id,
-                                "byte_length": len(data),
-                                "vi_queue_size": vi_audio_queue.qsize(),
-                                "en_queue_size": en_audio_queue.qsize(),
-                            },
-                        )
                     else:
                         await audio_queue.put(data)
-                    if settings.audio_pipeline_debug:
-                        _logger.info(
-                            "audio_pipeline_audio_queued",
-                            extra={
-                                "event": "audio_pipeline_audio_queued",
-                                "session_id": session_id,
-                                "byte_length": len(data),
-                                "queue_size": (
-                                    vi_audio_queue.qsize()
-                                    if use_dual_stream
-                                    else audio_queue.qsize()
-                                ),
-                            },
-                        )
 
                 elif "text" in raw and raw["text"] is not None:
                     # Text frame — expect JSON control message.
@@ -1086,6 +1162,10 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                 await reader_task
             except (asyncio.CancelledError, Exception):
                 pass
+        if reader_task.done() and not reader_task.cancelled():
+            reader_error = reader_task.exception()
+            if reader_error is not None:
+                telemetry.fail("internal_error", reader_error)
 
         # Record minutes used against the user's monthly quota.
         if auth_user is not None and settings.enable_auth:
@@ -1125,7 +1205,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                     epoch = room_partial_epoch
                     from app.models import Segment
 
-                    translated = await translate_segment(
+                    translated = await _translate_observed(
                         Segment(
                             segment_id=partial.segment_id,
                             speaker_label=partial.speaker_label,
@@ -1235,6 +1315,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                         if error_event.is_set():
                             break
                         if isinstance(msg, Exception):
+                            telemetry.fail("transcribe_failed", msg)
                             log_integration_error(
                                 session_id=session_id,
                                 service_name="Amazon Transcribe Streaming",
@@ -1297,7 +1378,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                         timestamp_end=finalized_msg.timestamp_end,
                     )
                     try:
-                        translated = await translate_segment(
+                        translated = await _translate_observed(
                             segment,
                             session_id=session_id,
                             source_language_code=language_mode.source_translate_code,
@@ -1328,7 +1409,15 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                     )
 
                 try:
-                    async for msg in transcription_service.transcribe(audio_queue):
+                    results = transcription_service.transcribe(audio_queue).__aiter__()
+                    while True:
+                        try:
+                            msg = await anext(results)
+                        except StopAsyncIteration:
+                            break
+                        except Exception as exc:
+                            telemetry.fail("transcribe_failed", exc)
+                            raise
                         # Check if an audio-format error was flagged by the reader.
                         if error_event.is_set():
                             break
@@ -1346,6 +1435,7 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                                 await emit_single_finalized(ready_message)
 
                         elif isinstance(msg, Exception):
+                            telemetry.fail("transcribe_failed", msg)
                             # Transcription error surfaced as an exception value.
                             log_integration_error(
                                 session_id=session_id,
@@ -1374,7 +1464,8 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
                     code=error_details.get("code", ErrorCode.INVALID_AUDIO_FORMAT),
                 )
 
-    except TimeoutError:
+    except TimeoutError as exc:
+        telemetry.fail("timeout", exc)
         # Session timeout (Requirement 2.5).
         _logger.info(
             "Session timed out",
@@ -1394,18 +1485,20 @@ async def websocket_transcribe(websocket: WebSocket) -> None:
         )
         await _signal_end_of_stream()
 
-    except WebSocketDisconnect:
+    except WebSocketDisconnect as exc:
+        telemetry.fail("client_disconnect", exc)
         _logger.info(
             "WebSocket disconnected",
             extra={"event": "websocket_disconnect_mid_session", "session_id": session_id},
         )
 
     except Exception as exc:
+        if "transcribe_failed" not in telemetry.failures:
+            telemetry.fail("internal_error", exc)
         # Unexpected error (Requirement 3.7).
         _logger.error(
             "Unexpected error in WebSocket handler",
-            extra={"session_id": session_id, "error": str(exc)},
-            exc_info=True,
+            extra={"session_id": session_id, "error_type": error_type(exc)},
         )
         await _send_error(
             websocket,

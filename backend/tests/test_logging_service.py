@@ -287,11 +287,13 @@ class TestLogIntegrationError:
         record = self._make_record(mod, "s-1", "Amazon S3", TypeError("bad type"))
         assert record["error_type"] == "TypeError"
 
-    def test_error_message_included(self):
+    def test_error_message_and_traceback_are_omitted(self):
         mod = _reload_service()
         exc = RuntimeError("bucket not found")
         record = self._make_record(mod, "s-1", "Amazon S3", exc)
-        assert "bucket not found" in record["error_message"]
+        assert "error_message" not in record
+        assert "traceback" not in record
+        assert "bucket not found" not in json.dumps(record)
 
     def test_level_is_error(self):
         mod = _reload_service()

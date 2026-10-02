@@ -31,7 +31,6 @@ import json
 import logging
 import os
 import sys
-import traceback
 from datetime import datetime, timezone
 from typing import Any
 
@@ -95,7 +94,8 @@ class _JsonFormatter(logging.Formatter):
                 payload[key] = value
 
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            # Messages/tracebacks may contain transcript text or credentials.
+            payload["exception"] = record.exc_info[0].__name__
 
         return json.dumps(payload, default=str)
 
@@ -191,7 +191,7 @@ def setup_logging(
         logger.addHandler(handler)
         logger.warning(
             "CloudWatch handler unavailable; falling back to stdout logging",
-            extra={"reason": str(exc)},
+            extra={"error_type": type(exc).__name__},
         )
 
 
@@ -207,7 +207,7 @@ def log_session_start(session_id: str) -> None:
     record a session-start event associated with the Session_ID through the
     Logging_Service.
     """
-    _logger.info(
+    get_safe_logger().info(
         "session_start",
         extra={"event": "session_start", "session_id": session_id},
     )
@@ -220,7 +220,7 @@ def log_session_end(session_id: str) -> None:
     a session-end event associated with the Session_ID through the
     Logging_Service.
     """
-    _logger.info(
+    get_safe_logger().info(
         "session_end",
         extra={"event": "session_end", "session_id": session_id},
     )
@@ -249,15 +249,13 @@ def log_integration_error(
     error:
         The exception that was raised.
     """
-    _logger.error(
+    get_safe_logger().error(
         "integration_error",
         extra={
             "event": "integration_error",
             "session_id": session_id,
             "service_name": service_name,
             "error_type": type(error).__name__,
-            "error_message": str(error),
-            "traceback": traceback.format_exc(),
         },
     )
 
@@ -268,7 +266,7 @@ def log_websocket_connect(session_id: str) -> None:
     Convenience helper for the WebSocket handler (design: Logging_Service
     responsibility includes WebSocket connection/disconnection events).
     """
-    _logger.info(
+    get_safe_logger().info(
         "websocket_connect",
         extra={"event": "websocket_connect", "session_id": session_id},
     )
@@ -276,7 +274,7 @@ def log_websocket_connect(session_id: str) -> None:
 
 def log_websocket_disconnect(session_id: str) -> None:
     """Record a WebSocket disconnection event."""
-    _logger.info(
+    get_safe_logger().info(
         "websocket_disconnect",
         extra={"event": "websocket_disconnect", "session_id": session_id},
     )
@@ -295,3 +293,26 @@ def get_logger() -> logging.Logger:
     formatting and handler configuration across the whole application.
     """
     return _logger
+
+
+class _BestEffortLogger:
+    """Preserve the existing logger interface without throwing handler errors."""
+
+    def __init__(self, logger: logging.Logger) -> None:
+        self.logger = logger
+
+    def __getattr__(self, name):
+        method = getattr(self.logger, name)
+        if name not in {"debug", "info", "warning", "error", "exception", "critical", "log"}:
+            return method
+
+        def safe_call(*args, **kwargs):
+            try:
+                return method(*args, **kwargs)
+            except Exception:
+                return None
+        return safe_call
+
+
+def get_safe_logger(logger: logging.Logger | None = None):
+    return _BestEffortLogger(logger if logger is not None else _logger)
