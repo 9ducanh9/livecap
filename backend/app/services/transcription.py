@@ -41,6 +41,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from typing import AsyncIterator
 
 from amazon_transcribe.client import TranscribeStreamingClient
@@ -53,7 +54,8 @@ from app.models import (
     PartialSegmentMessage,
     SegmentIdAllocator,
 )
-from app.services.logging_service import get_logger, log_integration_error
+from app.services.logging_service import get_safe_logger, log_integration_error
+from app.services.pipeline_instrumentation import context, duration_ms, segment_id as safe_segment_id
 
 # Sample rate and encoding required by the Expected_Audio_Format.
 _SAMPLE_RATE_HZ = 16_000
@@ -107,7 +109,7 @@ class TranscriptionService:
         self._language_code = language_code or self._settings.transcribe_language_code
         # Optional per-language custom vocabulary (A5). None = default vocabulary.
         self._vocabulary_name = _resolve_vocabulary_name(self._language_code)
-        self._logger: logging.Logger = get_logger()
+        self._logger = get_safe_logger()
 
         # Allocates stable Segment_IDs within this session (CP-2).
         self._id_allocator = SegmentIdAllocator(prefix="seg")
@@ -161,9 +163,10 @@ class TranscriptionService:
             PartialSegmentMessage | FinalizedSegmentMessage | Exception | None
         ] = asyncio.Queue()
 
-        client = TranscribeStreamingClient(region=self._settings.aws_region)
-
+        open_started = time.perf_counter()
+        telemetry = context(self._session_id)
         try:
+            client = TranscribeStreamingClient(region=self._settings.aws_region)
             stream = await client.start_stream_transcription(
                 language_code=self._language_code,
                 media_sample_rate_hz=_SAMPLE_RATE_HZ,
@@ -173,10 +176,15 @@ class TranscriptionService:
                 partial_results_stability="medium",
             )
         except Exception as exc:
+            telemetry.emit("transcribe_stream_started", success=False, error=exc,
+                           duration_ms=duration_ms(open_started), stream_language=self._language_code)
             log_integration_error(
                 self._session_id, "Amazon Transcribe Streaming", exc
             )
             raise
+
+        telemetry.emit("transcribe_stream_started", duration_ms=duration_ms(open_started),
+                       stream_language=self._language_code)
 
         handler = _SegmentHandler(
             stream.output_stream,
@@ -196,15 +204,6 @@ class TranscriptionService:
                     if chunk is None:
                         # End-of-stream sentinel received.
                         break
-                    if self._settings.audio_pipeline_debug:
-                        self._logger.info(
-                            "audio_pipeline_send_audio_event",
-                            extra={
-                                "event": "audio_pipeline_send_audio_event",
-                                "session_id": self._session_id,
-                                "byte_length": len(chunk),
-                            },
-                        )
                     await stream.input_stream.send_audio_event(audio_chunk=chunk)
             except Exception as exc:
                 log_integration_error(
@@ -253,6 +252,8 @@ class TranscriptionService:
                 await producer_task
             except Exception:
                 pass
+            finally:
+                handler.log_partial_summary()
 
     async def transcribe_streaming(
         self,
@@ -278,9 +279,10 @@ class TranscriptionService:
             Re-raised after logging when Transcribe returns an error.
         """
 
-        client = TranscribeStreamingClient(region=self._settings.aws_region)
-
+        open_started = time.perf_counter()
+        telemetry = context(self._session_id)
         try:
+            client = TranscribeStreamingClient(region=self._settings.aws_region)
             stream = await client.start_stream_transcription(
                 language_code=self._language_code,
                 media_sample_rate_hz=_SAMPLE_RATE_HZ,
@@ -290,10 +292,15 @@ class TranscriptionService:
                 partial_results_stability="medium",
             )
         except Exception as exc:
+            telemetry.emit("transcribe_stream_started", success=False, error=exc,
+                           duration_ms=duration_ms(open_started), stream_language=self._language_code)
             log_integration_error(
                 self._session_id, "Amazon Transcribe Streaming", exc
             )
             raise
+
+        telemetry.emit("transcribe_stream_started", duration_ms=duration_ms(open_started),
+                       stream_language=self._language_code)
 
         handler = _SegmentHandler(
             stream.output_stream,
@@ -311,15 +318,6 @@ class TranscriptionService:
                     chunk = await audio_queue.get()
                     if chunk is None:
                         break
-                    if self._settings.audio_pipeline_debug:
-                        self._logger.info(
-                            "audio_pipeline_send_audio_event",
-                            extra={
-                                "event": "audio_pipeline_send_audio_event",
-                                "session_id": self._session_id,
-                                "byte_length": len(chunk),
-                            },
-                        )
                     await stream.input_stream.send_audio_event(audio_chunk=chunk)
             except Exception as exc:
                 log_integration_error(
@@ -341,6 +339,8 @@ class TranscriptionService:
                 self._session_id, "Amazon Transcribe Streaming", exc
             )
             raise
+        finally:
+            handler.log_partial_summary()
 
     # ------------------------------------------------------------------
     # Internal helpers (called by _SegmentHandler)
@@ -417,8 +417,18 @@ class _SegmentHandler(TranscriptResultStreamHandler):
         self._result_queue = result_queue
         self._id_allocator = id_allocator
         self._service = next_speaker_num_ref
-        self._logger = logger
+        self._logger = get_safe_logger(logger)
         self._session_id = session_id
+        self._telemetry = context(session_id)
+        self._partial_result_count = 0
+        self._partial_summary_logged = False
+
+    def log_partial_summary(self) -> None:
+        if self._partial_result_count and not self._partial_summary_logged:
+            self._partial_summary_logged = True
+            self._telemetry.emit("transcribe_result_received", aggregate=True, is_partial=True,
+                                 partial_count=self._partial_result_count,
+                                 stream_language=self._service._language_code)
 
     async def handle_transcript_event(
         self, transcript_event: TranscriptEvent
@@ -440,6 +450,7 @@ class _SegmentHandler(TranscriptResultStreamHandler):
         try:
             transcript = transcript_event.transcript
             for result in transcript.results:
+                received_at = time.perf_counter()
                 if not result.alternatives:
                     continue
 
@@ -475,6 +486,14 @@ class _SegmentHandler(TranscriptResultStreamHandler):
                 # Build timing information (only meaningful for final results,
                 # but we extract whatever is available).
                 timestamp_start, timestamp_end = _extract_timestamps(result)
+                if is_final:
+                    self._telemetry.emit("transcribe_result_received", aggregate=False, is_partial=False,
+                                         segment_id=safe_segment_id(segment_id, self._telemetry.stream_mode, spoken_language),
+                                         timestamp_start=timestamp_start, timestamp_end=timestamp_end,
+                                         stream_language=self._service._language_code,
+                                         backend_received_offset_ms=(received_at - self._telemetry.started_at) * 1000)
+                else:
+                    self._partial_result_count += 1
                 confidence = _extract_average_confidence(alternative) if is_final else None
 
                 # Determine which text column receives the spoken text.
@@ -516,9 +535,8 @@ class _SegmentHandler(TranscriptResultStreamHandler):
                 "Error processing Transcribe event",
                 extra={
                     "session_id": self._session_id,
-                    "error": str(exc),
+                    "error_type": type(exc).__name__,
                 },
-                exc_info=True,
             )
             log_integration_error(
                 self._session_id, "Amazon Transcribe Streaming", exc
