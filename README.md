@@ -4,7 +4,14 @@ LiveCap turns spoken Vietnamese and English into live bilingual captions. A host
 can share an audience room so viewers follow finalized captions on their own
 devices, then keep a transcript after the session.
 
-[Open the app](https://livecap.logantai.com/app) · [UI walkthrough (MP4, 2:23)](https://github.com/9ducanh9/livecap/releases/download/demo-screen-share-2026-10-03/livecap-screen-share-walkthrough.mp4) · [Measured benchmark](docs/benchmark-phase5-results.md)
+[Open the app](https://livecap.logantai.com/app) · [Measured benchmark](docs/benchmark-phase5-results.md)
+
+## Demo
+
+<!-- GitHub video attachment URL goes here. -->
+
+A 55-second silent walkthrough of the host starting captions, creating an
+audience room, and sharing a browser tab.
 
 ## What it does
 
@@ -12,10 +19,8 @@ devices, then keep a transcript after the session.
 - Lets a host create an audience room and share its link, code, or QR code.
 - Shares finalized captions with viewers and supports private TXT transcript export.
 
-The silent walkthrough shows the host starting a session, creating a room, and
-sharing a browser tab. The shared tab contains third-party media. It is a UI
-demonstration; the measured benchmark below used a separate recorded-audio
-fixture.
+The shared tab contains third-party media. This is a UI demonstration; the
+measured benchmark below used a separate recorded-audio fixture.
 
 ## How it works
 
