@@ -100,8 +100,8 @@ resource "aws_ecs_task_definition" "benchmark" {
     name      = "${local.prefix}-backend"
     image     = "${aws_ecr_repository.benchmark.repository_url}:${var.image_git_sha}-amd64"
     essential = true
-    # Uvicorn HTTP access records contain peer IPs; omit them in benchmark telemetry.
-    command      = ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    # Uvicorn WebSocket INFO also includes peer IPs; application structured INFO remains enabled.
+    command      = ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--log-level", "warning"]
     portMappings = [{ containerPort = 8000, protocol = "tcp" }]
     environment  = [for k, v in local.runtime_env : { name = k, value = v }]
     secrets      = []
