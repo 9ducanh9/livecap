@@ -1,110 +1,50 @@
 # LiveCap
 
-> Real-time Vietnamese-English captions and shared meeting transcripts on AWS.
+LiveCap turns spoken Vietnamese and English into live bilingual captions. A host
+can share an audience room so viewers follow finalized captions on their own
+devices, then keep a transcript after the session.
 
-[![CI](https://github.com/9ducanh9/livecap/actions/workflows/ci.yml/badge.svg)](https://github.com/9ducanh9/livecap/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/9ducanh9/livecap)](https://github.com/9ducanh9/livecap/releases/latest)
+[Open the app](https://livecap.logantai.com/app) · [UI walkthrough (MP4, 2:23)](https://github.com/9ducanh9/livecap/releases/download/demo-screen-share-2026-10-03/livecap-screen-share-walkthrough.mp4) · [Measured benchmark](docs/benchmark-phase5-results.md)
 
-[Live demo](https://livecap.logantai.com/) | [Open app](https://livecap.logantai.com/app) | [Demo guide](docs/demo-guide.md) | [Architecture](docs/as-deployed-architecture.md) | [Measured benchmark](docs/benchmark-phase5-results.md)
+## What it does
 
-## Demo Links
+- Streams microphone or shared-tab audio for live captions and translation.
+- Lets a host create an audience room and share its link, code, or QR code.
+- Shares finalized captions with viewers and supports private TXT transcript export.
 
-- [CloudFront preview workspace](https://dsxqvhsn58xk8.cloudfront.net/app)
-- [CloudFront preview room join](https://dsxqvhsn58xk8.cloudfront.net/rooms)
-- [Custom domain (same deployed frontend)](https://livecap.logantai.com/app)
-- Windows: double-click [`open-livecap.bat`](open-livecap.bat) from the repository root.
+The silent walkthrough shows the host starting a session, creating a room, and
+sharing a browser tab. The shared tab contains third-party media. It is a UI
+demonstration; the measured benchmark below used a separate recorded-audio
+fixture.
 
-`open-livecap.bat` opens the preview CloudFront distribution. The stable
-CloudFront distribution (`dpeohr327wt9l.cloudfront.net`) serves a different
-frontend build; do not use it to compare the current custom-domain UI. Local
-uncommitted changes appear only in the local dev server until deployed.
+## How it works
 
-![LiveCap caption workspace](docs/livecap-dashboard.png)
+The browser sends 16 kHz PCM over WebSocket to FastAPI on ECS Fargate. Amazon
+Transcribe and Translate produce the bilingual caption stream; finalized text
+can be stored in DynamoDB and private S3. Cognito handles sign-in, while a wake
+Lambda starts the backend after idle scale-to-zero. Raw audio is not stored.
 
-## Problem
+See the [as-deployed architecture](docs/as-deployed-architecture.md) for the
+request path and security boundaries.
 
-Vietnamese-English meetings lose context when captions or translations arrive
-late. LiveCap turns microphone audio into bilingual text while the conversation
-is happening and keeps finalized transcripts available after the room closes.
+## Measured result
 
-## How It Works
+In an isolated Singapore warm benchmark, **21/21 recorded-audio sessions
+completed** across nine runs at 1, 2, and 4 concurrent sessions on one
+0.5-vCPU / 1-GiB Fargate task. At four concurrent sessions, median first-partial
+latency was **1.69 s** (12 sessions) and median finalized-caption lag was
+**2.13 s** (120 correlated segments).
 
-The React client sends 16 kHz PCM through WebSocket to FastAPI on ECS Fargate.
-Amazon Transcribe produces Vietnamese captions, Amazon Translate creates the
-English text, and finalized records are stored in DynamoDB and private S3.
-Hosts can share a viewer link, join code, or QR code; viewers receive live
-captions without sending audio.
+The campaign had two task restarts and three warm task epochs. These numbers do
+not establish production reliability or maximum sustained capacity. The
+[benchmark report](docs/benchmark-phase5-results.md) records the method,
+denominators, and limits.
 
-```text
-Browser -> CloudFront/WAF -> S3 or ALB -> ECS Fargate
-                                      -> Transcribe -> Translate
-                                      -> DynamoDB / private S3
-```
+## Run locally
 
-Cognito provides account access, SES sends branded account email, and a wake
-Lambda starts the scale-to-zero backend. Raw audio is never stored.
-
-## Current MVP
-
-- Live Vietnamese captions with English translation
-- Google and email sign-in through Cognito
-- Shareable rooms with viewer link, six-character code, and QR code
-- Finalized room transcript available after the host ends the meeting
-- Five session starts per account each week, with no recording time limit
-- Private TXT export and optional AI meeting notes through DeepSeek
-
-The repository also includes the WebSocket load harness, structured pipeline
-timing, and isolated benchmark Terraform configuration. In an October 2026
-recorded-audio benchmark, 21/21 sessions completed across nine runs at 1, 2,
-and 4 concurrent sessions. At four concurrent sessions, median first partial
-was 1.69 s and median finalized-caption lag was 2.13 s. See the
-[method, denominators, and limits](docs/benchmark-phase5-results.md) before
-using these figures; they are not production reliability or capacity claims.
-
-## Quick Start
-
-Requirements: Python 3.11+ and Node.js 20+.
-
-```powershell
-git clone https://github.com/9ducanh9/livecap.git
-cd livecap\backend
-python -m venv .venv; .\.venv\Scripts\python -m pip install -r requirements-dev.txt
-Copy-Item .env.example .env; .\.venv\Scripts\python -m uvicorn app.main:app --reload
-```
-
-```powershell
-cd livecap\frontend
-npm ci
-Copy-Item .env.example .env
-npm run dev
-```
-
-Open `http://127.0.0.1:5173`. AWS-backed features require the variables listed
-in [the local run guide](docs/run-local.md); never put AWS access keys in `.env`.
-
-## Stack
-
-| Layer | Technology |
-| --- | --- |
-| Frontend | React, TypeScript, Vite, Tailwind CSS |
-| Backend | Python, FastAPI, WebSocket |
-| AWS | CloudFront, WAF, ALB, ECS Fargate, ECR, S3, DynamoDB, Cognito, SES, Transcribe, Translate |
-| Delivery | Terraform, Docker, GitHub Actions OIDC |
-
-Pushes to `main` run tests, publish an immutable backend image, update the ECS
-task definition, deploy the frontend to S3, and invalidate CloudFront. General
-infrastructure changes remain manual Terraform applies.
-
-## Verify
-
-```powershell
-cd backend; .\.venv\Scripts\python -m pytest
-cd ..\frontend; npm test; npm run build
-cd ..\infrastructure\terraform; terraform fmt -check -recursive; terraform validate
-```
-
-See [docs](docs/README.md) for deployment evidence and operational notes.
-
-## Author
+The frontend uses React, TypeScript, and Vite; the backend uses Python and
+FastAPI. Follow the [local run guide](docs/run-local.md) for setup and required
+AWS configuration. Browse the [documentation index](docs/README.md) for the
+demo guide, architecture, and operational notes.
 
 Academic capstone project by [Lam Chi Tai](https://github.com/9ducanh9).
