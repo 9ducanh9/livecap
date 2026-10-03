@@ -8,7 +8,7 @@ devices, then keep a transcript after the session.
 
 ## Demo
 
-<!-- GitHub video attachment URL goes here. -->
+https://github.com/user-attachments/assets/54635702-5870-420d-b5a8-e14363bd9404
 
 A 55-second silent walkthrough of the host starting captions, creating an
 audience room, and sharing a browser tab.
