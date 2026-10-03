@@ -14,8 +14,8 @@ Translate, private S3 transcript export, and CloudWatch observability.
 
 The service deliberately scales between zero and one task. This controls idle
 cost but means the first session after idling has a cold start and a failed task
-interrupts the active WebSocket session. One NAT Gateway remains a deliberate
-cost versus availability tradeoff.
+interrupts the active WebSocket session. The configured multi-AZ network uses
+two NAT Gateways, one per Availability Zone.
 
 ## Capability Status
 
@@ -37,7 +37,8 @@ cost versus availability tradeoff.
 | Billing | Per-user usage quotas | Live | Free/Pro/Business tiers enforced in the WebSocket session flow; an `unlimited` tier exists for manually-assigned internal/admin accounts (no Stripe price). |
 | Admin | Admin dashboard (`/admin`) | Live, phased | Multi-page: user management (search/filter/mutate + audit log), usage analytics, revenue, system health. Gated on Cognito group `admin`. |
 | Cost | Graviton and Fargate Spot | Implemented, off by default | Require an arm64 image and an interruption-tolerance review respectively. |
-| Delivery | Validation-only CI/CD plan gate | Implemented | CI tests, builds, scans, and validates; it does not apply infrastructure. |
+| Delivery | CI and deployment workflow | Implemented | Pushes to `main` verify, build, and deploy application images/frontend. General infrastructure changes still require a reviewed Terraform apply. |
+| Performance | Recorded-audio warm benchmark | Measured 2026-10-03 | Nine runs and 21/21 client-successful sessions at concurrency 1/2/4 on one isolated task. Two restarts split the campaign into three warm task epochs; see `benchmark-phase5-results.md`. This does not complete the multi-task gate. |
 
 ## Next Production Gates
 

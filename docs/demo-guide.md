@@ -23,7 +23,7 @@ complete; that is expected during scale-to-zero.
 2. **Sign in:** Cognito authentication is enforced by default now
    (`ENABLE_AUTH=true`). Select **Sign in**, use email/password or Google, and
    land back on `/app`. `UsagePanel` shows the account's tier (Free/Pro/
-   Business) and remaining sessions/minutes for the month.
+   Business) and the remaining weekly session allowance.
 3. **Open workspace:** Enter `/app` and confirm the header reports `READY`.
 4. **Start session:** Select **Start session**. The UI reports `WAKING` while the
    Lambda sets the ECS service desired count to one and the frontend polls
@@ -52,8 +52,8 @@ complete; that is expected during scale-to-zero.
   IAM-protected wake Lambda and routes `/api/*` plus `/ws/*` to the ALB.
 - The public ALB spans two Availability Zones, uses HTTPS, and has a separate
   regional WAF. Direct ALB access is restricted.
-- The FastAPI task runs on ECS Fargate in one of two private subnets without a
-  public IP. Outbound AWS calls use the NAT Gateway.
+- The FastAPI task runs on ECS Fargate in a private subnet without a public IP.
+  Outbound calls use the NAT Gateway for that Availability Zone.
 - The backend streams PCM audio to Amazon Transcribe and sends finalized text
   to Amazon Translate.
 - Exported TXT transcripts use S3 retention of 14 days. Raw audio is not stored.
@@ -61,19 +61,22 @@ complete; that is expected during scale-to-zero.
   covers ECS, ALB, Lambda, and WAF activity. Terraform-managed log groups use
   14-day retention, while the direct Watchtower log group still needs a
   retention policy.
-- ECR images use immutable Git SHA-derived tags. GitHub Actions verifies the
-  backend, frontend, Terraform, and secret scan without deploying automatically.
+- ECR images use immutable Git SHA-derived tags. Pushes to `main` trigger the
+  deployment workflow after its verification jobs; general Terraform changes
+  remain separately reviewed and applied.
 
 ## Scale and Availability
 
 - Wake Lambda changes ECS desired count from zero to one.
 - Five minutes after the last active session ends, the backend requests scale
   down from one to zero unless a new session starts.
-- Maximum capacity is one because the active-session registry is in memory.
+- The public service is configured for at most one task. A shared DynamoDB
+  session registry is available, but scaling beyond one task still requires
+  the gates in [the multi-task runbook](multi-task-runbook.md).
 - ECS replaces a failed task and the ALB waits for a healthy target before
   routing. This is self-healing, not active-active high availability; a task
   failure interrupts the current WebSocket session.
-- The single NAT Gateway is a deliberate cost/availability tradeoff. ALB, NAT,
+- Two NAT Gateways provide one egress path per Availability Zone. ALB, NAT,
   and WAF continue to incur baseline cost when ECS is at zero.
 
 ## Fast Recovery

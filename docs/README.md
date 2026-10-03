@@ -12,6 +12,10 @@ runbooks describe feature-specific operation.
 | [`shared-rooms-product-direction.md`](shared-rooms-product-direction.md) | Proposed LiveCap Rooms product direction, user problem, rollout gates, and target architecture |
 | [`cognito-history-rollout.md`](cognito-history-rollout.md) | Cognito account and transcript-history rollout and rollback notes |
 | [`multi-task-runbook.md`](multi-task-runbook.md) | Preconditions and gate for scaling beyond one backend task |
+| [`benchmark-phase5-results.md`](benchmark-phase5-results.md) | Measured warm benchmark results, sample sizes, and interpretation limits |
+| [`benchmark-harness.md`](benchmark-harness.md) | Recorded-audio client harness and timing definitions |
+| [`backend-pipeline-instrumentation.md`](backend-pipeline-instrumentation.md) | Backend event schema and timing boundaries |
+| [`benchmark-environment.md`](benchmark-environment.md) | Isolated AWS benchmark design and teardown gates |
 | [`cold-start.md`](cold-start.md) | Scale-to-zero cold-start behavior and mitigations |
 | [`cost-optimization.md`](cost-optimization.md) | Cost controls and optional efficiency improvements |
 | [`graviton-and-cicd.md`](graviton-and-cicd.md) | Arm64 option and validation-only CI/CD plan gate |

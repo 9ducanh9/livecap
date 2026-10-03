@@ -13,6 +13,39 @@
 
 ---
 
+## 2026-09-22 — Codex — Restore LiveCap services and operational baseline
+
+- Re-enabled the post-shutdown Terraform flags: multi-AZ NAT, VPC Flow Logs,
+  GuardDuty, Security Hub (AWS Foundational Security Best Practices), ECS
+  Container Insights, and X-Ray tracing.
+- Applied Terraform in two passes. The first pass created the second NAT,
+  security/observability resources, and X-Ray task definitions; an existing
+  `/aws/vpc/flow-logs/livecap-dev` log group was imported into state, then the
+  Flow Log and 14-day retention were applied successfully.
+- Started `livecap-preview-service-dev` at one task because the custom domain
+  still routes through the preview CloudFront distribution. The stable target
+  service remains at zero to avoid duplicate Fargate spend until routing is
+  consolidated.
+- Verified Terraform has no drift, both preview targets are healthy, and
+  `https://livecap.logantai.com/api/health` returns HTTP 200 healthy.
+- AWS Business Support+ remains on Basic; it is a paid support plan, not a
+  runtime dependency.
+
+---
+
+## 2026-09-22 — Codex — Fix preview zero-second session timeout
+
+- The live domain was serving preview task image `50000db-amd64` from 2026-08-17,
+  which predates the `SESSION_TIMEOUT=0` unlimited-session fix.
+- Pointed `preview_backend_image_tag` at the known-good `6a94b59-amd64` image,
+  applied task definition revision 6, and verified the task has `SESSION_TIMEOUT=0`
+  plus X-Ray enabled.
+- `https://livecap.logantai.com/api/health` returned HTTP 200 after rollout;
+  Terraform reports no drift. Preview may still scale to zero after its idle
+  grace period by design, then wake through the existing endpoint.
+
+---
+
 ## 2026-09-07 — Codex — Reduce idle AWS spend without taking LiveCap offline
 
 - Downgraded AWS Business Support+ to Basic Support; the console confirmed the
