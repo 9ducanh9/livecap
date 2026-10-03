@@ -5,9 +5,9 @@
 [![CI](https://github.com/9ducanh9/livecap/actions/workflows/ci.yml/badge.svg)](https://github.com/9ducanh9/livecap/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/9ducanh9/livecap)](https://github.com/9ducanh9/livecap/releases/latest)
 
-[Live demo](https://livecap.logantai.com/) | [Open app](https://livecap.logantai.com/app) | [Demo guide](docs/demo-guide.md) | [Architecture](docs/as-deployed-architecture.md)
+[Live demo](https://livecap.logantai.com/) | [Open app](https://livecap.logantai.com/app) | [Demo guide](docs/demo-guide.md) | [Architecture](docs/as-deployed-architecture.md) | [Measured benchmark](docs/benchmark-phase5-results.md)
 
-## Test Links
+## Demo Links
 
 - [CloudFront preview workspace](https://dsxqvhsn58xk8.cloudfront.net/app)
 - [CloudFront preview room join](https://dsxqvhsn58xk8.cloudfront.net/rooms)
@@ -52,6 +52,14 @@ Lambda starts the scale-to-zero backend. Raw audio is never stored.
 - Finalized room transcript available after the host ends the meeting
 - Five session starts per account each week, with no recording time limit
 - Private TXT export and optional AI meeting notes through DeepSeek
+
+The repository also includes the WebSocket load harness, structured pipeline
+timing, and isolated benchmark Terraform configuration. In an October 2026
+recorded-audio benchmark, 21/21 sessions completed across nine runs at 1, 2,
+and 4 concurrent sessions. At four concurrent sessions, median first partial
+was 1.69 s and median finalized-caption lag was 2.13 s. See the
+[method, denominators, and limits](docs/benchmark-phase5-results.md) before
+using these figures; they are not production reliability or capacity claims.
 
 ## Quick Start
 
