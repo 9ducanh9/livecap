@@ -1,44 +1,44 @@
-# LiveCap
+<h1 align="center">LiveCap</h1>
+
+<p align="center">Live bilingual captions. A shared room. A transcript to keep.</p>
+
+<p align="center">
+  <a href="https://livecap.logantai.com/app">Open the app</a> ·
+  <a href="docs/as-deployed-architecture.md">Architecture</a> ·
+  <a href="docs/benchmark-phase5-results.md">Measured benchmark</a> ·
+  <a href="docs/README.md">Documentation</a>
+</p>
+
+<p align="center">
+  <img alt="React + TypeScript" src="https://img.shields.io/badge/React-TypeScript-61DAFB?style=flat&amp;logo=react&amp;logoColor=61DAFB&amp;labelColor=16243a" />
+  <img alt="FastAPI + WebSocket" src="https://img.shields.io/badge/FastAPI-WebSocket-54CC99?style=flat&amp;logo=fastapi&amp;logoColor=54CC99&amp;labelColor=16243a" />
+  <img alt="AWS ECS Fargate" src="https://img.shields.io/badge/AWS-ECS_Fargate-FF9900?style=flat&amp;labelColor=16243a" />
+</p>
 
 LiveCap turns spoken Vietnamese and English into live bilingual captions. A host
 can share an audience room so viewers can follow finalized captions on their own
 devices, then keep a transcript after the session.
 
-[Open the app](https://livecap.logantai.com/app) · [Measured benchmark](docs/benchmark-phase5-results.md)
-
 ![LiveCap demo](docs/livecap-demo.gif)
 
 ## What it does
 
-- Streams microphone or shared-tab audio for live captions and translation.
-- Lets a host create an audience room and share its link, code, or QR code.
-- Shares finalized captions with viewers and supports private TXT transcript export.
+| Bilingual captions | Audience rooms | Transcript export |
+|---|---|---|
+| Turn microphone or shared-tab audio into live Vietnamese and English captions. | Share a link, code or QR so viewers can follow finalized captions on their devices. | Keep a private TXT transcript after the conversation ends. |
 
-This is a UI demonstration; the measured benchmark below used a separate
+This is a UI demonstration; the linked benchmark report used a separate
 recorded-audio fixture.
 
 ## How it works
 
-The browser sends 16 kHz PCM over WebSocket to FastAPI on ECS Fargate. Amazon
-Transcribe and Translate produce the bilingual caption stream; finalized text
-can be stored in DynamoDB and private S3. Cognito handles sign-in, while a wake
-Lambda starts the backend after idle scale-to-zero. Raw audio is not stored.
+The browser streams audio over WebSocket; Transcribe and Translate produce the
+bilingual captions, which return through the same connection. Cognito handles
+sign-in, while a wake Lambda starts the backend after idle scale-to-zero.
+**Raw audio is not stored.**
 
 See the [as-deployed architecture](docs/as-deployed-architecture.md) for the
 request path and security boundaries.
-
-## Measured result
-
-In an isolated Singapore warm benchmark, **21/21 recorded-audio sessions
-completed** across nine runs at 1, 2, and 4 concurrent sessions on one
-0.5-vCPU / 1-GiB Fargate task. At four concurrent sessions, median first-partial
-latency was **1.69 s** (12 sessions) and median finalized-caption lag was
-**2.13 s** (120 correlated segments).
-
-The campaign had two task restarts and three warm task epochs. These numbers do
-not establish production reliability or maximum sustained capacity. The
-[benchmark report](docs/benchmark-phase5-results.md) records the method,
-denominators, and limits.
 
 ## Run locally
 
