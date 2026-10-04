@@ -8,10 +8,7 @@ devices, then keep a transcript after the session.
 
 ## Demo
 
-https://github.com/user-attachments/assets/54635702-5870-420d-b5a8-e14363bd9404
-
-A 55-second silent walkthrough of the host starting captions, creating an
-audience room, and sharing a browser tab.
+![LiveCap demo](docs/livecap-demo.gif)
 
 ## What it does
 
@@ -19,8 +16,8 @@ audience room, and sharing a browser tab.
 - Lets a host create an audience room and share its link, code, or QR code.
 - Shares finalized captions with viewers and supports private TXT transcript export.
 
-The shared tab contains third-party media. This is a UI demonstration; the
-measured benchmark below used a separate recorded-audio fixture.
+This is a UI demonstration; the measured benchmark below used a separate
+recorded-audio fixture.
 
 ## How it works
 
