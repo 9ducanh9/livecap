@@ -1,6 +1,6 @@
 """Stripe subscription billing for the Pro/Business tiers.
 
-Architecture (see COLLAB_LOG.md for the full write-up): Stripe Checkout
+Architecture: Stripe Checkout
 (hosted) creates the subscription; the Stripe Customer Portal (hosted) lets a
 signed-in user upgrade, downgrade, or cancel; webhooks keep the DynamoDB
 per-user profile record (``usage_quota.get_user_subscription`` /

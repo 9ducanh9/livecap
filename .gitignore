@@ -37,6 +37,9 @@ Thumbs.db
 .codex/
 .kombai/
 HANDOFF.md
+COLLAB_LOG.md
+CHAT_LOG.md
+CHAT_HISTORY.md
 
 # Local operational launchers and one-off maintenance scripts
 deploy-frontend.bat
@@ -47,6 +50,12 @@ rewrite-remove-claude-coauthor.ps1
 # Internal working notes (personal draft, not reviewer-facing)
 docs/architecture-summary-6pillars.md
 docs/architecture-diagram.mermaid
+docs/backend-pipeline-instrumentation-validation.md
+docs/benchmark-validation-phase2.md
+docs/benchmark-phase4b-entry.md
+docs/benchmark-environment-phase4a-validation.json
+docs/benchmark-environment-pricing.json
+docs/shared-rooms-product-direction.md
 
 # Terraform
 **/.terraform/

@@ -101,5 +101,5 @@ The wake/idle/health-polling behavior above was spot-checked again live on
 2026-07-24 and still holds. The sign-in step, usage quotas, billing, and admin
 dashboard added since 2026-07-14 have **not** had this same full walkthrough
 re-verified end to end on production — the closest to it is the 2026-07-23
-Cognito sign-in → session → usage → billing manual test in `COLLAB_LOG.md`
-(local, gitignored), which found the billing UI needed a redeploy at the time.
+Cognito sign-in → session → usage → billing manual test, which found the
+billing UI needed a redeploy at the time.

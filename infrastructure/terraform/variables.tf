@@ -620,7 +620,7 @@ variable "watchtower_log_group_name" {
 }
 
 variable "enable_meeting_summary" {
-  description = "Enable the DeepSeek end-of-session meeting summary. Passes the feature flag and (if set) the DeepSeek API key secret to the task. Previously called Anthropic-on-Bedrock, but every Anthropic model quota in this account's Bedrock region was 0 (an unapproved AWS quota, not a code bug), so it never actually worked -- see COLLAB_LOG.md."
+  description = "Enable the DeepSeek end-of-session meeting summary. Passes the feature flag and (if set) the DeepSeek API key secret to the task. Previously called Anthropic-on-Bedrock, but every Anthropic model quota in this account's Bedrock region was 0 (an unapproved AWS quota, not a code bug), so it never actually worked."
   type        = bool
   default     = true
 }

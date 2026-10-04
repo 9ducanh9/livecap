@@ -6,8 +6,8 @@ AWS collector, wake request, or production/preview benchmark. Tests use generate
 PCM and fake WebSockets solely to verify correctness. Their output is not
 performance evidence and must not be used in a CV.
 
-Phase 2 adds opt-in loopback WebSocket validation against a mock server; see
-[the diff review and validation report](benchmark-validation-phase2.md).
+Opt-in loopback WebSocket validation against a mock server is implemented in
+[`tools/tests/test_ws_load_test_local.py`](../tools/tests/test_ws_load_test_local.py).
 Those generated captions/audio and controlled delays remain validation fixtures.
 
 ## Run authorization and prerequisites

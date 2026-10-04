@@ -9,7 +9,6 @@ runbooks describe feature-specific operation.
 | [`demo-guide.md`](demo-guide.md) | Three-minute production demonstration and recovery steps |
 | [`as-deployed-architecture.md`](as-deployed-architecture.md) | Verified live AWS topology, security boundaries, and runtime request paths |
 | [`upgrade-roadmap.md`](upgrade-roadmap.md) | Implemented capability status and next production-oriented work |
-| [`shared-rooms-product-direction.md`](shared-rooms-product-direction.md) | Proposed LiveCap Rooms product direction, user problem, rollout gates, and target architecture |
 | [`cognito-history-rollout.md`](cognito-history-rollout.md) | Cognito account and transcript-history rollout and rollback notes |
 | [`multi-task-runbook.md`](multi-task-runbook.md) | Preconditions and gate for scaling beyond one backend task |
 | [`benchmark-phase5-results.md`](benchmark-phase5-results.md) | Measured warm benchmark results, sample sizes, and interpretation limits |

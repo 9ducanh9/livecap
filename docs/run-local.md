@@ -84,5 +84,4 @@ every Anthropic model quota in this AWS account's Bedrock region was `0`
 from the app side. Rather than wait on an AWS quota increase request with an
 uncertain timeline, the integration was switched to DeepSeek's
 OpenAI-compatible chat completions API, which needs its own key instead of
-Bedrock quota approval. See `COLLAB_LOG.md` (local) for the full
-investigation.
+Bedrock quota approval.

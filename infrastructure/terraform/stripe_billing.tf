@@ -1,5 +1,5 @@
 # Stripe subscription billing for the Pro/Business tiers (see
-# backend/app/services/stripe_billing.py and docs in COLLAB_LOG.md).
+# backend/app/services/stripe_billing.py).
 #
 # Off by default. Two secrets (the Stripe secret key and the webhook signing
 # secret) are stored in Secrets Manager rather than plaintext task-definition

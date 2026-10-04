@@ -6,7 +6,7 @@ DeepSeek chat completions API (OpenAI-compatible).
 
 Previously called an Anthropic Claude model through Amazon Bedrock, but every
 Anthropic model quota in the account's Bedrock region was 0 (unrelated to any
-code bug -- confirmed with a real InvokeModel call, see COLLAB_LOG.md), so
+code bug -- confirmed with a real InvokeModel call), so
 the feature never actually worked. DeepSeek needs its own API key
 (``DEEPSEEK_API_KEY``) rather than the AWS credentials already on the task
 role, but has no dependency on Bedrock quota approval.
