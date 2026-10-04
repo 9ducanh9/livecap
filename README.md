@@ -1,12 +1,10 @@
 # LiveCap
 
 LiveCap turns spoken Vietnamese and English into live bilingual captions. A host
-can share an audience room so viewers follow finalized captions on their own
+can share an audience room so viewers can follow finalized captions on their own
 devices, then keep a transcript after the session.
 
 [Open the app](https://livecap.logantai.com/app) · [Measured benchmark](docs/benchmark-phase5-results.md)
-
-## Demo
 
 ![LiveCap demo](docs/livecap-demo.gif)
 
@@ -48,5 +46,3 @@ The frontend uses React, TypeScript, and Vite; the backend uses Python and
 FastAPI. Follow the [local run guide](docs/run-local.md) for setup and required
 AWS configuration. Browse the [documentation index](docs/README.md) for the
 demo guide, architecture, and operational notes.
-
-Academic capstone project by [Lam Chi Tai](https://github.com/9ducanh9).
