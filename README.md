@@ -1,5 +1,7 @@
 <h1 align="center">LiveCap</h1>
 
+<p align="center">English · <a href="README.vi.md">Tiếng Việt</a></p>
+
 <p align="center">Live bilingual captions. A shared room. A transcript to keep.</p>
 
 <p align="center">
@@ -19,7 +21,9 @@ LiveCap turns spoken Vietnamese and English into live bilingual captions. A host
 can share an audience room so viewers can follow finalized captions on their own
 devices, then keep a transcript after the session.
 
-![LiveCap demo](docs/livecap-demo.gif)
+![LiveCap demo](docs/livecap-demo-small.gif)
+
+[Higher-resolution demo](docs/livecap-demo.gif)
 
 ## What it does
 
