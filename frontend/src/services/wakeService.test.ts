@@ -23,6 +23,15 @@ describe('wakeBackendIfConfigured', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('does not call the production wake fallback when wake is explicitly disabled', async () => {
+    vi.stubEnv('PROD', true);
+    vi.stubEnv('VITE_BACKEND_WAKE_ENABLED', 'false');
+    await beginBackendWakeAfterSignIn();
+    await waitForBackendWakeAfterSignIn();
+    await wakeBackendIfConfigured();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('calls wake before polling backend health', async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock

@@ -87,6 +87,9 @@ export function isWakeBackendConfigured(): boolean {
 }
 
 function configuredWakeBackendUrl(): string | undefined {
+  if (String(import.meta.env.VITE_BACKEND_WAKE_ENABLED).toLowerCase() === 'false') {
+    return undefined;
+  }
   return (
     import.meta.env.VITE_WAKE_BACKEND_URL ||
     import.meta.env.VITE_WAKE_API_URL ||
