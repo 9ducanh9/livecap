@@ -64,7 +64,7 @@ export interface UseAudioCaptureReturn {
   /** Refresh the browser audio input device list. */
   refreshAudioInputDevices: () => Promise<void>;
   /** Start capturing audio. Resolves once the pipeline is ready (or rejects on error). */
-  startCapture: () => Promise<MediaStream>;
+  startCapture: (sourceStream?: MediaStream) => Promise<MediaStream>;
   /** Stop capturing audio and release the microphone. */
   stopCapture: () => void;
 }
@@ -163,7 +163,7 @@ export function useAudioCapture(
   // ------------------------------------------------------------------
   // startCapture — build the capture pipeline
   // ------------------------------------------------------------------
-  const startCapture = useCallback(async () => {
+  const startCapture = useCallback(async (sourceStream?: MediaStream) => {
     // Guard against a double-start.
     if (mediaStreamRef.current !== null) {
       if (outputStreamRef.current) return outputStreamRef.current;
@@ -191,7 +191,7 @@ export function useAudioCapture(
     };
 
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
+      stream = sourceStream ?? await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints,
       });
       debugLog('microphone-started', {

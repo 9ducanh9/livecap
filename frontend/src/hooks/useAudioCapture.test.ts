@@ -60,6 +60,17 @@ describe('useAudioCapture microphone gain', () => {
     vi.unstubAllGlobals();
   });
 
+  it('captures selected tab audio without opening a microphone and releases its tracks', async () => {
+    const tracks = [fakeTrack(), { kind: 'video', stop: vi.fn() }];
+    const source = new FakeMediaStream(tracks) as unknown as MediaStream;
+    const { result } = renderHook(() => useAudioCapture({ onChunk: vi.fn() }));
+    await act(async () => { await result.current.startCapture(source); });
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(result.current.isCapturing).toBe(true);
+    act(() => result.current.stopCapture());
+    tracks.forEach(track => expect(track.stop).toHaveBeenCalled());
+  });
+
   it('applies mic volume to the caption and outgoing room-audio paths', async () => {
     const onChunk = vi.fn();
     const { result } = renderHook(() => useAudioCapture({ onChunk }));

@@ -194,7 +194,7 @@ export default function DashboardPage() {
     return () => window.clearInterval(id);
   }, [isCapturing]);
 
-  const handleStart = useCallback(async () => {
+  const handleStart = useCallback(async (sourceStream?: MediaStream) => {
     if (hostedRoom?.status === 'ended') return;
     let startPhase: 'wake' | 'socket' | 'audio' | 'media' = 'wake';
     dispatch({ type: 'CLEAR_ERROR' });
@@ -214,8 +214,8 @@ export default function DashboardPage() {
       await screenShare.pauseSharedAudioCaptions();
       await connect();
       startPhase = 'audio';
-      const microphoneStream = await startCapture();
-      if (hostedRoom) {
+      const microphoneStream = await startCapture(sourceStream);
+      if (hostedRoom && !sourceStream) {
         startPhase = 'media';
         await screenShare.setMicrophoneStream(microphoneStream);
       }
@@ -236,6 +236,7 @@ export default function DashboardPage() {
       }
       setRecordingStartedAt(null);
       stopCapture();
+      sourceStream?.getTracks().forEach((track) => track.stop());
       if (hostedRoom) {
         try { await screenShare.setMicrophoneStream(null); } catch { /* Keep the startup error. */ }
       }
@@ -419,10 +420,34 @@ export default function DashboardPage() {
               onSelectedDeviceChange={setSelectedDeviceId}
               onMicrophoneGainChange={setMicrophoneGain}
               onRefreshAudioInputDevices={refreshAudioInputDevices}
-              onStart={handleStart}
+              onStart={() => void handleStart()}
               onStop={handleStop}
               onClear={handleClear}
             />
+            <div className="px-6 py-4 border-b border-[#dce5f2]">
+              <button
+                type="button"
+                className="text-sm font-bold text-emerald-pro disabled:opacity-40"
+                disabled={isCapturing || isStarting || hostedRoom?.status === 'ended'}
+                onClick={async () => {
+                  let display: MediaStream | undefined;
+                  try {
+                    display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+                    if (!display.getAudioTracks().length) {
+                      throw new Error('Select a browser tab and enable Share tab audio.');
+                    }
+                    display.getVideoTracks()[0]?.addEventListener('ended', () => { void handleStop(); }, { once: true });
+                    await handleStart(display);
+                  } catch (error) {
+                    display?.getTracks().forEach((track) => track.stop());
+                    if (!(error instanceof DOMException && error.name === 'NotAllowedError')) {
+                      dispatch({ type: 'SET_ERROR', error: error instanceof Error ? error.message : 'Could not capture tab audio.' });
+                    }
+                  }
+                }}
+              >Caption tab audio</button>
+              <p className="mt-1 text-xs text-ink-muted">Choose a browser tab and enable Share tab audio. Stop session ends capture.</p>
+            </div>
             {isSharedRoomsEnabled() && (
               <RoomHostPanel
                 room={hostedRoom}
