@@ -108,6 +108,7 @@ _ALLOWED_LANGUAGE_MODES: dict[tuple[str, str], LanguageMode] = {
 }
 
 _DUAL_STREAM_WINDOW_SECONDS = 1.5
+_UTTERANCE_IDLE_SECONDS = 3.0  # Includes the next candidate's arbitration window.
 _DUPLICATE_FINAL_SECONDS = 2.0
 _MIN_FINAL_TEXT_LENGTH = 3
 _SCREEN_SHARE_BUFFER_SECONDS = 2.4
@@ -688,20 +689,24 @@ async def _next_dual_candidate(
     return None, active_workers
 
 
-async def _arbitrate_dual_candidates(
+async def _select_dual_candidates(
     *,
     session_id: str,
     candidate_queue: "asyncio.Queue[TranscriptCandidate | Exception | None]",
     dominant_language: "DominantLanguage | None" = None,
-) -> AsyncIterator[FinalizedSegmentMessage | Exception]:
+) -> AsyncIterator[TranscriptCandidate | Exception]:
     """Choose one finalized candidate when both streams produce nearby text."""
     active_workers = 2
     recent_finalized: dict[str, float] = {}
+    deferred: TranscriptCandidate | None = None
 
-    while active_workers > 0:
-        item, active_workers = await _next_dual_candidate(
-            candidate_queue, active_workers
-        )
+    while active_workers > 0 or deferred is not None:
+        if deferred is not None:
+            item, deferred = deferred, None
+        else:
+            item, active_workers = await _next_dual_candidate(
+                candidate_queue, active_workers
+            )
         if item is None:
             continue
         if isinstance(item, Exception):
@@ -731,6 +736,11 @@ async def _arbitrate_dual_candidates(
             if isinstance(contender, Exception):
                 yield contender
                 continue
+            # Arrival time is not an utterance boundary. Do not discard the
+            # next audio interval as a competing interpretation of this one.
+            if contender.message.timestamp_start >= item.message.timestamp_end:
+                deferred = contender
+                break
             contender_now = time.monotonic()
             if _candidate_passes_basic_filters(
                 session_id=session_id,
@@ -766,12 +776,77 @@ async def _arbitrate_dual_candidates(
                                                   selected.source_language),
                        duration_ms=duration_ms(selected.instrumentation_started_at)
                        if selected.instrumentation_started_at is not None else None)
-        yield await _translate_finalized_candidate(
-            msg=selected.message,
-            session_id=session_id,
-            mode=selected.mode,
-            source_language=selected.source_language,
+        yield selected
+
+
+class _UtteranceCaptionBuffer(_SingleStreamCaptionBuffer):
+    """Group contiguous speech, irrespective of ASR-inserted punctuation."""
+
+    def add(self, message: FinalizedSegmentMessage) -> list[FinalizedSegmentMessage]:
+        ready = []
+        if self._messages and message.timestamp_start - self._messages[-1].timestamp_end > 0.8:
+            pending = self.flush()
+            if pending is not None:
+                ready.append(pending)
+        return ready + super().add(message)
+
+    def _should_flush(self) -> bool:
+        return bool(self._messages) and (
+            self._messages[-1].timestamp_end - self._messages[0].timestamp_start >= 8.0
+            or sum(len(_source_text(msg).split()) for msg in self._messages) >= 40
         )
+
+
+async def _arbitrate_dual_candidates(
+    *, session_id: str,
+    candidate_queue: "asyncio.Queue[TranscriptCandidate | Exception | None]",
+    dominant_language: "DominantLanguage | None" = None,
+) -> AsyncIterator[FinalizedSegmentMessage | Exception]:
+    """Translate grouped utterances; flush silence and the last words on stop."""
+    source = _select_dual_candidates(
+        session_id=session_id, candidate_queue=candidate_queue,
+        dominant_language=dominant_language,
+    ).__aiter__()
+    buffer = _UtteranceCaptionBuffer()
+    pending = asyncio.create_task(anext(source))
+    try:
+        while True:
+            done, _ = await asyncio.wait({pending}, timeout=_UTTERANCE_IDLE_SECONDS if buffer._messages else None)
+            if not done:
+                ready = buffer.flush()
+                if ready is not None:
+                    yield await _translate_finalized_candidate(
+                        msg=ready, session_id=session_id,
+                        mode=_ALLOWED_LANGUAGE_MODES[("vi-VN", "en") if ready.spoken_language == "vi" else ("en-US", "vi")],
+                        source_language=ready.spoken_language,
+                    )
+                continue
+            try:
+                candidate = pending.result()
+            except StopAsyncIteration:
+                break
+            pending = asyncio.create_task(anext(source))
+            if isinstance(candidate, Exception):
+                yield candidate
+                continue
+            for ready in buffer.add(candidate.message):
+                yield await _translate_finalized_candidate(
+                    msg=ready, session_id=session_id,
+                    mode=_ALLOWED_LANGUAGE_MODES[("vi-VN", "en") if ready.spoken_language == "vi" else ("en-US", "vi")],
+                    source_language=ready.spoken_language,
+                )
+        ready = buffer.flush()
+        if ready is not None:
+            yield await _translate_finalized_candidate(
+                msg=ready, session_id=session_id,
+                mode=_ALLOWED_LANGUAGE_MODES[("vi-VN", "en") if ready.spoken_language == "vi" else ("en-US", "vi")],
+                source_language=ready.spoken_language,
+            )
+    finally:
+        if not pending.done():
+            pending.cancel()
+        await asyncio.gather(pending, return_exceptions=True)
+        await source.aclose()
 
 
 async def _forward_dual_partials(

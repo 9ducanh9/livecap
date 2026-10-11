@@ -885,6 +885,80 @@ class TestStopSignalHandling:
 # ---------------------------------------------------------------------------
 
 
+class TestUtteranceCaptionBuffer:
+    @pytest.fixture(autouse=True)
+    def local_telemetry(self):
+        with patch.object(ws_module, "context", return_value=MagicMock()):
+            yield
+    def test_asr_period_does_not_split_contiguous_speech(self):
+        buffer = ws_module._UtteranceCaptionBuffer()
+        make = TestSingleStreamCaptionBuffer._final
+        assert buffer.add(make("Chuyển đổi thành.", segment_id="a", start=0, end=1)) == []
+        assert buffer.add(make("Một điều chúng ta thay đổi.", segment_id="b", start=1.2, end=3)) == []
+        result = buffer.flush()
+        assert result.text_en == "Chuyển đổi thành. Một điều chúng ta thay đổi."
+        assert result.timestamp_end == 3
+
+    def test_long_pause_keeps_separate_utterances(self):
+        buffer = ws_module._UtteranceCaptionBuffer()
+        make = TestSingleStreamCaptionBuffer._final
+        buffer.add(make("First sentence.", segment_id="a", start=0, end=1))
+        ready = buffer.add(make("Next sentence.", segment_id="b", start=2, end=3))
+        assert ready[0].text_en == "First sentence."
+        assert buffer.flush().text_en == "Next sentence."
+
+    def test_language_change_flushes_and_long_speech_is_bounded(self):
+        buffer = ws_module._UtteranceCaptionBuffer()
+        make = TestSingleStreamCaptionBuffer._final
+        buffer.add(make("Hello everyone.", segment_id="a", start=0, end=1))
+        vietnamese = make("Xin chào mọi người.", segment_id="b", start=1, end=2)
+        vietnamese.spoken_language = "vi"
+        vietnamese.text_vi, vietnamese.text_en = vietnamese.text_en, ""
+        assert buffer.add(vietnamese)[0].spoken_language == "en"
+        assert buffer.flush().spoken_language == "vi"
+        assert buffer.add(make("Long continuous speech", segment_id="c", start=3, end=12))[0].segment_id == "c"
+
+    def test_idle_flush_does_not_cancel_the_transcription_source(self):
+        async def run():
+            gate = asyncio.Event()
+            message = TestSingleStreamCaptionBuffer._final("Hello everyone.", segment_id="a", start=0, end=1)
+            candidate = ws_module.TranscriptCandidate(
+                source_language="en", transcript_text=message.text_en, message=message,
+                mode=ws_module._ALLOWED_LANGUAGE_MODES[("en-US", "vi")], created_at=0,
+            )
+            async def source(**kwargs):
+                yield candidate
+                await gate.wait()
+            with patch.object(ws_module, "_select_dual_candidates", source), patch.object(ws_module, "_UTTERANCE_IDLE_SECONDS", 0.01), patch.object(ws_module, "_translate_finalized_candidate", new_callable=AsyncMock) as translate:
+                translate.side_effect = lambda **kw: kw["msg"]
+                stream = ws_module._arbitrate_dual_candidates(session_id="test", candidate_queue=asyncio.Queue())
+                assert (await asyncio.wait_for(anext(stream), 1)).text_en == "Hello everyone."
+                gate.set()
+                with pytest.raises(StopAsyncIteration):
+                    await anext(stream)
+        asyncio.run(run())
+
+    def test_dual_adjacent_finals_survive_and_translate_together(self):
+        async def run():
+            queue = asyncio.Queue()
+            make = TestSingleStreamCaptionBuffer._final
+            for key, text, start, end in [("a", "Hello everyone.", 0, 1), ("b", "This is my voice.", 1, 2)]:
+                await queue.put(ws_module.TranscriptCandidate(
+                    source_language="en", transcript_text=text,
+                    message=make(text, segment_id=key, start=start, end=end),
+                    mode=ws_module._ALLOWED_LANGUAGE_MODES[("en-US", "vi")], created_at=0,
+                ))
+            await queue.put(None)
+            await queue.put(None)
+            with patch.object(ws_module, "_translate_finalized_candidate", new_callable=AsyncMock) as translate:
+                translate.side_effect = lambda **kw: kw["msg"]
+                results = [msg async for msg in ws_module._arbitrate_dual_candidates(session_id="test", candidate_queue=queue)]
+            assert len(results) == 1
+            assert results[0].text_en == "Hello everyone. This is my voice."
+            translate.assert_awaited_once()
+        asyncio.run(run())
+
+
 class TestSingleStreamCaptionBuffer:
     @staticmethod
     def _final(
