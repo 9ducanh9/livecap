@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 _ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _ROOM_CODE_LENGTH = 6
 _ROOM_CODE_ATTEMPTS = 20
+_ROOM_SEND_TIMEOUT_SECONDS = 2.0
 
 
 class RoomArchiveStore(Protocol):
@@ -446,14 +447,26 @@ class RoomService:
     ) -> None:
         if not subscribers:
             return
-        await asyncio.gather(
+        results = await asyncio.gather(
             *(self._send_json(websocket, payload) for websocket in subscribers),
             return_exceptions=True,
         )
+        failed = {websocket for websocket, result in zip(subscribers, results)
+                  if isinstance(result, Exception)}
+        if failed:
+            # A stalled viewer must not block the transcription consumer forever.
+            async with self._lock:
+                for room in self._rooms.values():
+                    room.subscribers.difference_update(failed)
+                    room.host_subscribers.difference_update(failed)
+            logger.warning("room_subscriber_send_failed", extra={
+                "event": "room_subscriber_send_failed", "subscriber_count": len(failed),
+            })
 
     @staticmethod
     async def _send_json(websocket: WebSocket, payload: dict[str, Any]) -> None:
-        await websocket.send_json(payload)
+        async with asyncio.timeout(_ROOM_SEND_TIMEOUT_SECONDS):
+            await websocket.send_json(payload)
 
     async def _room_locked(self, room_code: str) -> _Room | None:
         code = self._normalize_code(room_code)

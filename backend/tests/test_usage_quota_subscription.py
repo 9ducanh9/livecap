@@ -122,3 +122,25 @@ def test_new_user_starts_with_full_weekly_allowance(dynamo_table):
     usage = usage_quota.get_user_usage("brand-new-user")
     assert usage.sessions_used == 0
     assert usage_quota.WEEKLY_SESSION_LIMIT == 5
+    assert usage_quota.WEEKLY_MINUTE_LIMIT == 15
+
+
+def test_weekly_minute_allowance_blocks_new_sessions_for_standard_users(dynamo_table):
+    assert usage_quota.reserve_weekly_session("user-1") is None
+    usage_quota.add_minutes("user-1", usage_quota.WEEKLY_MINUTE_LIMIT)
+
+    error = usage_quota.reserve_weekly_session("user-1")
+    assert error == "Weekly recording limit reached (15 minutes). Your allowance resets next Monday."
+    assert usage_quota.check_quota("user-1") == (
+        "Weekly recording limit reached (15 minutes). Your allowance resets next Monday."
+    )
+    # Admins bypass the weekly minute limit
+    assert usage_quota.reserve_weekly_session("user-1", is_admin=True) is None
+
+
+def test_refund_weekly_session_restores_allowance(dynamo_table):
+    assert usage_quota.reserve_weekly_session("user-1") is None
+    assert usage_quota.get_user_usage("user-1").sessions_used == 1
+
+    usage_quota.refund_weekly_session("user-1")
+    assert usage_quota.get_user_usage("user-1").sessions_used == 0

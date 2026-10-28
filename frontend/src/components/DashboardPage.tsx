@@ -4,7 +4,7 @@ import { useAudioCapture } from '../hooks/useAudioCapture';
 import { useWebSocket, type WebSocketConnectionStatus } from '../hooks/useWebSocket';
 import CaptionDisplay from './CaptionDisplay';
 import ExportPanel from './ExportPanel';
-import ControlPanel from './ControlPanel';
+import ControlPanel, { type CaptionLanguageMode } from './ControlPanel';
 import SummaryPanel from './SummaryPanel';
 import EnrichmentPanel from './EnrichmentPanel';
 import TranscriptHistoryPanel from './TranscriptHistoryPanel';
@@ -12,7 +12,7 @@ import UsagePanel from './UsagePanel';
 import RoomHostPanel from './RoomHostPanel';
 import RoomHostView from './RoomHostView';
 import { useRoomScreenShare } from '../hooks/useRoomScreenShare';
-import { isAuthConfigured, isAdminUser } from '../services/authService';
+import { isAuthConfigured, isAdminUser, signOut } from '../services/authService';
 import {
   buildSummaryText,
   generateMeetingSummary,
@@ -43,6 +43,8 @@ import {
   RefreshCw,
   Sparkles,
   Shield,
+  MonitorUp,
+  LogOut,
 } from 'lucide-react';
 
 function configuredMaxSessionSeconds(): number | null {
@@ -128,9 +130,11 @@ export default function DashboardPage() {
   const [backendDataStatus, setBackendDataStatus] = useState<'ready' | 'waking' | 'error'>(() =>
     isAuthConfigured() && isWakeBackendConfigured() ? 'waking' : 'ready');
   const [wakeRetry, setWakeRetry] = useState(0);
+  const [languageMode, setLanguageMode] = useState<CaptionLanguageMode>('auto');
   const stopCaptureRef = useRef<(() => void) | null>(null);
   const stopRoomMicrophoneRef = useRef<(() => Promise<void>) | null>(null);
-  const maxSessionSeconds = configuredMaxSessionSeconds();
+  const isAdmin = isAdminUser();
+  const maxSessionSeconds = isAdmin ? null : configuredMaxSessionSeconds();
 
   useEffect(() => {
     if (!isAuthConfigured() || !isWakeBackendConfigured()) return;
@@ -165,6 +169,9 @@ export default function DashboardPage() {
     reconnectOnUnexpectedClose: state.isCapturing,
     roomCode: hostedRoom?.roomCode,
     roomToken: hostedRoom?.hostToken,
+    sourceLanguage: languageMode === 'en-vi' ? 'en-US' : languageMode === 'vi-en' ? 'vi-VN' : undefined,
+    targetLanguage: languageMode === 'en-vi' ? 'vi' : languageMode === 'vi-en' ? 'en' : undefined,
+    forceSingleStream: languageMode !== 'auto',
     onSessionStart(sessionId, isReconnect) {
       dispatch({ type: isReconnect ? 'SESSION_RECONNECT_START' : 'SESSION_START', sessionId });
     },
@@ -385,13 +392,28 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Right: metrics */}
-          <div className="hidden items-center gap-5 sm:flex">
-            <HeaderMetric icon={<Clock className="w-3 h-3 text-ink/50" />} label="TIME" value={formatDuration(recordingDurationSeconds)} />
-            {remainingSessionSeconds !== null && (
-              <HeaderMetric icon={<Clock className="w-3 h-3 text-emerald-pro" />} label="LIMIT" value={formatDuration(remainingSessionSeconds)} accent />
+          {/* Right: metrics + sign out */}
+          <div className="flex items-center gap-5">
+            <div className="hidden items-center gap-5 sm:flex">
+              <HeaderMetric icon={<Clock className="w-3 h-3 text-ink/50" />} label="TIME" value={formatDuration(recordingDurationSeconds)} />
+              {remainingSessionSeconds !== null && (
+                <HeaderMetric icon={<Clock className="w-3 h-3 text-emerald-pro" />} label="LIMIT" value={formatDuration(remainingSessionSeconds)} accent />
+              )}
+              <HeaderMetric icon={<Layers className="w-3 h-3 text-ink/50" />} label="SEGS" value={state.segments.length.toString()} />
+            </div>
+            {isAuthConfigured() && (
+              <button
+                type="button"
+                onClick={() => {
+                  signOut();
+                  window.location.href = '/';
+                }}
+                className="flex items-center gap-1.5 rounded-xl border border-ink/15 px-3 py-1.5 text-xs font-semibold text-ink/60 hover:border-ink/30 hover:text-ink transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign out</span>
+              </button>
             )}
-            <HeaderMetric icon={<Layers className="w-3 h-3 text-ink/50" />} label="SEGS" value={state.segments.length.toString()} />
           </div>
         </div>
       </header>
@@ -414,10 +436,12 @@ export default function DashboardPage() {
               permissionDenied={permissionDenied}
               audioInputDevices={audioInputDevices}
               selectedDeviceId={selectedDeviceId}
+              languageMode={languageMode}
               microphoneGain={microphoneGain}
               inputLevel={inputLevel}
               canClear={state.segments.length > 0 || state.currentPartial !== null}
               onSelectedDeviceChange={setSelectedDeviceId}
+              onLanguageModeChange={setLanguageMode}
               onMicrophoneGainChange={setMicrophoneGain}
               onRefreshAudioInputDevices={refreshAudioInputDevices}
               onStart={() => void handleStart()}
@@ -427,7 +451,7 @@ export default function DashboardPage() {
             <div className="px-6 py-4 border-b border-[#dce5f2]">
               <button
                 type="button"
-                className="text-sm font-bold text-emerald-pro disabled:opacity-40"
+                className="w-full h-10 rounded-xl border border-emerald-pro/30 bg-emerald-pro/5 hover:bg-emerald-pro/10 transition-colors flex items-center justify-center gap-2 text-xs font-bold text-emerald-pro disabled:opacity-40 disabled:cursor-not-allowed"
                 disabled={isCapturing || isStarting || hostedRoom?.status === 'ended'}
                 onClick={async () => {
                   let display: MediaStream | undefined;
@@ -445,8 +469,11 @@ export default function DashboardPage() {
                     }
                   }
                 }}
-              >Caption tab audio</button>
-              <p className="mt-1 text-xs text-ink-muted">Choose a browser tab and enable Share tab audio. Stop session ends capture.</p>
+              >
+                <MonitorUp className="w-3.5 h-3.5" />
+                Caption tab audio
+              </button>
+              <p className="mt-2 text-xs text-ink-muted leading-relaxed">Choose a browser tab and enable Share tab audio. Stop session ends capture.</p>
             </div>
             {isSharedRoomsEnabled() && (
               <RoomHostPanel

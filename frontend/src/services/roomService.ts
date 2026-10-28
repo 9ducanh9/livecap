@@ -1,3 +1,4 @@
+import type { MediaCredential } from './livekitTransport';
 import type { Segment } from '../types';
 import { authenticatedFetch, getAuthSession } from './authService';
 
@@ -113,22 +114,22 @@ export async function roomExists(roomCode: string): Promise<boolean> {
   return true;
 }
 
-export async function createHostMediaToken(room: HostedRoom): Promise<string> {
+export async function createHostMediaToken(room: HostedRoom): Promise<string | MediaCredential> {
   const response = await authenticatedFetch(
     `${apiBaseUrl()}/api/rooms/${encodeURIComponent(room.roomCode)}/media/host-token`,
     { method: 'POST', headers: { 'X-LiveCap-Room-Token': room.hostToken } },
   );
   if (!response.ok) throw new Error(await roomError(response, 'Could not start screen sharing.'));
-  return requiredString(await response.json() as Record<string, unknown>, 'token');
+  return mediaCredential(await response.json() as Record<string, unknown>);
 }
 
-export async function createViewerMediaToken(roomCode: string): Promise<string> {
+export async function createViewerMediaToken(roomCode: string): Promise<string | MediaCredential> {
   const response = await fetch(
     `${apiBaseUrl()}/api/rooms/${encodeURIComponent(roomCode)}/media/viewer-token`,
     { method: 'POST' },
   );
   if (!response.ok) throw new Error(await roomError(response, 'Could not join screen sharing.'));
-  return requiredString(await response.json() as Record<string, unknown>, 'token');
+  return mediaCredential(await response.json() as Record<string, unknown>);
 }
 
 export async function stopRoomMedia(room: HostedRoom): Promise<void> {
@@ -229,4 +230,14 @@ async function roomError(response: Response, fallback: string): Promise<string> 
   } catch {
     return fallback;
   }
+}
+
+function mediaCredential(payload: Record<string, unknown>): string | MediaCredential {
+  const token = requiredString(payload, 'token');
+  if (payload['provider'] === 'livekit') {
+    const url = requiredString(payload, 'url');
+    if (!url.startsWith('wss://')) throw new Error('LiveKit requires a secure WebSocket URL.');
+    return { token, url, provider: 'livekit' };
+  }
+  return token;
 }

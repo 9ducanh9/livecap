@@ -1,5 +1,7 @@
 import type { AudioInputDevice } from '../hooks/useAudioCapture';
-import { Mic, MicOff, RefreshCcw, Info, AlertTriangle, Square } from 'lucide-react';
+import { Mic, MicOff, RefreshCcw, Info, AlertTriangle, Square, Languages, Trash2 } from 'lucide-react';
+
+export type CaptionLanguageMode = 'auto' | 'en-vi' | 'vi-en';
 
 interface ControlPanelProps {
   isCapturing: boolean;
@@ -9,10 +11,12 @@ interface ControlPanelProps {
   permissionDenied: boolean;
   audioInputDevices: AudioInputDevice[];
   selectedDeviceId: string;
+  languageMode?: CaptionLanguageMode;
   microphoneGain?: number;
   inputLevel?: number;
   canClear: boolean;
   onSelectedDeviceChange: (deviceId: string) => void;
+  onLanguageModeChange?: (mode: CaptionLanguageMode) => void;
   onMicrophoneGainChange?: (percent: number) => void;
   onRefreshAudioInputDevices: () => void;
   onStart: () => void;
@@ -28,10 +32,12 @@ export default function ControlPanel({
   permissionDenied,
   audioInputDevices,
   selectedDeviceId,
+  languageMode = 'auto',
   microphoneGain = 100,
   inputLevel = 0,
   canClear,
   onSelectedDeviceChange,
+  onLanguageModeChange,
   onMicrophoneGainChange,
   onRefreshAudioInputDevices,
   onStart,
@@ -133,7 +139,7 @@ export default function ControlPanel({
         </button>
       </div>}
 
-      {/* Audio Source */}
+      {/* Audio Source & Language Mode */}
       <div className="px-6 pb-6 border-t border-[#dce5f2] pt-5 space-y-3">
         <div className="flex items-center justify-between">
           <label className="flex items-center gap-2 text-xs font-bold text-ink-muted">
@@ -155,6 +161,7 @@ export default function ControlPanel({
             value={selectedDeviceId}
             onChange={(e) => onSelectedDeviceChange(e.target.value)}
             disabled={deviceControlsDisabled}
+            aria-label="Audio Source"
             className="w-full h-11 rounded-xl bg-white border border-ink/15 px-4 pr-10 font-mono text-[11px] text-ink/80 focus:border-emerald-pro focus:outline-none disabled:opacity-30 cursor-pointer hover:bg-emerald-pro/3 transition-colors appearance-none"
           >
             <option value="default">Default System Device</option>
@@ -168,16 +175,53 @@ export default function ControlPanel({
             </svg>
           </div>
         </div>
+
+        {/* Spoken language mode selector (single-stream vs dual-stream) */}
+        <div className="pt-2 space-y-2">
+          <div className="flex items-center justify-between">
+            <label htmlFor="language-mode-select" className="flex items-center gap-2 text-xs font-bold text-ink-muted">
+              <Languages className="w-3.5 h-3.5 text-emerald-pro/70" />
+              Spoken Language
+            </label>
+            <span className="text-[10px] font-semibold text-emerald-pro">
+              {languageMode === 'auto' ? 'Dual-stream' : 'Single-stream'}
+            </span>
+          </div>
+          <div className="relative">
+            <select
+              id="language-mode-select"
+              value={languageMode}
+              onChange={(e) => onLanguageModeChange?.(e.target.value as CaptionLanguageMode)}
+              disabled={deviceControlsDisabled}
+              className="w-full h-10 rounded-xl bg-white border border-ink/15 px-3.5 pr-9 text-xs font-medium text-ink/85 focus:border-emerald-pro focus:outline-none disabled:opacity-30 cursor-pointer hover:bg-emerald-pro/3 transition-colors appearance-none"
+            >
+              <option value="auto">Auto Bilingual (VI ↔ EN)</option>
+              <option value="en-vi">English spoken → Vietnamese</option>
+              <option value="vi-en">Vietnamese spoken → English</option>
+            </select>
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-ink/30">
+              <svg className="w-3 h-3 fill-current" viewBox="0 0 20 20">
+                <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+              </svg>
+            </div>
+          </div>
+          <p className="text-[11px] leading-relaxed text-ink-muted">
+            {languageMode === 'auto'
+              ? 'Listens for both Vietnamese and English simultaneously.'
+              : 'Single-language stream reduces latency and cloud transcription load by 50%.'}
+          </p>
+        </div>
       </div>
 
-      {/* Purge */}
+      {/* Clear transcript */}
       <div className="px-6 pb-6 border-t border-[#dce5f2]">
         <button
           onClick={onClear}
           disabled={!canClear || isConnecting}
-          className="mt-5 w-full h-9 rounded-xl border border-ink/15 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-ink/40 hover:text-ink/70 hover:border-ink/30 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+          className="mt-5 w-full h-9 rounded-xl border border-ink/15 flex items-center justify-center gap-1.5 text-xs font-semibold text-ink/55 hover:text-crimson hover:border-crimson/35 hover:bg-crimson/5 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
         >
-          PURGE SESSION CACHE
+          <Trash2 className="w-3.5 h-3.5" />
+          Clear transcript
         </button>
       </div>
 

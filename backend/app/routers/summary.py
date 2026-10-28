@@ -7,10 +7,11 @@ request and are not retained by this router.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path
 
 from app.config import get_settings
 from app.models import FinalizedSegmentMessage, SessionSummary, SummaryRequest
+from app.services.auth import AuthenticatedUser, optional_authenticated_user
 from app.services.summarization import summarize_session
 
 router = APIRouter()
@@ -22,6 +23,7 @@ router = APIRouter()
     summary="Generate on-demand AI meeting notes",
     responses={
         400: {"description": "Not enough finalized captions were provided."},
+        401: {"description": "Authentication is required when auth is enabled."},
         409: {"description": "Meeting summaries are disabled."},
         502: {"description": "DeepSeek did not return a usable summary."},
     },
@@ -29,10 +31,16 @@ router = APIRouter()
 async def generate_summary(
     session_id: str = Path(..., description="The Session_ID for these captions"),
     body: SummaryRequest = ...,
+    user: AuthenticatedUser | None = Depends(optional_authenticated_user),
 ) -> SessionSummary:
     """Generate AI notes for finalized captions when explicitly requested."""
 
     settings = get_settings()
+    if settings.enable_auth and user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Sign in is required to generate AI meeting notes",
+        )
     if not settings.enable_meeting_summary:
         raise HTTPException(status_code=409, detail="AI meeting notes are not enabled")
     if len(body.segments) < settings.summary_min_segments:

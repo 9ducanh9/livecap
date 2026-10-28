@@ -67,7 +67,7 @@ export default function RoomHostView({
 
       {feed.error && <p role="alert" className="mt-4 rounded-xl border border-crimson/20 bg-crimson/5 p-3 text-xs text-crimson">{feed.error}</p>}
       {ended && <p className="mt-4 rounded-xl border border-emerald-pro/20 bg-[#effbf8] p-3 text-xs text-ink">Live ended. The finalized transcript remains available until the room expires.</p>}
-      <div className="mt-5"><RoomAudienceContent roomCode={room.roomCode} feed={feed} muted /></div>
+      <div className="mt-5"><RoomAudienceContent roomCode={room.roomCode} feed={feed} muted localStream={screenShare.previewStream ?? null} /></div>
     </div>
   );
 }

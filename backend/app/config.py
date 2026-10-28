@@ -181,6 +181,10 @@ class Settings:
     room_table_name: str = DEFAULT_ROOM_TABLE_NAME
     enable_room_screen_share: bool = DEFAULT_ENABLE_ROOM_SCREEN_SHARE
     ivs_realtime_region: str = DEFAULT_IVS_REALTIME_REGION
+    room_media_provider: str = "ivs"
+    livekit_url: str = ""
+    livekit_api_key: str = ""
+    livekit_api_secret: str = ""
     ivs_participant_token_seconds: int = DEFAULT_IVS_PARTICIPANT_TOKEN_SECONDS
 
     @property
@@ -324,6 +328,10 @@ class Settings:
             ivs_realtime_region=_get_str(
                 "IVS_REALTIME_REGION", DEFAULT_IVS_REALTIME_REGION
             ),
+            room_media_provider=_get_str("ROOM_MEDIA_PROVIDER", "ivs"),
+            livekit_url=_get_str("LIVEKIT_URL", ""),
+            livekit_api_key=_get_str("LIVEKIT_API_KEY", ""),
+            livekit_api_secret=_get_str("LIVEKIT_API_SECRET", ""),
             ivs_participant_token_seconds=max(
                 60,
                 min(

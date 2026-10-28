@@ -4,9 +4,13 @@ import { authenticatedFetch } from '../services/authService';
 
 interface UsageData {
   is_admin?: boolean;
+  tier?: string;
   sessions_used: number;
+  minutes_used?: number;
   limits: {
     max_sessions_per_week: number | null;
+    max_minutes_per_week?: number | null;
+    max_session_seconds?: number | null;
     unlimited_session_duration: boolean;
   };
   quota_error: string | null;
@@ -41,16 +45,20 @@ export default function UsagePanel() {
 
   const sessionsMax = usage.limits.max_sessions_per_week;
   const sessionsPercent = sessionsMax ? Math.min(100, (usage.sessions_used / sessionsMax) * 100) : 0;
+  const minutesUsed = usage.minutes_used ?? 0;
+  const minutesMax = usage.limits.max_minutes_per_week ?? 15;
+  const minutesPercent = minutesMax ? Math.min(100, (minutesUsed / minutesMax) * 100) : 0;
+  const maxSessionMinutes = Math.max(1, Math.round((usage.limits.max_session_seconds ?? 300) / 60));
 
   return (
     <div className="px-6 py-5 border-t border-[#dce5f2]">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <CalendarDays className="h-4 w-4 text-emerald-pro" />
-          <span className="text-sm font-bold text-ink">Weekly sessions</span>
+          <span className="text-sm font-bold text-ink">Weekly allowance</span>
         </div>
         <span className="rounded-full bg-emerald-pro/10 px-2.5 py-1 text-[11px] font-bold text-emerald-pro">
-          {usage.is_admin ? 'Unlimited' : `${sessionsMax} / week`}
+          {usage.is_admin ? 'Admin · Unlimited' : `${sessionsMax} sessions · ${minutesMax}m`}
         </span>
       </div>
 
@@ -58,6 +66,7 @@ export default function UsagePanel() {
       {!usage.is_admin && sessionsMax !== null && (
         <div className="mt-4 space-y-3">
           <UsageBar label="Sessions this week" used={usage.sessions_used} max={sessionsMax} percent={sessionsPercent} />
+          <UsageBar label="Minutes this week" used={minutesUsed} max={minutesMax} percent={minutesPercent} unit=" min" />
         </div>
       )}
 
@@ -68,14 +77,16 @@ export default function UsagePanel() {
         </div>
       )}
 
-      <p className="mt-3 text-[11px] text-ink-muted">
-        {usage.is_admin ? 'Admin account — product usage quotas are disabled.' : 'No time limit per recording. Allowance resets every Monday.'}
+      <p className="mt-3 text-[11px] text-ink-muted leading-relaxed">
+        {usage.is_admin
+          ? 'Admin account — no time limit per recording and weekly usage quotas are disabled.'
+          : `Free tier: up to ${maxSessionMinutes} min per recording (${minutesMax} min/week total). Allowance resets every Monday.`}
       </p>
     </div>
   );
 }
 
-function UsageBar({ label, used, max, percent }: { label: string; used: number; max: number; percent: number }) {
+function UsageBar({ label, used, max, percent, unit = '' }: { label: string; used: number; max: number; percent: number; unit?: string }) {
   const isNearLimit = percent >= 80;
   const barColor = isNearLimit ? 'bg-amber-400' : 'bg-emerald-pro';
 
@@ -84,7 +95,7 @@ function UsageBar({ label, used, max, percent }: { label: string; used: number; 
       <div className="flex items-center justify-between text-[11px]">
         <span className="font-semibold text-ink-muted">{label}</span>
         <span className={`font-mono ${isNearLimit ? 'text-amber-600' : 'text-ink-muted'}`}>
-          {used}/{max}
+          {used}/{max}{unit}
         </span>
       </div>
       <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[#e8eef6]">

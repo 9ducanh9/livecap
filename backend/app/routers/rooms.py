@@ -10,6 +10,9 @@ from fastapi import WebSocketDisconnect, status
 from pydantic import BaseModel, Field
 from botocore.exceptions import BotoCoreError, ClientError
 
+from livekit.api import TwirpError
+from aiohttp import ClientError as MediaNetworkError
+
 from app.config import get_settings
 from app.services.auth import AuthenticatedUser, require_authenticated_user
 from app.services.idle_scaler import get_idle_scale_down_scheduler
@@ -40,6 +43,25 @@ class CreateRoomResponse(BaseModel):
 
 class ParticipantTokenResponse(BaseModel):
     token: str
+    provider: Literal["ivs", "livekit"] = "ivs"
+    url: str | None = None
+
+
+def _media_service(settings):
+    if settings.room_media_provider == "livekit":
+        from app.services.livekit_media import LiveKitMediaService
+        try:
+            return LiveKitMediaService(settings)
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail="Room media is not configured") from exc
+    if settings.room_media_provider != "ivs":
+        raise HTTPException(status_code=503, detail="Unknown room media provider")
+    return IvsRealtimeService(region=settings.ivs_realtime_region)
+
+
+def _token_response(token, settings):
+    return ParticipantTokenResponse(token=token, provider=settings.room_media_provider,
+                                    url=settings.livekit_url if settings.room_media_provider == "livekit" else None)
 
 
 def _require_rooms_enabled() -> None:
@@ -100,8 +122,8 @@ async def create_host_media_token(
 ) -> ParticipantTokenResponse:
     _require_screen_share_enabled()
     settings = get_settings()
-    ivs = IvsRealtimeService(region=settings.ivs_realtime_region)
     try:
+        ivs = _media_service(settings)
         service = get_room_service()
         stage_arn = await service.prepare_media(
             room_code,
@@ -126,13 +148,15 @@ async def create_host_media_token(
             try:
                 await ivs.delete_stage(stage_arn)
                 await service.complete_media_stop(room_code, stage_arn)
-            except (BotoCoreError, ClientError):
+            except (BotoCoreError, ClientError, TwirpError, MediaNetworkError, TimeoutError):
                 pass
             raise HTTPException(status_code=409, detail="The room changed while screen sharing was starting")
-        return ParticipantTokenResponse(token=token)
+        return _token_response(token, settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail="Room media is not configured") from exc
     except HTTPException:
         raise
-    except (BotoCoreError, ClientError, KeyError) as exc:
+    except (BotoCoreError, ClientError, KeyError, ValueError, RuntimeError, TwirpError, MediaNetworkError, TimeoutError) as exc:
         if isinstance(exc, ClientError):
             error = exc.response.get("Error", {})
             metadata = exc.response.get("ResponseMetadata", {})
@@ -155,7 +179,7 @@ async def create_host_media_token(
             try:
                 await ivs.delete_stage(pending_arn)
                 await get_room_service().complete_media_stop(room_code, pending_arn)
-            except (BotoCoreError, ClientError):
+            except (BotoCoreError, ClientError, TwirpError, MediaNetworkError, TimeoutError):
                 pass
         raise HTTPException(status_code=502, detail="Could not start the screen-share service") from exc
 
@@ -168,13 +192,13 @@ async def create_viewer_media_token(room_code: str) -> ParticipantTokenResponse:
     if not stage_arn:
         raise HTTPException(status_code=409, detail="The host is not sharing a screen")
     try:
-        token = await IvsRealtimeService(region=settings.ivs_realtime_region).create_token(
+        token = await _media_service(settings).create_token(
             stage_arn=stage_arn,
             role="viewer",
             duration_seconds=settings.ivs_participant_token_seconds,
         )
-        return ParticipantTokenResponse(token=token)
-    except (BotoCoreError, ClientError, KeyError) as exc:
+        return _token_response(token, settings)
+    except (BotoCoreError, ClientError, KeyError, ValueError, RuntimeError, TwirpError, MediaNetworkError, TimeoutError) as exc:
         raise HTTPException(status_code=502, detail="Could not join the screen-share service") from exc
 
 
@@ -193,8 +217,8 @@ async def stop_room_media(
     if not stage_arn:
         raise HTTPException(status_code=404, detail="Active screen share was not found")
     try:
-        await IvsRealtimeService(region=settings.ivs_realtime_region).delete_stage(stage_arn)
-    except (BotoCoreError, ClientError) as exc:
+        await _media_service(settings).delete_stage(stage_arn)
+    except (BotoCoreError, ClientError, TwirpError, MediaNetworkError, TimeoutError) as exc:
         raise HTTPException(status_code=502, detail="Screen-share cleanup is pending; please retry") from exc
     await service.complete_media_stop(room_code, stage_arn)
     return {"status": "stopped"}
@@ -224,9 +248,9 @@ async def close_room(
         )
         if stage_arn:
             try:
-                await IvsRealtimeService(region=settings.ivs_realtime_region).delete_stage(stage_arn)
+                await _media_service(settings).delete_stage(stage_arn)
                 await service.complete_media_stop(room_code, stage_arn)
-            except (BotoCoreError, ClientError) as exc:
+            except (BotoCoreError, ClientError, TwirpError, MediaNetworkError, TimeoutError) as exc:
                 raise HTTPException(status_code=502, detail="Screen-share cleanup is pending; please retry") from exc
     closed = await service.close_room(room_code, room_token)
     if not closed:

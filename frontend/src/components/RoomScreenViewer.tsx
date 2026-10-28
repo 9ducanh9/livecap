@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Stage as IvsStage, StageStrategy, StageStream } from 'amazon-ivs-web-broadcast';
+import type { StageStrategy, StageStream } from 'amazon-ivs-web-broadcast';
 import { createViewerMediaToken } from '../services/roomService';
 import type { Segment } from '../types';
 import { captionChunks } from './captionChunks';
 
 type VideoRect = { left: number; top: number; width: number; height: number };
 
-export default function RoomScreenViewer({ roomCode, active, subtitleSegments, subtitlePartial, subtitleLanguage = 'vi', muted = false, onVideoStateChange }: { roomCode: string; active: boolean; subtitleSegments?: Segment[]; subtitlePartial?: Segment | null; subtitleLanguage?: 'vi' | 'en'; muted?: boolean; onVideoStateChange?: (hasVideo: boolean) => void }) {
+export default function RoomScreenViewer({ roomCode, active, subtitleSegments, subtitlePartial, subtitleLanguage = 'vi', muted = false, localStream, onVideoStateChange }: { roomCode: string; active: boolean; subtitleSegments?: Segment[]; subtitlePartial?: Segment | null; subtitleLanguage?: 'vi' | 'en'; muted?: boolean; localStream?: MediaStream | null; onVideoStateChange?: (hasVideo: boolean) => void }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +45,18 @@ export default function RoomScreenViewer({ roomCode, active, subtitleSegments, s
   }, []);
 
   useEffect(() => {
+    if (localStream !== undefined) {
+      const video = videoRef.current;
+      const hasVideo = Boolean(localStream?.getVideoTracks().some(track => track.readyState === 'live'));
+      if (video) {
+        video.srcObject = localStream;
+        if (localStream) void video.play().catch(() => undefined);
+      }
+      setError(null);
+      setMediaKind(hasVideo ? 'video' : 'none');
+      onVideoStateChange?.(hasVideo);
+      return () => { if (video) video.srcObject = null; };
+    }
     if (!active) {
       if (videoRef.current) videoRef.current.srcObject = null;
       setError(null);
@@ -56,13 +68,13 @@ export default function RoomScreenViewer({ roomCode, active, subtitleSegments, s
     setError(null);
     setNeedsGesture(false);
     let disposed = false;
-    let stage: IvsStage | null = null;
+    let stage: { leave: () => void | Promise<void> } | null = null;
     const tracks = new Map<string, MediaStreamTrack>();
-    const updateMedia = () => {
+    const updateMedia = (managed = false) => {
       const video = videoRef.current;
       if (!video || disposed) return;
       const currentTracks = [...tracks.values()];
-      video.srcObject = currentTracks.length ? new MediaStream(currentTracks) : null;
+      if (!managed) video.srcObject = currentTracks.length ? new MediaStream(currentTracks) : null;
       const hasVideo = currentTracks.some((track) => track.kind === 'video');
       setMediaKind(hasVideo ? 'video' : currentTracks.length ? 'audio' : 'none');
       onVideoStateChange?.(hasVideo);
@@ -80,21 +92,33 @@ export default function RoomScreenViewer({ roomCode, active, subtitleSegments, s
         const { Stage, StageEvents, SubscribeType } = await import('amazon-ivs-web-broadcast');
         const token = await createViewerMediaToken(roomCode);
         if (disposed) return;
+        if (typeof token !== 'string') {
+          const { connectLiveKitViewer } = await import('../services/livekitTransport');
+          const connection = await connectLiveKitViewer(token, current => {
+            tracks.clear();
+            current.forEach(track => tracks.set(track.id, track));
+            updateMedia(true);
+          }, videoRef.current ?? undefined);
+          if (disposed) { await connection.leave(); return; }
+          stage = connection;
+          return;
+        }
         const strategy: StageStrategy = {
           stageStreamsToPublish: () => [],
           shouldPublishParticipant: () => false,
           shouldSubscribeToParticipant: () => SubscribeType.AUDIO_VIDEO,
         };
-        stage = new Stage(token, strategy);
-        stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (_participant, streams: StageStream[]) => {
+        const ivsStage = new Stage(token, strategy);
+        stage = ivsStage;
+        ivsStage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (_participant, streams: StageStream[]) => {
           streams.forEach((stream) => tracks.set(stream.mediaStreamTrack.id, stream.mediaStreamTrack));
           updateMedia();
         });
-        stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, (_participant, streams: StageStream[]) => {
+        ivsStage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, (_participant, streams: StageStream[]) => {
           streams.forEach((stream) => tracks.delete(stream.mediaStreamTrack.id));
           updateMedia();
         });
-        await stage.join();
+        await ivsStage.join();
       } catch (caught) {
         if (!disposed) setError(caught instanceof Error ? caught.message : 'Could not load the shared screen.');
       }
@@ -104,7 +128,7 @@ export default function RoomScreenViewer({ roomCode, active, subtitleSegments, s
       stage?.leave();
       tracks.clear();
     };
-  }, [active, muted, onVideoStateChange, roomCode]);
+  }, [active, muted, localStream, onVideoStateChange, roomCode]);
 
   return (
     <div ref={frameRef} className="relative aspect-video overflow-hidden rounded-2xl bg-[#071225] shadow-brutal">
@@ -115,7 +139,7 @@ export default function RoomScreenViewer({ roomCode, active, subtitleSegments, s
         </div>
       )}
       {!active && <div className="absolute inset-0 grid place-items-center text-sm font-semibold text-white/60">Waiting for the host to share a screen</div>}
-      {active && mediaKind === 'none' && <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-semibold text-white/60">Connecting live media...</div>}
+      {active && localStream === undefined && mediaKind === 'none' && <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-semibold text-white/60">Connecting live media...</div>}
       {active && mediaKind === 'audio' && <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-semibold text-white/60">Host microphone is live · screen not shared</div>}
       {needsGesture && !muted && (
         <button

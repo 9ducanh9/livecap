@@ -2,14 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LocalStageStream as IvsLocalStream, Stage as IvsStage, StageStrategy } from 'amazon-ivs-web-broadcast';
 import type { HostedRoom } from '../services/roomService';
 import { createHostMediaToken, stopRoomMedia } from '../services/roomService';
+import type { LiveKitPublisher } from '../services/livekitTransport';
 import { useWebSocket } from './useWebSocket';
 
 /** One IVS participant publishes the screen and a mixed microphone/screen-audio track. */
 export function useRoomScreenShare(room: HostedRoom | null, microphoneActive: boolean) {
   const [status, setStatus] = useState<'idle' | 'starting' | 'live'>('idle');
+  const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
   const [audioCaptionsActive, setAudioCaptionsActive] = useState(false);
   const [microphonePublished, setMicrophonePublished] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const livekitRef = useRef<LiveKitPublisher | null>(null);
   const stageRef = useRef<IvsStage | null>(null);
   const stageStartRef = useRef<Promise<void> | null>(null);
   const stageStreamsRef = useRef<IvsLocalStream[]>([]);
@@ -39,7 +42,7 @@ export function useRoomScreenShare(room: HostedRoom | null, microphoneActive: bo
 
   const ensureMixer = useCallback(() => {
     if (!mixContextRef.current || !mixDestinationRef.current) {
-      const context = new AudioContext();
+      const context = new AudioContext({ sampleRate: 48_000 });
       mixContextRef.current = context;
       mixDestinationRef.current = context.createMediaStreamDestination();
     }
@@ -49,6 +52,8 @@ export function useRoomScreenShare(room: HostedRoom | null, microphoneActive: bo
   const releaseStage = useCallback(async () => {
     await stageStartRef.current?.catch(() => undefined);
     stageRef.current?.leave();
+    await livekitRef.current?.leave();
+    livekitRef.current = null;
     stageRef.current = null;
     stageStreamsRef.current = [];
     try {
@@ -80,6 +85,11 @@ export function useRoomScreenShare(room: HostedRoom | null, microphoneActive: bo
       if (context.state === 'suspended') await context.resume();
       tracks.push(destination.stream.getAudioTracks()[0]);
     }
+    if (livekitRef.current) {
+      await stageStartRef.current;
+      await livekitRef.current.update(tracks);
+      return;
+    }
     const previous = stageStreamsRef.current;
     const previousByTrack = new Map(previous.map((stream) => [stream.mediaStreamTrack.id, stream]));
     const nextStreams = tracks.map((track) => previousByTrack.get(track.id) ?? new LocalStageStream(track));
@@ -98,6 +108,14 @@ export function useRoomScreenShare(room: HostedRoom | null, microphoneActive: bo
     const starting = (async () => {
       const token = await createHostMediaToken(room);
       remoteActiveRef.current = true;
+      if (typeof token !== 'string') {
+        const { LiveKitPublisher } = await import('../services/livekitTransport');
+        const publisher = new LiveKitPublisher(token);
+        livekitRef.current = publisher;
+        await publisher.join();
+        await publisher.update(tracks);
+        return;
+      }
       const strategy: StageStrategy = {
         stageStreamsToPublish: () => stageStreamsRef.current,
         shouldPublishParticipant: () => true,
@@ -113,6 +131,8 @@ export function useRoomScreenShare(room: HostedRoom | null, microphoneActive: bo
     } catch (caught) {
       const failedStage = stageRef.current as IvsStage | null;
       failedStage?.leave();
+      await (livekitRef.current as LiveKitPublisher | null)?.leave();
+      livekitRef.current = null;
       stageRef.current = null;
       if (remoteActiveRef.current) {
         try { await stopRoomMedia(room); remoteActiveRef.current = false; } catch { /* Retry on next stop. */ }
@@ -205,6 +225,7 @@ export function useRoomScreenShare(room: HostedRoom | null, microphoneActive: bo
     screenMixSourceRef.current = null;
     displayRef.current?.getTracks().forEach((track) => track.stop());
     displayRef.current = null;
+    setPreviewStream(null);
     setStatus('idle');
     await publishCurrentMedia();
   }, [disconnect, pauseSharedAudioCaptions, publishCurrentMedia]);
@@ -222,7 +243,12 @@ export function useRoomScreenShare(room: HostedRoom | null, microphoneActive: bo
     try {
       const display = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: { ideal: 30, max: 30 } },
-        audio: true,
+        audio: {
+          channelCount: { ideal: 2 },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
       });
       if (generation !== screenGenerationRef.current) {
         display.getTracks().forEach((track) => track.stop());
@@ -231,6 +257,7 @@ export function useRoomScreenShare(room: HostedRoom | null, microphoneActive: bo
       const videoTrack = display.getVideoTracks()[0];
       if (!videoTrack) throw new Error('No screen video track was selected.');
       displayRef.current = display;
+      setPreviewStream(display);
       const audioTrack = display.getAudioTracks()[0];
       if (audioTrack) {
         const { context, destination } = ensureMixer();
@@ -252,6 +279,7 @@ export function useRoomScreenShare(room: HostedRoom | null, microphoneActive: bo
       screenMixSourceRef.current = null;
       displayRef.current?.getTracks().forEach((track) => track.stop());
       displayRef.current = null;
+      setPreviewStream(null);
       setStatus('idle');
       try { await publishCurrentMedia(); } catch { /* Keep original error. */ }
       setError(caught instanceof Error ? caught.message : 'Could not start screen sharing.');
@@ -268,10 +296,11 @@ export function useRoomScreenShare(room: HostedRoom | null, microphoneActive: bo
     microphoneMixSourceRef.current?.disconnect();
     displayRef.current?.getTracks().forEach((track) => track.stop());
     stageRef.current?.leave();
+    void livekitRef.current?.leave();
     mixDestinationRef.current?.stream.getTracks().forEach((track) => track.stop());
     void mixContextRef.current?.close();
     if (room && remoteActiveRef.current) void stopRoomMedia(room);
   }, [disconnect, room]);
 
-  return { status, error, audioCaptionsActive, microphonePublished, start, stop, stopAll, setMicrophoneStream, pauseSharedAudioCaptions, resumeSharedAudioCaptions };
+  return { status, error, previewStream, audioCaptionsActive, microphonePublished, start, stop, stopAll, setMicrophoneStream, pauseSharedAudioCaptions, resumeSharedAudioCaptions };
 }

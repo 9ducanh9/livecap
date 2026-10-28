@@ -19,6 +19,19 @@ afterEach(() => {
 });
 
 describe('RoomScreenViewer subtitles', () => {
+  it('previews the host capture locally without requesting a viewer token or stopping capture', async () => {
+    const fetchSpy = vi.spyOn(window, 'fetch');
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    const stop = vi.fn();
+    const stream = { getVideoTracks: () => [{ readyState: 'live', stop }] } as unknown as MediaStream;
+    const { container, unmount } = render(<RoomScreenViewer roomCode="ABCDEF" active localStream={stream} muted />);
+    expect(container.querySelector('video')?.srcObject).toBe(stream);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    unmount();
+    expect(stop).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+    play.mockRestore();
+  });
   it('replaces each one-line phrase in order without joining adjacent sentences', () => {
     vi.useFakeTimers();
     const { rerender } = render(

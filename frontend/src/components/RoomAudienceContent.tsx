@@ -11,10 +11,12 @@ export default function RoomAudienceContent({
   roomCode,
   feed,
   muted = false,
+  localStream,
 }: {
   roomCode: string;
   feed: RoomFeedState;
   muted?: boolean;
+  localStream?: MediaStream | null;
 }) {
   const [language, setLanguage] = useState<CaptionLanguage>('vi');
   const [layout, setLayout] = useState<CaptionLayout>('overlay');
@@ -67,6 +69,7 @@ export default function RoomAudienceContent({
           roomCode={roomCode}
           active={feed.mediaStatus === 'live'}
           muted={muted}
+          localStream={localStream}
           onVideoStateChange={setHasVideo}
           subtitleSegments={feed.mediaStatus === 'live' && hasVideo && layout === 'overlay' ? feed.segments : undefined}
           subtitlePartial={feed.mediaStatus === 'live' && hasVideo && layout === 'overlay' ? feed.partial : null}

@@ -75,6 +75,9 @@ TIERS: dict[str, TierLimits] = {
 
 DEFAULT_TIER = "free"
 WEEKLY_SESSION_LIMIT = 5
+WEEKLY_MINUTE_LIMIT = 15
+FREE_SESSION_MAX_SECONDS = 300
+SESSION_GRACE_SECONDS = 15
 _VIETNAM_TIMEZONE = timezone(timedelta(hours=7))
 
 
@@ -234,6 +237,11 @@ def check_quota(user_id: str, *, is_admin: bool = False) -> Optional[str]:
     if is_admin:
         return None
     usage = get_user_usage(user_id)
+    if usage.minutes_used >= WEEKLY_MINUTE_LIMIT:
+        return (
+            f"Weekly recording limit reached ({WEEKLY_MINUTE_LIMIT} minutes). "
+            "Your allowance resets next Monday."
+        )
     if usage.sessions_used >= WEEKLY_SESSION_LIMIT:
         return (
             f"Weekly session limit reached ({WEEKLY_SESSION_LIMIT} sessions). "
@@ -276,7 +284,8 @@ def reserve_weekly_session(user_id: str, *, is_admin: bool = False) -> Optional[
     """Atomically reserve one of a user's five weekly session starts.
 
     A DynamoDB conditional update prevents standard accounts from exceeding
-    the allowance. Admin usage is still recorded for analytics, without a cap.
+    the allowance (5 sessions or 15 minutes per week). Admin usage is still
+    recorded for analytics, without a cap.
     On an AWS outage, preserve availability and let the session proceed.
     """
     table = _dynamo().Table(_usage_table_name())
@@ -295,12 +304,20 @@ def reserve_weekly_session(user_id: str, *, is_admin: bool = False) -> Optional[
         }
         if not is_admin:
             update_args["ConditionExpression"] = (
-                "attribute_not_exists(sessions_used) OR sessions_used < :limit"
+                "(attribute_not_exists(sessions_used) OR sessions_used < :limit) "
+                "AND (attribute_not_exists(minutes_used) OR minutes_used < :min_limit)"
             )
             update_args["ExpressionAttributeValues"][":limit"] = WEEKLY_SESSION_LIMIT
+            update_args["ExpressionAttributeValues"][":min_limit"] = WEEKLY_MINUTE_LIMIT
         table.update_item(**update_args)
         return None
     except table.meta.client.exceptions.ConditionalCheckFailedException:
+        usage = get_user_usage(user_id)
+        if usage.minutes_used >= WEEKLY_MINUTE_LIMIT:
+            return (
+                f"Weekly recording limit reached ({WEEKLY_MINUTE_LIMIT} minutes). "
+                "Your allowance resets next Monday."
+            )
         return (
             f"Weekly session limit reached ({WEEKLY_SESSION_LIMIT} sessions). "
             "Your allowance resets next Monday."
@@ -308,6 +325,24 @@ def reserve_weekly_session(user_id: str, *, is_admin: bool = False) -> Optional[
     except (BotoCoreError, ClientError):
         logger.warning("Failed to reserve weekly usage", exc_info=True)
         return None
+
+
+def refund_weekly_session(user_id: str) -> None:
+    """Refund a reserved weekly session when a short session (<15s) produces no transcript."""
+    table = _dynamo().Table(_usage_table_name())
+    try:
+        table.update_item(
+            Key={"pk": f"USER#{user_id}", "sk": _current_week_key()},
+            UpdateExpression="SET sessions_used = sessions_used - :one, updated_at = :now",
+            ConditionExpression="attribute_exists(sessions_used) AND sessions_used > :zero",
+            ExpressionAttributeValues={
+                ":zero": 0,
+                ":one": 1,
+                ":now": int(time.time()),
+            },
+        )
+    except (BotoCoreError, ClientError):
+        logger.debug("Skipped weekly session refund", exc_info=True)
 
 
 def add_minutes(user_id: str, minutes: int) -> None:

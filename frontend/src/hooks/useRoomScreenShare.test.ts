@@ -2,9 +2,13 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HostedRoom } from '../services/roomService';
 import { useRoomScreenShare } from './useRoomScreenShare';
+import type { MediaCredential } from '../services/livekitTransport';
 
 const mocks = vi.hoisted(() => ({
-  createToken: vi.fn<() => Promise<string>>(),
+  createToken: vi.fn<() => Promise<string | MediaCredential>>(),
+  livekitJoin: vi.fn().mockResolvedValue(undefined),
+  livekitUpdate: vi.fn().mockResolvedValue(undefined),
+  livekitLeave: vi.fn().mockResolvedValue(undefined),
   stopMedia: vi.fn<() => Promise<void>>(),
   connect: vi.fn<() => Promise<void>>(),
   disconnect: vi.fn(),
@@ -16,6 +20,14 @@ const mocks = vi.hoisted(() => ({
     leave: ReturnType<typeof vi.fn>;
     refreshStrategy: ReturnType<typeof vi.fn>;
   }>,
+}));
+
+vi.mock('../services/livekitTransport', () => ({
+  LiveKitPublisher: class {
+    join = mocks.livekitJoin;
+    update = mocks.livekitUpdate;
+    leave = mocks.livekitLeave;
+  },
 }));
 
 vi.mock('../services/roomService', () => ({
@@ -87,6 +99,9 @@ const room = {
 
 describe('useRoomScreenShare room media', () => {
   beforeEach(() => {
+    mocks.livekitJoin.mockClear();
+    mocks.livekitUpdate.mockClear();
+    mocks.livekitLeave.mockClear();
     mocks.stageInstances.length = 0;
     mocks.createToken.mockReset().mockResolvedValue('ivs-token');
     mocks.stopMedia.mockReset().mockResolvedValue(undefined);
@@ -103,6 +118,18 @@ describe('useRoomScreenShare room media', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+  });
+
+  it('uses LiveKit for microphone broadcasting and cleans up on stop', async () => {
+    mocks.createToken.mockResolvedValue({ token: 'livekit-token', provider: 'livekit', url: 'wss://test.livekit.cloud' });
+    const { result } = renderHook(() => useRoomScreenShare(room, true));
+    await act(async () => { await result.current.setMicrophoneStream(new FakeMediaStream([track('audio')]) as unknown as MediaStream); });
+    expect(mocks.livekitJoin).toHaveBeenCalledOnce();
+    expect(mocks.livekitUpdate).toHaveBeenCalledOnce();
+    expect(mocks.stageInstances).toHaveLength(0);
+    await act(async () => { await result.current.stopAll(); });
+    expect(mocks.livekitLeave).toHaveBeenCalledOnce();
+    expect(mocks.stopMedia).toHaveBeenCalledWith(room);
   });
 
   it('keeps microphone audio live when screen sharing stops', async () => {

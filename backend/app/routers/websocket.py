@@ -1242,20 +1242,33 @@ async def _websocket_transcribe(websocket: WebSocket, telemetry: PipelineTelemet
             if reader_error is not None:
                 telemetry.fail("internal_error", reader_error)
 
-        # Record minutes used against the user's monthly quota.
+        # Record minutes used against the user's weekly quota, or refund short empty sessions.
         if auth_user is not None and settings.enable_auth:
             try:
-                from app.services.usage_quota import add_minutes  # noqa: PLC0415
-                elapsed_minutes = max(1, int((time.monotonic() - _session_start_ts) / 60))
-                add_minutes(auth_user.user_id, elapsed_minutes)
+                from app.services.usage_quota import (  # noqa: PLC0415
+                    SESSION_GRACE_SECONDS,
+                    add_minutes,
+                    refund_weekly_session,
+                )
+                elapsed_seconds = max(0.0, time.monotonic() - _session_start_ts)
+                if (
+                    not auth_user_is_admin
+                    and elapsed_seconds < SESSION_GRACE_SECONDS
+                    and telemetry.final_count == 0
+                ):
+                    refund_weekly_session(auth_user.user_id)
+                else:
+                    elapsed_minutes = max(1, int((elapsed_seconds + 59) // 60))
+                    add_minutes(auth_user.user_id, elapsed_minutes)
             except Exception:  # noqa: BLE001
                 pass
 
         log_websocket_disconnect(session_id)
 
     try:
-        # A zero timeout means recordings have no wall-clock cap.
-        async with asyncio.timeout(settings.session_timeout or None):
+        # Admin accounts and zero timeouts have no wall-clock session cap.
+        effective_timeout = None if auth_user_is_admin else (settings.session_timeout or None)
+        async with asyncio.timeout(effective_timeout):
             pending_room_partial: PartialSegmentMessage | None = None
             room_partial_task: asyncio.Task[None] | None = None
             room_partial_epoch = 0

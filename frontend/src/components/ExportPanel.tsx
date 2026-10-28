@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Segment } from '../types';
 import { exportTranscript, ExportError } from '../services/exportService';
-import { Download, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Download, AlertCircle, CheckCircle2, Copy, Check } from 'lucide-react';
 
 interface ExportPanelProps {
   sessionId: string | null;
@@ -18,7 +18,31 @@ type ExportStatus =
 
 export default function ExportPanel({ sessionId, segments, summaryText }: ExportPanelProps) {
   const [status, setStatus] = useState<ExportStatus>({ kind: 'idle' });
+  const [copied, setCopied] = useState(false);
   const finalizedSegments = useMemo(() => segments.filter((s) => s.isFinal), [segments]);
+
+  const plainTranscriptText = useMemo(() => {
+    const body = finalizedSegments
+      .map((s) => {
+        const speaker = s.speakerLabel ? `[${s.speakerLabel}] ` : '';
+        const vi = s.textVi.trim();
+        const en = s.textEn.trim();
+        return vi && en && vi !== en ? `${speaker}${vi}\n  → ${en}` : `${speaker}${vi || en}`;
+      })
+      .join('\n\n');
+    return summaryText ? `${summaryText.trim()}\n\n---\n\n${body}` : body;
+  }, [finalizedSegments, summaryText]);
+
+  const handleCopyTranscript = useCallback(async () => {
+    if (finalizedSegments.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(plainTranscriptText);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Ignore clipboard failures in restricted contexts
+    }
+  }, [finalizedSegments.length, plainTranscriptText]);
 
   const triggerExport = useCallback(async () => {
     if (!sessionId || finalizedSegments.length === 0) return;
@@ -45,28 +69,49 @@ export default function ExportPanel({ sessionId, segments, summaryText }: Export
         </div>
       </div>
 
-      <div className="px-6 py-5 space-y-4">
+      <div className="px-6 py-5 space-y-3">
         <p className="text-xs leading-relaxed text-ink-muted">
-          Download your completed captions as a text file.
+          Copy or download your completed captions as a text file.
         </p>
 
-        <button
-          onClick={triggerExport}
-          disabled={isDisabled}
-          className="w-full h-11 rounded-xl border border-ink/15 text-sm font-bold text-ink/70 hover:border-emerald-pro/50 hover:text-emerald-pro hover:bg-emerald-pro/3 transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {status.kind === 'loading' ? (
-            <>
-              <span className="w-3 h-px bg-ink/30 animate-[loading_1.2s_infinite_linear]" />
-              Preparing download...
-            </>
-          ) : (
-            <>
-              <Download className="w-3.5 h-3.5" />
-              Download text
-            </>
-          )}
-        </button>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => void handleCopyTranscript()}
+            disabled={finalizedSegments.length === 0}
+            className="h-11 rounded-xl border border-ink/15 text-xs font-bold text-ink/70 hover:border-emerald-pro/50 hover:text-emerald-pro hover:bg-emerald-pro/3 transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+          >
+            {copied ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-pro" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5" />
+                Copy text
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={triggerExport}
+            disabled={isDisabled}
+            className="h-11 rounded-xl border border-ink/15 text-xs font-bold text-ink/70 hover:border-emerald-pro/50 hover:text-emerald-pro hover:bg-emerald-pro/3 transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+          >
+            {status.kind === 'loading' ? (
+              <>
+                <span className="w-3 h-px bg-ink/30 animate-[loading_1.2s_infinite_linear]" />
+                Preparing...
+              </>
+            ) : (
+              <>
+                <Download className="w-3.5 h-3.5" />
+                Download text
+              </>
+            )}
+          </button>
+        </div>
 
         {status.kind === 'success' && (
           <div className="border border-emerald-pro/25 bg-emerald-pro/5 p-4 font-mono space-y-2">
